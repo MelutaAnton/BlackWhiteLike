@@ -10,6 +10,7 @@
 - C# с SOLID и Clean Architecture
 - Active Input Handling: **Both** (Project Settings → Player)
 - DOTween для оптимизации анимаций и сложных математических вычислений, и приведению GUI к стандартам гибрид-кэжа
+- Git **без LFS** (осознанное решение): бинарники лежат обычными блобами. Ограничения, которые нельзя нарушать — файл >100 МБ GitHub не примет, мягкий лимит репозитория 5 ГБ (на 2026-08-16 занято ~1.7 ГБ). Не коммитить билды, `.unitypackage`, исходники текстур >100 МБ
 
 ## MCP Unity (мост к редактору)
 
@@ -27,8 +28,8 @@
 - **DI**: VContainer, Composition Root в `GameLifetimeScope.cs`
 - **EventBus**: типизированная шина `Core/Events/EventBus.cs` (struct-события)
 - **Command**: `ICommand` с `CanExecute()` / `Execute()`
-- **State Machine**: generic FSM для GameState (Movement / Shooting / EnemyDown)
-- **Object Pool**: `IPoolManager` для пуль, VFX, ресурсов
+- **State Machine**: generic FSM с push-pop для `GameState` (см. game-design §9); отдельная FSM жителя (§5)
+- **Object Pool**: `IPoolManager` для жителей, VFX, UI-попапов
 - **MVP** для UI: Model ← Presenter → View
 - **Factory**: фабрики инкапсулируют пулы; внешний код не работает с `IPoolManager` напрямую
 - **ScriptableObject Data-Driven**: вся конфигурация в SO
@@ -38,8 +39,17 @@
 ```
 Assets/
 ├── ThirdParty/                     # Купленные/импортированные сторонние ассеты
-│   ├── RealFireAndSmoke/           # VFX-пак
+│   ├── 3D Environment/             # POLYGON Fantasy Kingdom, Farm Pack
+│   ├── Animations/                 # Synty locomotion/idles
+│   ├── GUI/                        # Layer Lab, ClassicFantasyRPG_UI
+│   ├── SFX/                        # Звуковые библиотеки
+│   ├── VFX/                        # JMO Cartoon FX, Hovl Studio
 │   └── ...                         # Один паблишер/пак = одна папка
+│
+├── Content/                        # Сырьё «как скачано»: не наше и не пак Asset Store
+│   ├── Animations/                 # Mixamo-fbx (Cheering, Panic, Pray, Stunned)
+│   ├── Fonts/                      # .ttf с Google Fonts (Cinzel, Nunito)
+│   └── Music/                      # Треки (Menu, Village)
 │
 └── Development/                    # Весь наш собственный контент и код
     ├── Scripts/
@@ -62,33 +72,34 @@ Assets/
     │   └── GameBootstrap.cs        # Точка входа
     │
     ├── Prefabs/                    # Наши prefab'ы с логикой (см. правила ниже)
-    │   ├── Vehicles/               # Префабы машин с прицеплёнными контроллерами
-    │   ├── Characters/             # Префабы водителя (Mixamo + ragdoll + Animator)
-    │   ├── Pickups/                # RepairPickup, NitroPickup и т.п.
-    │   ├── Environment/            # Композитные модули окружения (BarrelCluster и т.п.)
+    │   ├── Village/                # Дома, поля, храм, бросаемые/разрушаемые объекты, житель
+    │   ├── Hand/                   # GodHand.prefab (визуал руки + alignment-материалы)
     │   ├── VFX/                    # Наши настроенные VFX-префабы (поверх ThirdParty-эмиттеров)
     │   ├── UI/                     # Canvas'ы и UI-префабы
     │   └── Systems/                # GameLifetimeScope, EventBus root и др. service-префабы сцены
     │
     ├── Data/Configs/               # Инстансы ScriptableObject (.asset)
-    │   ├── Car/
-    │   ├── Driver/
-    │   ├── Enemies/
-    │   └── ...
+    │   ├── Hand/
+    │   ├── Miracles/
+    │   ├── Levels/
+    │   └── ...                     # Полный список — game-design §12
     │
     ├── Scenes/                     # Игровые сцены
-    │   ├── Boot.unity
+    │   ├── Bootstrap.unity
     │   ├── MainMenu.unity
-    │   ├── Derby_Arena_01.unity
-    │   ├── Stunts_HighJump.unity
-    │   └── _TestSandbox.unity      # Временные сцены, имя с подчёркиванием
+    │   ├── Village_Base.unity      # Одна сцена уровня, наполнение из LevelConfig
+    │   ├── Temple.unity
+    │   └── _TestHand.unity         # Временные сцены, имя с подчёркиванием
     │
-    └── Art/                        # Наши доработанные арт-ассеты
-        ├── Materials/              # Материалы (включая URP-конверсии)
+    └── Art/                        # Наши ДОРАБОТАННЫЕ арт-ассеты (не сырьё — оно в Content/)
+        ├── Materials/              # Материалы (alignment-стейджи руки/храма)
         ├── Textures/               # Наши текстуры, decals, иконки
-        ├── Models/                   # Доработанные ассеты (если есть)
+        ├── Sprites/                # UI-спрайты, фоны, превью уровней
+        ├── Fonts/                  # TMP Font Assets (.asset), сгенерённые из Content/Fonts
         └── ...
 ```
+
+**Content/ vs Development/Art/**: в `Content/` лежит сырьё «как скачано» (ttf, mp3, Mixamo-fbx) — оно не редактируется, как и ThirdParty. Всё производное от него (TMP Font Assets, AnimatorController, обрезанные/сконвертированные аудио) создаётся в `Development/`. Купленные паки Asset Store — только в `ThirdParty/`, они в `Content/` не попадают.
 
 ## Правила хранения контента
 
@@ -106,10 +117,8 @@ Assets/
 ### Префабы с нашей логикой — в Assets/Development/Prefabs/<Category>/
 
 Любой префаб, к которому привязаны наши MonoBehaviour'ы (контроллеры, view'ы, фабрики, конфиги), хранится в `Assets/Development/Prefabs/<Category>/`. Категории — по назначению, не по типу скрипта:
-- `Vehicles/` — машины (наши префабы поверх мешей из ThirdParty).
-- `Characters/` — водитель.
-- `Pickups/` — repair/nitro и будущие pickup'ы.
-- `Environment/` — композитные модули окружения.
+- `Village/` — дома, поля, храм, житель, бросаемые и разрушаемые объекты (наши префабы поверх мешей из ThirdParty).
+- `Hand/` — рука бога.
 - `VFX/` — наши настроенные эффекты (даже если эмиттер из ThirdParty).
 - `UI/` — Canvas'ы.
 - `Systems/` — служебные префабы сцены (GameLifetimeScope и т.п.).
