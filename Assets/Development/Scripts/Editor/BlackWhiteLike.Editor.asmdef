@@ -1,0 +1,19 @@
+{
+    "name": "BlackWhiteLike.Editor",
+    "rootNamespace": "BlackWhiteLike.Editor",
+    "references": [
+        "BlackWhiteLike",
+        "VContainer"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

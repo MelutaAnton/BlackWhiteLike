@@ -146,7 +146,7 @@ Assets/
 - MonoBehaviour содержит **только** Unity API (ввод, физика, рендер). Бизнес-логика — в сервисах.
 - Запуск поведения объекта вызывается явно (`Launch(direction)`), а не из `Start` / `OnEnable`.
 - Сервисы — pure C#, тестируемые без Unity.
-- События — `readonly struct`, публикуются через `IEventBus`.
+- События — `readonly struct`, публикуются через `IEventBus`. Единственное исключение из «один класс = один файл»: события группируются по доменам в `Core/Events/Events.<Domain>.cs` (`Events.Flow.cs`, `Events.Hand.cs`, `Events.Miracles.cs`, … — состав в game-design §12). На классы и SO исключение не распространяется.
 - Именование: `PascalCase` для публичных, `_camelCase` для приватных полей.
 - Каждый сервис имеет интерфейс (`IShootingService`, `IRagdollService`).
 - Команды реализуют `ICommand` с `CanExecute()` / `Execute()`.
