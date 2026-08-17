@@ -58,7 +58,7 @@ Pointer-абстракция: touch и mouse дают одинаковые со�
 | `PointerDown/Up` | `Vector2` | Тап                             | LMB                      |
 | `PointerDrag`    | `Vector2` | Ведение пальца                  | Ведение с зажатой LMB    |
 | `PointerHold`    | `float`   | Удержание (накачка силы чуда)   | Удержание LMB            |
-| `Pan`            | `Vector2` | Drag по пустому месту           | RMB-drag / edge          |
+| `Pan`            | `Vector2` | Drag по пустому месту           | LMB-drag по пустому месту (паритет с тачем) **и** RMB-drag |
 | `Zoom`           | `float`   | Pinch                           | Колесо мыши              |
 | `Pause`          | `Trigger` | Pause-иконка                    | Esc                      |
 
@@ -385,8 +385,8 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 | Event                    | Payload                                                        | Publisher                |
 | ------------------------ | -------------------------------------------------------------- | ------------------------ |
 | `ObjectGrabbedEvent`     | `GrabbableId id, GrabbableKind kind`                            | `GodHandController`      |
-| `ObjectThrownEvent`      | `GrabbableId id, Vector3 velocity`                              | `HandInteractionService` |
-| `ObjectLandedEvent`      | `GrabbableId id, float impactSpeed, bool hitStructure`          | `ThrowableObjectController` / `VillagerController` |
+| `ObjectThrownEvent`      | `GrabbableId id, Vector3 velocity`                              | `GodHandController` — **единственный** издатель (сервис pure C# и не держит `IEventBus`) |
+| `ObjectLandedEvent`      | `GrabbableId id, float impactSpeed, bool hitStructure`          | `ThrowableObjectController` / `VillagerController` — реализации `IGrabbable` публикуют **только** это событие и глушат его, пока объект в руке |
 | `MiracleSelectedEvent`   | `MiracleType type, bool selected`                               | `HandModeService`        |
 | `MiracleCastEvent`       | `MiracleType type, Vector3 point, float power, float radius`    | `MiracleService`         |
 | `FaithChangedEvent`      | `float oldValue, float newValue, float capacity`                | `FaithService`           |

@@ -1,0 +1,5 @@
+- [URP Lit specular workflow](urp_lit_specular_workflow.md) — exact property/keyword names for programmatic Specular-workflow URP/Lit materials
+- [Cinemachine 3.1 Editor API](cinemachine31_api.md) — `Unity.Cinemachine` namespace, `CinemachineCamera` class, and the `Controllers.Camera`/`Data.Configs.Camera` CS0118 trap
+- [Prefab content editing pattern](prefab_content_editing_pattern.md) — `LoadPrefabContents`/`SaveAsPrefabAsset` for idempotent rebuild-but-preserve-user-tweaks prefabs
+- [VContainer autoInjectGameObjects](vcontainer_autoinject.md) — field name + idempotent list-append pattern for wiring plain scene GameObjects into DI auto-inject
+- [CameraRig pivot/zoom wiring](cameraRig_pivot_wiring.md) — pivot = rig's own transform, vcam is a child with identity local rotation at -Z dolly offset

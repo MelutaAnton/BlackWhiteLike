@@ -3,7 +3,8 @@
     "rootNamespace": "BlackWhiteLike.Editor",
     "references": [
         "BlackWhiteLike",
-        "VContainer"
+        "VContainer",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [
         "Editor"

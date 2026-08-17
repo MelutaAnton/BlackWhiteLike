@@ -2,7 +2,8 @@
     "name": "BlackWhiteLike",
     "rootNamespace": "BlackWhiteLike",
     "references": [
-        "VContainer"
+        "VContainer",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
