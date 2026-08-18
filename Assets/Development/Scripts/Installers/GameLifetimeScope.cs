@@ -1,3 +1,4 @@
+using System;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
 using BlackWhiteLike.Core.Events;
@@ -41,8 +42,14 @@ namespace BlackWhiteLike.Installers
 
             // Input — ITickable, тикается VContainer'ом каждый кадр без MonoBehaviour.
             // RegisterEntryPoint делает AsImplementedInterfaces() сам по себе — доп. .As<>() после него
-            // был бы no-op, поэтому оба контракта (IInputProvider, ITickable) перечислены явно.
-            builder.Register<PointerInputProvider>(Lifetime.Singleton).As<IInputProvider, ITickable>();
+            // был бы no-op, поэтому все контракты перечислены явно. IStartable/IDisposable — жизненный
+            // цикл EnhancedTouchSupport (переход на новый Input System, Android): Enable() в Start(),
+            // Disable() в Dispose(); диспетчер IStartable уже зарегистрирован через RegisterEntryPoint
+            // ниже (GameFlowService/GameBootstrap), контейнер сам вызывает Dispose() у любого синглтона
+            // IDisposable при закрытии scope (не через ExistingInstanceProvider — т.е. не для
+            // RegisterInstance), см. VContainer Container.cs.
+            builder.Register<PointerInputProvider>(Lifetime.Singleton)
+                .As<IInputProvider, ITickable, IStartable, IDisposable>();
 
             // GameFlowService — тоже ITickable (см. MainMenuState.Tick и IGameFlowService.Tick).
             // ВАЖНО: порядок регистрации ITickable в VContainer = порядок тика. Ввод обязан тикаться

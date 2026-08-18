@@ -289,6 +289,8 @@ MVP строго (см. `CLAUDE.md`): View — MonoBehaviour с UI-элемен�
 Фиксированная изометрия (~40–45° pitch), без вращения. `CameraRig` + `ICameraBehaviour`:
 - `IsometricPanZoomBehaviour` — pan (drag по пустому месту), pinch/scroll zoom с лимитами, clamped к границам уровня (из `layout`).
 
+**Ориентация экрана: только landscape** (обе стороны; решение от 2026-08-18). Определяет кадрирование камеры, раскладку HUD (§10) и safe area (§19.9). Лочится через `BlackWhiteLike/Setup/Apply Mobile Player Settings`.
+
 Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConfig` (SO) — `Pitch`, `MinZoom`, `MaxZoom`, `PanSpeed`, `ZoomSpeed`, `BoundsPadding`.
 
 ### 11.1 Alignment-визуал (material swap)
@@ -536,6 +538,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 
 1. **Каркас**: `GameLifetimeScope`, `GameBootstrap`, `PointerInputProvider` + `IInputProvider`, `IEventBus`, generic FSM (push-pop), enum/const (`GameState`, `MiracleType`, `NeedType`, `HandMode`, `Tags`, `AnimatorHashes`), `IProfileStorage` + `PlayerPrefsProfileStorage`, `ITimeProvider`, пустые `Services/Progression/` и `Services/Creature/`. Цель: пустая сцена стартует без ошибок, FSM в `MainMenu`.
 2. **Камера + рука**: `CameraRig` + `IsometricPanZoomBehaviour`, `GodHandController` + `HandInteractionService`, `ThrowableObjectController`. Тестовая сцена `_TestHand` с plane и кубами. Цель: pan/zoom, таскать и швырять кубы пальцем/мышью.
+2.5. **Mobile smoke build** (вставлен 2026-08-18, вне исходного §19): первая сборка на устройство до накопления слоёв. `BlackWhiteLike/Setup/Apply Mobile Player Settings` (landscape-лок, bundle id, IL2CPP+ARM64, уровень качества Mobile) и `BlackWhiteLike/Build/Android Smoke Build` (сборка `_TestHand` в `Builds/Android/`). Цель: игра запускается на телефоне, рука хватается **пальцем** (захват идёт тонким лучом — `GrabRadius` удалён на шаге 2, палец толще курсора и закрывает цель собой). Полировка мобилки остаётся шагом 9.
 3. **Жители + события**: `VillagerController` + `VillagerStateService` + `VillagerFactory`, `NeedSiteController`, `LevelEventService`, первый черновой `LevelConfig`. Цель: деревня живёт, по таймлайну загорается дом, жителей можно бросать (Panic/Tossed видны).
 4. **Чудеса + Faith**: `MiracleService` + `CastMiracleCommand`, `FaithService`, `MiracleTargetingController`, `MiraclePanelView`, чудеса Rain + Fireball. Цель: тушить пожар дождём / поджигать дом файрболом, Faith тратится и регенится.
 5. **Worship + win**: `WorshipService`, `AlignmentService`, `LevelFlowService`, `LevelHudView` (бары, попапы), `LevelCompleteView`, soft-fail. Цель: уровень 1 проходится и добром, и злом.

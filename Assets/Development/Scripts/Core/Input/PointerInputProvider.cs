@@ -1,20 +1,31 @@
+using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.EnhancedTouch;
+using UnityEngine.InputSystem.Utilities;
 using VContainer.Unity;
+using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 namespace BlackWhiteLike.Core.Input
 {
     /// <summary>
     /// Единственная реализация <see cref="IInputProvider"/> (game-design §3).
     /// Pure C# + <see cref="ITickable"/> — тикается VContainer каждый кадр, MonoBehaviour не нужен.
-    /// Использует legacy <c>UnityEngine.Input</c> (Active Input Handling = Both, см. CLAUDE.md);
-    /// mouse и touch дают одинаковые логические события через свойства <see cref="IInputProvider"/>.
+    /// Использует новый Input System (Active Input Handling = Both, но провайдер не трогает legacy
+    /// <c>UnityEngine.Input</c> вовсе — переход сделан ради Android, где "Both" не поддерживается,
+    /// см. CLAUDE.md). Mouse и touch дают одинаковые логические события через свойства
+    /// <see cref="IInputProvider"/>: позиция/press читаются с общего <see cref="Pointer.current"/>
+    /// (единый путь для мыши и тача — в этом и смысл pointer-абстракции), платформенные различия
+    /// (pinch vs колесо, RMB-pan vs single-touch-pan) инкапсулированы внутри отдельных веток.
     /// </summary>
     /// <remarks>
-    /// Внутри файла Unity-класс ввода всегда квалифицируется как <c>UnityEngine.Input</c> —
-    /// namespace текущего файла (<c>BlackWhiteLike.Core.Input</c>) заканчивается на "Input"
-    /// и бare-имя может схлопнуться с ним (см. CLAUDE.md, чек-лист планирования, п.3).
+    /// Внутри файла Unity-класс ввода всегда квалифицируется как <c>UnityEngine.Input</c> (там, где
+    /// ещё встречается) — namespace текущего файла (<c>BlackWhiteLike.Core.Input</c>) заканчивается
+    /// на "Input", и bare-имя может схлопнуться с ним (см. CLAUDE.md, чек-лист планирования, п.3).
+    /// По той же причине тип pinch-тача — <c>UnityEngine.InputSystem.EnhancedTouch.Touch</c> —
+    /// заведён через алиас <c>using Touch = ...</c>, чтобы не путать с полем на будущее.
     /// </remarks>
-    public sealed class PointerInputProvider : IInputProvider, ITickable
+    public sealed class PointerInputProvider : IInputProvider, ITickable, IStartable, IDisposable
     {
         // Коэффициенты чувствительности — временные магические числа шага 1.
         // Вынести в SO на шаге 2, когда появится IsometricCameraConfig (game-design §11).
@@ -51,14 +62,38 @@ namespace BlackWhiteLike.Core.Input
         public float Zoom => _zoom;
         public bool PausePressed => _pausePressed;
 
+        /// <summary>
+        /// EnhancedTouch — глобальный статический подписчик на низкоуровневые touch-события
+        /// (нужен для <see cref="Touch.activeTouches"/>, которым провайдер определяет pinch).
+        /// Включается ровно один раз за время жизни синглтона; парная отписка — <see cref="Dispose"/>.
+        /// Звать <see cref="EnhancedTouchSupport.Enable"/> "на всякий случай" из конструктора нельзя —
+        /// без парного Disable подписка переживает LifetimeScope и копится при повторных запусках
+        /// Play Mode в редакторе.
+        /// </summary>
+        public void Start()
+        {
+            EnhancedTouchSupport.Enable();
+        }
+
+        public void Dispose()
+        {
+            EnhancedTouchSupport.Disable();
+        }
+
         public void Tick()
         {
-            // One-shot флаги обновляются каждый кадр заново (не аккумулируются).
-            _pausePressed = UnityEngine.Input.GetKeyDown(KeyCode.Escape);
+            // One-shot флаги обновляются каждый кадр заново (не аккумулируются). Keyboard.current
+            // может быть null (Android без подключённой клавиатуры) — проверяем каждое обращение.
+            var keyboard = Keyboard.current;
+            _pausePressed = keyboard != null && keyboard.escapeKey.wasPressedThisFrame;
             _pan = Vector2.zero;
             _zoom = 0f;
 
-            var isTouchActive = UnityEngine.Input.touchCount > 0;
+            // ReadOnlyArray — struct-обёртка над переиспользуемым внутренним буфером EnhancedTouch,
+            // сам вызов не аллоцирует; берём один раз за Tick и передаём дальше, не перечитываем.
+            var activeTouches = Touch.activeTouches;
+            var touchCount = activeTouches.Count;
+            var isTouchActive = touchCount > 0;
             if (isTouchActive != _wasTouchActive)
             {
                 // Переключение mouse↔touch: _pointerPosition относится к другому источнику ввода,
@@ -68,64 +103,77 @@ namespace BlackWhiteLike.Core.Input
 
             _wasTouchActive = isTouchActive;
 
+            UpdatePointer(activeTouches, touchCount);
+
             if (isTouchActive)
             {
-                UpdateFromTouch();
+                UpdateTouchGestures(activeTouches, touchCount);
             }
             else
             {
-                UpdateFromMouse();
+                UpdateMouseGestures();
             }
         }
 
-        private void UpdateFromMouse()
+        /// <summary>
+        /// Общая позиция/press-семантика для мыши и тача — <see cref="Pointer.current"/> сам
+        /// переключается на последнее активное устройство (Mouse/Touchscreen), это и есть единый
+        /// путь чтения pointer'а. Может быть null (нет ни мыши, ни тача, ни пера).
+        /// </summary>
+        private void UpdatePointer(ReadOnlyArray<Touch> activeTouches, int touchCount)
         {
-            var currentPosition = (Vector2)UnityEngine.Input.mousePosition;
-            _pointerDelta = _hasPreviousPosition ? currentPosition - _pointerPosition : Vector2.zero;
-            _pointerPosition = currentPosition;
-            _hasPreviousPosition = true;
-
-            var held = UnityEngine.Input.GetMouseButton(0);
-            _pointerDown = UnityEngine.Input.GetMouseButtonDown(0);
-            _pointerUp = UnityEngine.Input.GetMouseButtonUp(0);
-            _isPointerHeld = held;
-            // unscaledDeltaTime — удержание должно считаться и на паузе (timeScale = 0), иначе Pause
-            // "замерзает" сам себя: PausePressed продолжает работать, а зависимая от holdTime логика — нет.
-            _pointerHoldTime = held ? _pointerHoldTime + Time.unscaledDeltaTime : 0f;
-
-            // Pan — RMB-drag на PC (game-design §3). Различение "пустое место" — на InputRouter (шаг 2).
-            if (UnityEngine.Input.GetMouseButton(1))
+            var pointer = Pointer.current;
+            if (pointer == null)
             {
-                _pan = _pointerDelta;
+                _pointerDown = false;
+                _pointerUp = false;
+                _isPointerHeld = false;
+                _pointerHoldTime = 0f;
+                _pointerDelta = Vector2.zero;
+                return;
             }
 
-            _zoom = UnityEngine.Input.mouseScrollDelta.y * ScrollZoomSensitivity;
-            _pinchActive = false;
-        }
+            var currentPosition = pointer.position.ReadValue();
 
-        private void UpdateFromTouch()
-        {
-            var primaryTouch = UnityEngine.Input.GetTouch(0);
-            var currentPosition = primaryTouch.position;
+            // Доп. защита от скачка дельты: первый сэмпл нового касания (Phase.Began) не должен
+            // считать дельту от предыдущей точки, даже если _hasPreviousPosition ещё не успел
+            // сброситься на переходе touchCount 0→1 (см. isTouchActive-гейт в Tick) — например,
+            // если предыдущий тач кончился и новый начался в один и тот же render-кадр.
+            var isFirstTouchSample = touchCount > 0 && activeTouches[0].began;
+            var isFirstSample = !_hasPreviousPosition || isFirstTouchSample;
 
-            // Began или отсутствие валидной предыдущей точки — дельта не считается.
-            var isFirstSample = !_hasPreviousPosition || primaryTouch.phase == TouchPhase.Began;
             _pointerDelta = isFirstSample ? Vector2.zero : currentPosition - _pointerPosition;
             _pointerPosition = currentPosition;
             _hasPreviousPosition = true;
 
-            var held = primaryTouch.phase == TouchPhase.Began
-                       || primaryTouch.phase == TouchPhase.Moved
-                       || primaryTouch.phase == TouchPhase.Stationary;
-            var released = primaryTouch.phase == TouchPhase.Ended || primaryTouch.phase == TouchPhase.Canceled;
-
-            _pointerDown = primaryTouch.phase == TouchPhase.Began;
-            _pointerUp = released;
+            var held = pointer.press.isPressed;
+            _pointerDown = pointer.press.wasPressedThisFrame;
+            _pointerUp = pointer.press.wasReleasedThisFrame;
             _isPointerHeld = held;
-            // unscaledDeltaTime — см. комментарий в UpdateFromMouse.
+            // unscaledDeltaTime — удержание должно считаться и на паузе (timeScale = 0), иначе Pause
+            // "замерзает" сам себя: PausePressed продолжает работать, а зависимая от holdTime логика — нет.
             _pointerHoldTime = held ? _pointerHoldTime + Time.unscaledDeltaTime : 0f;
+        }
 
-            if (UnityEngine.Input.touchCount == 2)
+        private void UpdateMouseGestures()
+        {
+            _pinchActive = false;
+
+            var mouse = Mouse.current;
+            if (mouse == null) return;
+
+            // Pan — RMB-drag на PC (game-design §3). Различение "пустое место" — на InputRouter (шаг 2).
+            if (mouse.rightButton.isPressed)
+            {
+                _pan = _pointerDelta;
+            }
+
+            _zoom = mouse.scroll.ReadValue().y * ScrollZoomSensitivity;
+        }
+
+        private void UpdateTouchGestures(ReadOnlyArray<Touch> activeTouches, int touchCount)
+        {
+            if (touchCount >= 2)
             {
                 // Pinch: два пальца — зум. Это не тап и не удержание одним пальцем, поэтому
                 // pointer-семантика гасится полностью — иначе щипок читается как удержание.
@@ -134,8 +182,7 @@ namespace BlackWhiteLike.Core.Input
                 _isPointerHeld = false;
                 _pointerHoldTime = 0f;
 
-                var secondTouch = UnityEngine.Input.GetTouch(1);
-                var currentDistance = Vector2.Distance(primaryTouch.position, secondTouch.position);
+                var currentDistance = Vector2.Distance(activeTouches[0].screenPosition, activeTouches[1].screenPosition);
 
                 if (_pinchActive)
                 {
@@ -150,12 +197,6 @@ namespace BlackWhiteLike.Core.Input
                 // Одиночный тач — кандидат в Pan (game-design §3); решает InputRouter (шаг 2).
                 _pan = _pointerDelta;
                 _pinchActive = false;
-            }
-
-            if (released || UnityEngine.Input.touchCount == 0)
-            {
-                // Палец поднят — следующее касание не должно считать дельту от этой точки.
-                _hasPreviousPosition = false;
             }
         }
     }

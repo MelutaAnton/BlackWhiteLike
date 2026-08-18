@@ -8,7 +8,7 @@
 - Cinemachine 3.1 — все игровые камеры (vcam-адаптеры реализуют `ICameraBehaviour`, переключение через Priority; при сомнении в API смотреть исходник в `Library/PackageCache/com.unity.cinemachine@*/Runtime/`, не гадать по CM2)
 - VContainer (DI-контейнер)
 - C# с SOLID и Clean Architecture
-- Active Input Handling: **Both** (Project Settings → Player)
+- Active Input Handling: **Input System Package (New)** (Project Settings → Player). `Both` не годится: Unity прямо предупреждает, что на Android он не поддерживается и бьёт по вводу и производительности. Весь ввод проекта идёт через `PointerInputProvider` на `UnityEngine.InputSystem` — legacy-класс `Input` под этой настройкой бросает исключения, использовать его нельзя
 - DOTween для оптимизации анимаций и сложных математических вычислений, и приведению GUI к стандартам гибрид-кэжа
 - Git **без LFS** (осознанное решение): бинарники лежат обычными блобами. Ограничения, которые нельзя нарушать — файл >100 МБ GitHub не примет, мягкий лимит репозитория 5 ГБ (на 2026-08-16 занято ~1.7 ГБ). Не коммитить билды, `.unitypackage`, исходники текстур >100 МБ
 
@@ -158,7 +158,7 @@ Assets/
 ## Известные нюансы Unity 6
 
 - `OnEnable()` вызывается **до** VContainer `Construct()` — всегда проверять null перед подпиской и/или использовать флаг `_initialized`.
-- `Input.GetAxisRaw()` / `GetKeyDown()` не работают если Input Handling = "New" — у нас стоит **Both**.
+- **Legacy `UnityEngine.Input` запрещён**: при Input Handling = New любое обращение (`Input.GetKeyDown`, `Input.mousePosition`, `Input.touchCount`) бросает `InvalidOperationException` в рантайме, компилируясь при этом без единой ошибки. Демо-сцены из `ThirdParty` по этой причине неработоспособны — это ожидаемо, мы их не поставляем
 - **`GetKeyDown`, потребляемый из `FixedUpdate`, сгорает** (за render-кадр может пройти 0 физтиков) — буферизовать флагом в `Update`, сбрасывать после потребления; детали — `.claude/rules/physics-input.md` (auto-loaded для Controllers/Core/Input).
 - Инициализацию переносить в `Construct()`, а не в `Start()`.
 - `NavMeshAgent` требует baked NavMesh — автоматизировать через Editor-скрипт.

@@ -44,3 +44,6 @@ remote_config_data
 Build_BackUpThisFolder_ButDontShipItWithYourGame/
 Assets/Development/Art/Fonts/TMP/Bungee-Regular SDF.asset
 Assets/Development/Art/Fonts/TMP/RussoOne-Regular SDF.asset
+
+# Временная папка Gradle/CMake от Android-сборок (Unity кладёт в корень проекта)
+/.utmp/
