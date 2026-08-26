@@ -155,7 +155,7 @@ public sealed class LevelConfig : ScriptableObject {
     public NeedEventEntry[] eventTimeline;       // скриптованные события
     public float         optionalTimerSeconds;   // 0 = выключен (по умолчанию)
     public int           coinsReward;
-    public Transform     creatureSpawnPoint;     // ПРЕДОХРАНИТЕЛЬ §15: nullable, в срезе не используется
+    public Vector3       creatureSpawnPosition;  // ПРЕДОХРАНИТЕЛЬ §15, см. ниже про hasCreatureSpawn
 }
 ```
 **Каталог:** `LevelCatalogConfig` (SO) — массив `LevelConfig` + `Sprite preview` + unlock-порядок (линейный).
@@ -428,7 +428,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 - **Cloud save** — `CloudProfileStorage : IProfileStorage`, замена регистрации в `GameLifetimeScope`.
 
 ### 14.3 Heavy code — отдельная игровая система
-- **Существо-питомец** — `Services/Creature/` стек: `CreatureBrainService`, `CreatureController` (навигация, взаимодействие с NeedSite), обучение поощрение/наказание, рост/статы, alignment-облики, UI. Подписывается на уже существующие `AlignmentChangedEvent`, `NeedTriggeredEvent`; спавнится в `LevelConfig.creatureSpawnPoint`. Оценка: 3–6 недель + самый дорогой арт проекта.
+- **Существо-питомец** — `Services/Creature/` стек: `CreatureBrainService`, `CreatureController` (навигация, взаимодействие с NeedSite), обучение поощрение/наказание, рост/статы, alignment-облики, UI. Подписывается на уже существующие `AlignmentChangedEvent`, `NeedTriggeredEvent`; спавнится в `LevelConfig.creatureSpawnPosition`. Оценка: 3–6 недель + самый дорогой арт проекта.
 - **Idle-мета полного цикла** — energy/lives, ускорители, пуш-уведомления, оффлайн-симуляция деревни.
 - **Daily missions / Player XP / Battle Pass** — `Services/Progression/`, подписки на `RewardEarnedEvent` / `LevelCompletedEvent` (см. §15).
 - **PvP «божественные дуэли»** — сетевой стек, вне обсуждения среза.
@@ -448,7 +448,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 - **Save/load через `IProfileStorage`** → `PlayerPrefsProfileStorage`; cloud save = новая реализация + смена регистрации.
 - **`ITimeProvider` абстракция** — idle-расчёты тестируемы; позже — защита от подкрутки часов через серверное время.
 - **`AlignmentChangedEvent` публикуется всегда** — существо подпишется на него без правок `AlignmentService`.
-- **`LevelConfig.creatureSpawnPoint`** — nullable-поле есть с первого дня, в срезе игнорируется.
+- **`LevelConfig.creatureSpawnPosition` + `hasCreatureSpawn`** — точка спавна существа есть с первого дня, в срезе игнорируется. Именно `Vector3`, а не `Transform`: ScriptableObject не имеет права держать сценную ссылку (она не переживает загрузку сцены). Флаг `hasCreatureSpawn` обязателен — без него `Vector3.zero` неотличим от осознанно выставленного центра карты, и существо на своём шаге молча заспавнится в мировом нуле, что будет выглядеть багом существа, а не незаполненным конфигом. Читать только через `TryGetCreatureSpawn(out Vector3)`.
 - **`CreatureTeaserView`** в Temple — карточка "Coming soon" (только контент), заодно замер интереса на playtest'е.
 
 ---

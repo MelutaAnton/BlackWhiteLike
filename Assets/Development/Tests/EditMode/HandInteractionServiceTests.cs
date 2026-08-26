@@ -42,8 +42,7 @@ namespace BlackWhiteLike.Tests
             float throwForceScale = 1f,
             float maxThrowForce = 20f,
             float throwVelocitySampleWindow = 0.2f,
-            float softPlacementSpeedThreshold = 0.05f,
-            float landingImpactThreshold = 3f)
+            float softPlacementSpeedThreshold = 0.05f)
         {
             var config = ScriptableObject.CreateInstance<HandConfig>();
             var so = new SerializedObject(config);
@@ -55,7 +54,8 @@ namespace BlackWhiteLike.Tests
             so.FindProperty("_maxThrowForce").floatValue = maxThrowForce;
             so.FindProperty("_throwVelocitySampleWindow").floatValue = throwVelocitySampleWindow;
             so.FindProperty("_softPlacementSpeedThreshold").floatValue = softPlacementSpeedThreshold;
-            so.FindProperty("_landingImpactThreshold").floatValue = landingImpactThreshold;
+            // _landingImpactThreshold удалён из HandConfig на шаге 3 (перенесён в ThrowableConfig —
+            // см. ThrowableConfig.cs, HandConfig.cs), поэтому здесь больше не прошивается.
             so.ApplyModifiedPropertiesWithoutUndo();
             return config;
         }

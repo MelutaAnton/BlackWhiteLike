@@ -1,6 +1,6 @@
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Core.Interaction;
-using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Models;
 using UnityEngine;
 using VContainer;
@@ -9,13 +9,19 @@ namespace BlackWhiteLike.Controllers.Village
 {
     /// <summary>
     /// Бросаемый физический объект (game-design §7, §12): бочки, камни, декор тестовой сцены.
-    /// Единственная на шаге 2 реализация <see cref="IGrabbable"/> — берётся и швыряется <c>GodHandController</c>.
+    /// Одна из двух реализаций <see cref="IGrabbable"/> (вторая — <c>VillagerController</c>, шаг 3) —
+    /// берётся и швыряется <c>GodHandController</c>.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public sealed class ThrowableObjectController : MonoBehaviour, IGrabbable
     {
+        [Tooltip(
+            "Порог приземления и прочие параметры броскового объекта — прямая ссылка на префабе " +
+            "(не через DI): разные виды декора (бочка/камень) держат разные .asset без правки " +
+            "Composition Root (шаг 3, вынесено из HandConfig — см. ThrowableConfig).")]
+        [SerializeField] private ThrowableConfig _throwableConfig;
+
         private IEventBus _eventBus;
-        private HandConfig _handConfig;
         private bool _initialized;
 
         private Rigidbody _body;
@@ -40,13 +46,17 @@ namespace BlackWhiteLike.Controllers.Village
         public bool CanBeGrabbed => _initialized;
 
         [Inject]
-        public void Construct(IEventBus eventBus, HandConfig handConfig)
+        public void Construct(IEventBus eventBus)
         {
             _eventBus = eventBus;
-            _handConfig = handConfig;
 
             _body = GetComponent<Rigidbody>();
             _id = GrabbableId.FromInstanceId(gameObject.GetInstanceID());
+
+            if (_throwableConfig == null)
+            {
+                Debug.LogWarning("[ThrowableObjectController] _throwableConfig не прошит — ObjectLandedEvent при приземлении публиковаться не будет.");
+            }
 
             _initialized = true;
         }
@@ -84,9 +94,9 @@ namespace BlackWhiteLike.Controllers.Village
             if (!_isGrabbed)
             {
                 var impactSpeed = collision.relativeVelocity.magnitude;
-                if (impactSpeed >= _handConfig.LandingImpactThreshold)
+                if (_throwableConfig != null && impactSpeed >= _throwableConfig.LandingImpactThreshold)
                 {
-                    // TODO шаг 3: HitStructure — проверка тега структуры (дом и т.п.), когда структуры появятся в сцене.
+                    // TODO шаг 4+: HitStructure — проверка тега структуры (дом и т.п.), когда структуры появятся в сцене.
                     _eventBus.Publish(new ObjectLandedEvent(_id, impactSpeed, false));
                 }
 

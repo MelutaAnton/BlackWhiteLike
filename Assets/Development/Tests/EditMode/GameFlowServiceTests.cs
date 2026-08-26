@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -14,22 +12,8 @@ namespace BlackWhiteLike.Tests
     /// <summary>Тесты <see cref="GameFlowService"/> (game-design §19, шаг 1).</summary>
     public class GameFlowServiceTests
     {
-        /// <summary>Фейковый IEventBus, собирающий опубликованные события в список (для проверки в тестах).</summary>
-        private sealed class FakeEventBus : IEventBus
-        {
-            public readonly List<object> PublishedEvents = new List<object>();
-
-            public void Publish<T>(in T evt) where T : struct => PublishedEvents.Add(evt);
-
-            public IDisposable Subscribe<T>(Action<T> handler) where T : struct => new NoOpDisposable();
-
-            private sealed class NoOpDisposable : IDisposable
-            {
-                public void Dispose()
-                {
-                }
-            }
-        }
+        // FakeEventBus — общий на все тесты проекта, см. FakeEventBus.cs (вынесен на шаге 3,
+        // чтобы VillagerStateServiceTests/LevelEventServiceTests не плодили второй дубль).
 
         private static GameFlowService CreateFlow(out FakeEventBus eventBus)
         {

@@ -13,11 +13,10 @@ MonoBehaviour:
   m_Name: HandConfig
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Data.Configs.Hand.HandConfig
   _maxGrabMass: 20
-  _grabRadius: 0.5
   _carryHeight: 1.5
   _followStiffness: 12
   _followMaxSpeed: 15
   _throwForceScale: 1.2
   _maxThrowForce: 20
   _throwVelocitySampleWindow: 0.15
-  _landingImpactThreshold: 3
+  _softPlacementSpeedThreshold: 0.05

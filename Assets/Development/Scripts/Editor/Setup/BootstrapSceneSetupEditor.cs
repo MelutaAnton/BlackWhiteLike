@@ -27,26 +27,31 @@ namespace BlackWhiteLike.Editor.Setup
         [MenuItem("BlackWhiteLike/Setup/Build Bootstrap Scene")]
         public static void BuildBootstrapScene()
         {
-            // Не теряем несохранённые правки текущей открытой сцены молча
+            // Не теряем несохранённые правки текущей открытой сцены молча — но БЕЗ модального диалога
+            // (ревью шага 3: EditorUtility.DisplayDialog блокирует главный поток Unity и вешает
+            // MCP-мост намертво, пока диалог не закроет человек мышкой; автоматизируемый пункт меню
+            // обязан либо решить сам, либо отказаться с понятным Debug.LogError).
             var activeScene = EditorSceneManager.GetActiveScene();
             if (activeScene.isDirty)
             {
-                bool proceed = EditorUtility.DisplayDialog(
-                    "Build Bootstrap Scene",
-                    $"Текущая сцена \"{activeScene.name}\" содержит несохранённые изменения. Сохранить перед продолжением?",
-                    "Сохранить и продолжить",
-                    "Отмена");
-                if (!proceed)
+                if (string.IsNullOrEmpty(activeScene.path))
                 {
-                    Debug.Log("[Editor] Сборка Bootstrap-сцены отменена пользователем (несохранённые изменения текущей сцены).");
+                    Debug.LogError("[Editor] Build Bootstrap Scene прервана: текущая сцена \"" + activeScene.name +
+                                    "\" ни разу не сохранялась на диск (нет пути) и содержит изменения — " +
+                                    "автосохранение недоступно (вызвало бы диалог \"Save As\"). Сохраните " +
+                                    "сцену вручную (File > Save) и запустите пункт меню снова.");
                     return;
                 }
 
                 if (!EditorSceneManager.SaveScene(activeScene))
                 {
-                    Debug.LogWarning("[Editor] Сохранение текущей сцены отменено — сборка Bootstrap-сцены прервана.");
+                    Debug.LogError("[Editor] Build Bootstrap Scene прервана: не удалось автоматически сохранить " +
+                                    "текущую сцену \"" + activeScene.name + "\".");
                     return;
                 }
+
+                Debug.Log("[Editor] Текущая сцена \"" + activeScene.name + "\" содержала несохранённые изменения — " +
+                          "сохранена автоматически перед сборкой Bootstrap-сцены.");
             }
 
             EnsureFolder(ScenesFolder);

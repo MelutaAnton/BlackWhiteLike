@@ -136,7 +136,10 @@ namespace BlackWhiteLike.Controllers.Hand
             // В3: _grabbedObject — интерфейсная ссылка, перегруженный Unity "==" на неё не действует,
             // поэтому уничтоженный объект (например, житель ушёл в пул на шаге 3) не поймать через
             // "_grabbedObject == null". Body — настоящий Unity-объект, его "==" уже безопасен.
-            if (_grabbedObject.Body == null)
+            // В1 (ревью шага 3): пуловый Despawn делает SetActive(false), а не Destroy — Rigidbody
+            // остаётся живым (Body == null не сработает), но объект уже неактивен в иерархии. Без
+            // этой проверки рука вечно пишет velocity в неактивное тело и никогда не отпускает.
+            if (_grabbedObject.Body == null || !_grabbedObject.Body.gameObject.activeInHierarchy)
             {
                 ReleaseGrabbedObject(Vector3.zero, publishEvent: false);
                 return;

@@ -5,6 +5,7 @@ using BlackWhiteLike.Controllers.Hand;
 using BlackWhiteLike.Controllers.Village;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
@@ -30,6 +31,7 @@ namespace BlackWhiteLike.Editor.Setup
 
         private const string HandConfigPath = "Assets/Development/Data/Configs/Hand/HandConfig.asset";
         private const string CameraConfigPath = "Assets/Development/Data/Configs/Camera/IsometricCameraConfig.asset";
+        private const string ThrowableConfigPath = "Assets/Development/Data/Configs/Throwable/ThrowableConfig.asset";
         private const string GodHandPrefabPath = "Assets/Development/Prefabs/Hand/GodHand.prefab";
         private const string SystemsPrefabPath = "Assets/Development/Prefabs/Systems/SystemsRoot.prefab";
 
@@ -44,25 +46,30 @@ namespace BlackWhiteLike.Editor.Setup
         [MenuItem("BlackWhiteLike/Setup/Build Test Hand Scene")]
         public static void BuildTestHandScene()
         {
+            // БЕЗ модального диалога (ревью шага 3: EditorUtility.DisplayDialog вешает MCP-мост
+            // намертво, пока диалог не закроет человек мышкой) — либо сохраняем сами, либо
+            // отказываемся с понятным Debug.LogError.
             var activeScene = EditorSceneManager.GetActiveScene();
             if (activeScene.isDirty)
             {
-                bool proceed = EditorUtility.DisplayDialog(
-                    "Build Test Hand Scene",
-                    $"Текущая сцена \"{activeScene.name}\" содержит несохранённые изменения. Сохранить перед продолжением?",
-                    "Сохранить и продолжить",
-                    "Отмена");
-                if (!proceed)
+                if (string.IsNullOrEmpty(activeScene.path))
                 {
-                    Debug.Log("[Editor] Сборка _TestHand отменена пользователем (несохранённые изменения текущей сцены).");
+                    Debug.LogError("[Editor] Build Test Hand Scene прервана: текущая сцена \"" + activeScene.name +
+                                    "\" ни разу не сохранялась на диск (нет пути) и содержит изменения — " +
+                                    "автосохранение недоступно (вызвало бы диалог \"Save As\"). Сохраните " +
+                                    "сцену вручную (File > Save) и запустите пункт меню снова.");
                     return;
                 }
 
                 if (!EditorSceneManager.SaveScene(activeScene))
                 {
-                    Debug.LogWarning("[Editor] Сохранение текущей сцены отменено — сборка _TestHand прервана.");
+                    Debug.LogError("[Editor] Build Test Hand Scene прервана: не удалось автоматически сохранить " +
+                                    "текущую сцену \"" + activeScene.name + "\".");
                     return;
                 }
+
+                Debug.Log("[Editor] Текущая сцена \"" + activeScene.name + "\" содержала несохранённые изменения — " +
+                          "сохранена автоматически перед сборкой _TestHand.");
             }
 
             EnsureFolder(ScenesFolder);
@@ -80,12 +87,17 @@ namespace BlackWhiteLike.Editor.Setup
             // OpenScene выгружает неиспользуемые ассеты, ссылки, загруженные до этого, станут fake-null).
             var handConfig = AssetDatabase.LoadAssetAtPath<HandConfig>(HandConfigPath);
             var cameraConfig = AssetDatabase.LoadAssetAtPath<IsometricCameraConfig>(CameraConfigPath);
+            var throwableConfig = AssetDatabase.LoadAssetAtPath<ThrowableConfig>(ThrowableConfigPath);
             if (handConfig == null)
                 Debug.LogWarning("[Editor] HandConfig не найден по пути " + HandConfigPath + " — сначала прогоните " +
                                   "\"BlackWhiteLike/Configs/Create Empty SO Set\".");
             if (cameraConfig == null)
                 Debug.LogWarning("[Editor] IsometricCameraConfig не найден по пути " + CameraConfigPath + " — сначала прогоните " +
                                   "\"BlackWhiteLike/Configs/Create Empty SO Set\".");
+            if (throwableConfig == null)
+                Debug.LogWarning("[Editor] ThrowableConfig не найден по пути " + ThrowableConfigPath + " — сначала прогоните " +
+                                  "\"BlackWhiteLike/Configs/Create Empty SO Set\". Бочки останутся без порога приземления " +
+                                  "(ThrowableObjectController._throwableConfig).");
 
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Test Hand Scene");
@@ -95,7 +107,7 @@ namespace BlackWhiteLike.Editor.Setup
             int grabbableLayer = EditorLayerUtility.EnsureLayer(EditorLayerUtility.GrabbableLayerName);
 
             EnsureGround(groundLayer);
-            var barrels = EnsureBarrels(handConfig, grabbableLayer);
+            var barrels = EnsureBarrels(handConfig, throwableConfig, grabbableLayer);
             var godHand = EnsureGodHand();
             var cameraRig = EnsureCameraRig(cameraConfig, groundLayer, grabbableLayer);
             EnsureMainCameraAndListener();
@@ -128,7 +140,12 @@ namespace BlackWhiteLike.Editor.Setup
         private const float GroundThickness = 1f;
         private const float GroundHalfSize = 10f; // 20x20 по X/Z, как раньше.
 
-        private static void EnsureGround(int groundLayer)
+        /// <summary>
+        /// Публичный метод — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3), чтобы не
+        /// дублировать миграционную логику земли (см. .claude/rules/editor-files.md, "Смена «чем
+        /// объект должен быть» требует миграции").
+        /// </summary>
+        public static void EnsureGround(int groundLayer)
         {
             var go = FindInSceneIncludingInactive("Ground");
             if (go == null)
@@ -205,7 +222,7 @@ namespace BlackWhiteLike.Editor.Setup
         // Кубы-«бочки»
         // ------------------------------------------------------------------------------------
 
-        private static List<GameObject> EnsureBarrels(HandConfig handConfig, int grabbableLayer)
+        private static List<GameObject> EnsureBarrels(HandConfig handConfig, ThrowableConfig throwableConfig, int grabbableLayer)
         {
             // MaxGrabMass не найден (конфиг ещё не создан) — используем дефолт, чтобы сцена всё равно собралась.
             float maxGrabMass = handConfig != null ? handConfig.MaxGrabMass : 5f;
@@ -256,8 +273,14 @@ namespace BlackWhiteLike.Editor.Setup
                     rb.mass = isHeavy ? heavyMass : lightMass;
                 }
 
-                if (go.GetComponent<ThrowableObjectController>() == null)
-                    Undo.AddComponent<ThrowableObjectController>(go);
+                var throwableController = go.GetComponent<ThrowableObjectController>();
+                if (throwableController == null)
+                    throwableController = Undo.AddComponent<ThrowableObjectController>(go);
+
+                // Шаг 3 (ревью code-writer'а): порог приземления переехал из HandConfig в прямой
+                // SerializeField на самом префабе/объекте (ThrowableObjectController._throwableConfig,
+                // не через DI) — без прошивки ObjectLandedEvent молча не публикуется ни разу.
+                WireThrowableConfig(throwableController, throwableConfig, name);
             }
 
             Debug.Log($"[Editor] Бросаемые кубы: {createdCount} новых, {BarrelCount - createdCount} уже существовали " +
@@ -268,11 +291,37 @@ namespace BlackWhiteLike.Editor.Setup
             return barrels;
         }
 
+        /// <summary>
+        /// Прошивает ссылку на ThrowableConfig на конкретном бросаемом объекте (поле-имя
+        /// <c>_throwableConfig</c>, сверено с фактическим ThrowableObjectController, шаг 3). Прошивается
+        /// безусловно на каждом прогоне (не только на новосозданных) — это обязательная зависимость,
+        /// а не пользовательская подстройка; не присваивает null, если конфиг ещё не создан.
+        /// </summary>
+        private static void WireThrowableConfig(ThrowableObjectController controller, ThrowableConfig throwableConfig, string ownerName)
+        {
+            if (throwableConfig == null) return; // предупреждение уже выдано один раз выше, на уровне сцены.
+
+            var so = new SerializedObject(controller);
+            var prop = so.FindProperty("_throwableConfig");
+            if (prop == null)
+            {
+                Debug.LogWarning("[Editor] Поле \"_throwableConfig\" не найдено на ThrowableObjectController (" +
+                                  ownerName + ") — проверьте, что имя SerializeField не изменилось в классе.");
+                return;
+            }
+
+            if (prop.objectReferenceValue == throwableConfig) return; // уже прошито — не логируем шум каждый прогон.
+
+            prop.objectReferenceValue = throwableConfig;
+            so.ApplyModifiedProperties();
+        }
+
         // ------------------------------------------------------------------------------------
         // Рука бога
         // ------------------------------------------------------------------------------------
 
-        private static GodHandController EnsureGodHand()
+        /// <summary>Публичный — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3).</summary>
+        public static GodHandController EnsureGodHand()
         {
             var existing = Object.FindAnyObjectByType<GodHandController>(FindObjectsInactive.Include);
             if (existing != null) return existing;
@@ -295,7 +344,8 @@ namespace BlackWhiteLike.Editor.Setup
         // Камера
         // ------------------------------------------------------------------------------------
 
-        private static CameraRig EnsureCameraRig(IsometricCameraConfig cameraConfig, int groundLayer, int grabbableLayer)
+        /// <summary>Публичный — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3).</summary>
+        public static CameraRig EnsureCameraRig(IsometricCameraConfig cameraConfig, int groundLayer, int grabbableLayer)
         {
             var rig = Object.FindAnyObjectByType<CameraRig>(FindObjectsInactive.Include);
             GameObject rigGo;
@@ -369,7 +419,8 @@ namespace BlackWhiteLike.Editor.Setup
             panZoomSo.ApplyModifiedProperties();
         }
 
-        private static void EnsureMainCameraAndListener()
+        /// <summary>Публичный — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3).</summary>
+        public static void EnsureMainCameraAndListener()
         {
             var cameras = Object.FindObjectsByType<UnityEngine.Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             GameObject camGo;
@@ -439,7 +490,8 @@ namespace BlackWhiteLike.Editor.Setup
         // [Systems]
         // ------------------------------------------------------------------------------------
 
-        private static GameLifetimeScope EnsureSystemsInstance()
+        /// <summary>Публичный — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3).</summary>
+        public static GameLifetimeScope EnsureSystemsInstance()
         {
             var existing = Object.FindAnyObjectByType<GameLifetimeScope>(FindObjectsInactive.Include);
             if (existing != null) return existing;
@@ -505,13 +557,14 @@ namespace BlackWhiteLike.Editor.Setup
         // ------------------------------------------------------------------------------------
 
         /// <summary>
-        /// Добавляет кубы-«бочки» в <c>LifetimeScope.autoInjectGameObjects</c> (protected List&lt;GameObject&gt;,
+        /// Добавляет объекты в <c>LifetimeScope.autoInjectGameObjects</c> (protected List&lt;GameObject&gt;,
         /// см. Library/PackageCache/jp.hadashikick.vcontainer@.../Runtime/Unity/LifetimeScope.cs) —
-        /// без этого VContainer никогда не вызовет им Construct(), ThrowableObjectController._initialized
-        /// останется false и захват молча не сработает. Идемпотентно: не добавляет уже присутствующие
-        /// записи и не удаляет чужие (например, будущих жителей, добавленных другим скриптом).
+        /// без этого VContainer никогда не вызовет им Construct(), инициализация останется false и
+        /// поведение молча не сработает. Идемпотентно: не добавляет уже присутствующие записи и не
+        /// удаляет чужие. Публичный и с общим именем параметра — переиспользуется
+        /// <c>TestVillageSceneSetupEditor</c> (шаг 3) для жителей/NeedSite-объектов, не только для бочек.
         /// </summary>
-        private static void EnsureAutoInjectGameObjects(GameLifetimeScope scope, List<GameObject> barrels)
+        public static void EnsureAutoInjectGameObjects(GameLifetimeScope scope, List<GameObject> objectsToInject)
         {
             if (scope == null)
             {
@@ -536,19 +589,19 @@ namespace BlackWhiteLike.Editor.Setup
             }
 
             int added = 0;
-            foreach (var barrel in barrels)
+            foreach (var obj in objectsToInject)
             {
-                if (barrel == null || existing.Contains(barrel)) continue;
+                if (obj == null || existing.Contains(obj)) continue;
 
                 int index = listProp.arraySize;
                 listProp.InsertArrayElementAtIndex(index);
-                listProp.GetArrayElementAtIndex(index).objectReferenceValue = barrel;
-                existing.Add(barrel);
+                listProp.GetArrayElementAtIndex(index).objectReferenceValue = obj;
+                existing.Add(obj);
                 added++;
             }
 
             so.ApplyModifiedProperties();
-            Debug.Log($"[Editor] autoInjectGameObjects: добавлено {added} новых кубов, всего в списке {listProp.arraySize}.");
+            Debug.Log($"[Editor] autoInjectGameObjects: добавлено {added} новых объектов, всего в списке {listProp.arraySize}.");
         }
 
         // ------------------------------------------------------------------------------------
@@ -559,8 +612,9 @@ namespace BlackWhiteLike.Editor.Setup
         /// Ищет объект по имени во всей активной сцене, включая выключенные (SetActive(false))
         /// объекты и их выключенных родителей — в отличие от GameObject.Find. Обход дерева
         /// Transform не зависит от активности узлов, поэтому дубли-выключенные объекты находятся.
+        /// Публичный — переиспользуется <c>TestVillageSceneSetupEditor</c> (шаг 3).
         /// </summary>
-        private static GameObject FindInSceneIncludingInactive(string name)
+        public static GameObject FindInSceneIncludingInactive(string name)
         {
             var scene = SceneManager.GetActiveScene();
             foreach (var root in scene.GetRootGameObjects())

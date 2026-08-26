@@ -24,7 +24,10 @@ namespace BlackWhiteLike.Editor.Common
             int existing = LayerMask.NameToLayer(layerName);
             if (existing >= 0) return existing;
 
-            var tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var tagManagerAsset = LoadTagManagerAsset();
+            if (tagManagerAsset == null) return -1;
+
+            var tagManager = new SerializedObject(tagManagerAsset);
             var layersProp = tagManager.FindProperty("layers");
 
             for (int i = 8; i < layersProp.arraySize; i++)
@@ -41,6 +44,53 @@ namespace BlackWhiteLike.Editor.Common
 
             Debug.LogWarning($"[Editor] Не удалось создать слой \"{layerName}\" — все user-слоты (8..31) заняты.");
             return -1;
+        }
+
+        /// <summary>
+        /// Создаёт тег с данным именем в TagManager, если его ещё нет (.claude/rules/editor-files.md —
+        /// "Программное создание тегов"). Идемпотентен: повторный вызов с уже существующим тегом — no-op.
+        /// Используется, например, шагом 3 (жители — тег <c>Tags.Villager</c> из Models/Tags.cs) —
+        /// объявление константы в Models/Tags.cs не регистрирует тег в проекте само по себе.
+        /// </summary>
+        public static void EnsureTag(string tagName)
+        {
+            var tagManagerAsset = LoadTagManagerAsset();
+            if (tagManagerAsset == null) return;
+
+            var tagManager = new SerializedObject(tagManagerAsset);
+            var tagsProp = tagManager.FindProperty("tags");
+
+            for (int i = 0; i < tagsProp.arraySize; i++)
+            {
+                if (tagsProp.GetArrayElementAtIndex(i).stringValue == tagName)
+                    return;
+            }
+
+            // Undo.RecordObject, а не RegisterCreatedObjectUndo — модифицируем существующий
+            // ProjectSettings-ассет, а не создаём новый объект (.claude/rules/editor-files.md:
+            // Undo.RegisterCreatedObjectUndo применим только к созданию, для правки — RecordObject).
+            Undo.RecordObject(tagManagerAsset, "Create Tag " + tagName);
+
+            tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+            tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = tagName;
+            tagManager.ApplyModifiedProperties();
+            Debug.Log($"[Editor] Создан тег \"{tagName}\".");
+        }
+
+        /// <summary>
+        /// Грузит ProjectSettings/TagManager.asset с защитой от IndexOutOfRange — LoadAllAssetsAtPath
+        /// на битом/недоступном пути возвращает пустой массив, а не null (Н7, ревью шага 3).
+        /// </summary>
+        private static UnityEngine.Object LoadTagManagerAsset()
+        {
+            var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
+            if (assets == null || assets.Length == 0)
+            {
+                Debug.LogError("[Editor] ProjectSettings/TagManager.asset не удалось загрузить — слой/тег не созданы.");
+                return null;
+            }
+
+            return assets[0];
         }
 
         /// <summary>

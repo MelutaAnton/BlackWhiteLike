@@ -45,13 +45,6 @@ namespace BlackWhiteLike.Data.Configs.Hand
             "(вместо сравнения с точным нулём в контроллере, см. IHandInteractionService.IsSoftPlacement).")]
         [SerializeField] private float _softPlacementSpeedThreshold = 0.05f;
 
-        [Header("Приземление")]
-        // TODO шаг 3: когда появятся структуры (дома и т.п.), возможно, имеет смысл вынести в отдельный
-        // конфиг физических объектов (ThrowableConfig) — сейчас намеренно оставлено в HandConfig,
-        // отдельный конфиг под один параметр создавать преждевременно (ревью шага 2).
-        [Tooltip("Порог относительной скорости столкновения, начиная с которого публикуется ObjectLandedEvent.")]
-        [SerializeField] private float _landingImpactThreshold = 3f;
-
         public float MaxGrabMass => _maxGrabMass;
         public float CarryHeight => _carryHeight;
         public float FollowStiffness => _followStiffness;
@@ -60,6 +53,5 @@ namespace BlackWhiteLike.Data.Configs.Hand
         public float MaxThrowForce => _maxThrowForce;
         public float ThrowVelocitySampleWindow => _throwVelocitySampleWindow;
         public float SoftPlacementSpeedThreshold => _softPlacementSpeedThreshold;
-        public float LandingImpactThreshold => _landingImpactThreshold;
     }
 }

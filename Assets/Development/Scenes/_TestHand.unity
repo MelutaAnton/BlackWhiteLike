@@ -227,6 +227,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &97965573
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -558,6 +559,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &353561300
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -711,6 +713,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &434689431
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -864,6 +867,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &597475902
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1017,6 +1021,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &650596543
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1170,6 +1175,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &694314377
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1323,6 +1329,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &841468466
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1781,6 +1788,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5c62cffc02688b46b7300e73eff6e7e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.ThrowableObjectController
+  _throwableConfig: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
 --- !u!54 &2062258431
 Rigidbody:
   m_ObjectHideFlags: 0
