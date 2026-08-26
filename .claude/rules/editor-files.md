@@ -166,4 +166,4 @@ namespace BlackWhiteLike.Editor.Setup
 его штампует editor-скрипт при сборке (образец: `StampStandUpDuration` в
 `VillagerPrefabSetupEditor` — `StandUpDuration = длина клипа ÷ StandUpPlaybackSpeed`).
 Штамп идемпотентен: совпадающее значение не перезаписывается и не логируется, изменение
-логируется «старое → новое». Детали по аниматору — глобальное правило `~/.claude/rules/unity-animator.md`.
+логируется «старое → новое». Полные правила сборки AnimatorController (слои, блендтри, AvatarMask, грабли) — глобальный skill `unity-animator`, триггерится на «аниматор»/«blend tree»/«AvatarMask»; при сборке контроллера editor-скриптом загрузить его обязательно.
