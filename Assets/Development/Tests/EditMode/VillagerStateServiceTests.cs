@@ -357,5 +357,30 @@ namespace BlackWhiteLike.Tests
 
             Assert.AreEqual(VillagerState.Idle, service.GetState(id));
         }
+
+        // --- TryGetPanicStimulus (рефакторинг по итогам архитектурного аудита после шага 3:
+        // таблица "какая нужда пугает жителей рядом" переехала из NeedSiteController в сервис) ---
+
+        [Test]
+        public void TryGetPanicStimulus_Fire_ReturnsFireNearby()
+        {
+            var service = CreateService(out _);
+
+            var result = service.TryGetPanicStimulus(NeedType.Fire, out var stimulus);
+
+            Assert.IsTrue(result);
+            Assert.AreEqual(VillagerStimulus.FireNearby, stimulus);
+        }
+
+        [TestCase(NeedType.Disease)]
+        [TestCase(NeedType.Hunger)]
+        public void TryGetPanicStimulus_DiseaseAndHunger_ReturnsFalse(NeedType type)
+        {
+            var service = CreateService(out _);
+
+            var result = service.TryGetPanicStimulus(type, out _);
+
+            Assert.IsFalse(result);
+        }
     }
 }

@@ -320,7 +320,7 @@ namespace BlackWhiteLike.Controllers.Village
                 // после отпускания), и это читалось Animator'ом как "бежит по воздуху". В Tossed/
                 // Stunned скорость Rigidbody на MoveSpeed не влияет вовсе (ForcesZeroMoveSpeed).
                 var moveSpeedValue = 0f;
-                if (!ForcesZeroMoveSpeed(_currentState))
+                if (!VillagerPoseRules.ForcesZeroMoveSpeed(_currentState))
                 {
                     var horizontalVelocity = _body.linearVelocity;
                     horizontalVelocity.y = 0f;
@@ -407,7 +407,7 @@ namespace BlackWhiteLike.Controllers.Village
             // покрывало Tossed тоже, — с разделением поз это стало неверно: IsStunned (Dizzy) и
             // IsLying теперь разные предикаты, и только IsLying-состояние (Stunned) подразумевает
             // "надо встать".
-            var firesStandUp = ShouldPlayStandUp(from, to);
+            var firesStandUp = VillagerPoseRules.ShouldPlayStandUp(from, to);
             if (firesStandUp)
             {
                 _animator.SetTrigger(AnimatorHashes.StandUp);
@@ -415,24 +415,6 @@ namespace BlackWhiteLike.Controllers.Village
 
             return firesStandUp;
         }
-
-        /// <summary>
-        /// Правило "когда играть StandUp" (шестой playtest шага 3) — вынесено чистой статической
-        /// функцией по тому же принципу, что ComputeUprightRotation/ClampToVillageBounds: тестируется
-        /// без Unity-сцены, а не только косвенно через приватный ApplyStateVisuals.
-        /// </summary>
-        public static bool ShouldPlayStandUp(VillagerState from, VillagerState to) =>
-            to == VillagerState.Idle && from == VillagerState.Stunned;
-
-        /// <summary>
-        /// Состояния, в которых Rigidbody-скорость НЕ должна влиять на MoveSpeed аниматора (шестой
-        /// playtest шага 3: раньше это было завязано на прежний общий IsStunnedVisual, но теперь
-        /// IsStunned/IsLying — разные предикаты позы; "когда скорость не в счёт" — третий, отдельный
-        /// предикат, который остался общим для обоих состояний, поэтому вынесен отдельно, чтобы
-        /// комментарии в FixedUpdate не врали про природу условия).
-        /// </summary>
-        private static bool ForcesZeroMoveSpeed(VillagerState state) =>
-            state == VillagerState.Tossed || state == VillagerState.Stunned;
 
         private void ApplyPhysicsForState(VillagerState state)
         {
@@ -522,12 +504,12 @@ namespace BlackWhiteLike.Controllers.Village
 
             // Житель ровно в точке источника — направление не определено, берём текущий forward
             // вместо normalized нулевого вектора (который дал бы NaN).
-            var direction = away.sqrMagnitude > 0.0001f ? away.normalized : transform.forward;
+            var direction = away.sqrMagnitude > VillagerMovementRules.DirectionEpsilonSqr ? away.normalized : transform.forward;
 
             // Критический дефект третьего playtest'а: "прочь от источника" у обрыва гарантированно
             // уводит за физический край земли — направление клампится по границе уровня, у самой
             // границы разворачиваясь вдоль неё, а не толкая дальше в пустоту.
-            direction = ClampFleeDirectionToBounds(transform.position, direction, _layout.VillagerBoundsHalfExtent);
+            direction = VillagerMovementRules.ClampFleeDirectionToBounds(transform.position, direction, _layout.VillagerBoundsHalfExtent);
 
             var horizontalVelocity = direction * moveSpeed;
             _body.linearVelocity = new Vector3(horizontalVelocity.x, _body.linearVelocity.y, horizontalVelocity.z);
@@ -542,7 +524,7 @@ namespace BlackWhiteLike.Controllers.Village
         /// ≥ MinSpeedForRotation) — цель "смотреть по направлению движения, up = мировой верх"
         /// (Quaternion.LookRotation сама ставит корпус вертикально по ходу поворота — отдельного
         /// выпрямления не требуется, довернуть и выпрямиться — один и тот же RotateTowards); иначе —
-        /// "тот же yaw, но корпус вертикален" (ComputeUprightRotation). Второй случай покрывает
+        /// "тот же yaw, но корпус вертикален" (VillagerMovementRules.ComputeUprightRotation). Второй случай покрывает
         /// Worship/Stunned/паузы блуждания и, что важно по требованию задачи, окно _isStandingUp:
         /// лок блокирует ходьбу и доворот к цели (велосити принудительно нулевая — StopHorizontalMovement),
         /// но не выпрямление — иначе мягкое приземление на бок с мгновенным StandUp осталось бы кривым
@@ -560,7 +542,7 @@ namespace BlackWhiteLike.Controllers.Village
             }
             else if (Vector3.Angle(current * Vector3.up, Vector3.up) > UprightAngleEpsilonDegrees)
             {
-                target = ComputeUprightRotation(current);
+                target = VillagerMovementRules.ComputeUprightRotation(current);
             }
             else
             {
@@ -569,36 +551,6 @@ namespace BlackWhiteLike.Controllers.Village
 
             var maxDegreesDelta = _config.TurnSpeedDegreesPerSecond * Time.fixedDeltaTime;
             _body.MoveRotation(Quaternion.RotateTowards(current, target, maxDegreesDelta));
-        }
-
-        /// <summary>
-        /// Целевой поворот "корпус вертикален, yaw сохранён" (пятый playtest шага 3): в Tossed
-        /// constraints снимаются ради кувырка, при приземлении FreezeRotation замораживает тело в
-        /// ЛЮБОЙ ориентации касания — без этого хелпера житель мог навсегда остаться лежать на боку
-        /// или вниз головой (скриншот владельца), потому что никто его не выпрямлял. Чистая
-        /// арифметика над Quaternion/Vector3 — тестируется без Unity-сцены.
-        /// </summary>
-        public static Quaternion ComputeUprightRotation(Quaternion current)
-        {
-            var forward = current * Vector3.forward;
-            var flatForward = new Vector3(forward.x, 0f, forward.z);
-
-            if (flatForward.sqrMagnitude < 0.0001f)
-            {
-                // forward почти вертикален (житель лежит мордой вниз/вверх) — горизонтальной
-                // проекции forward нет, но up гарантированно горизонтален (ортогонален forward).
-                var up = current * Vector3.up;
-                flatForward = new Vector3(up.x, 0f, up.z);
-            }
-
-            if (flatForward.sqrMagnitude < 0.0001f)
-            {
-                // Теоретически недостижимо (up и forward не могут оба оказаться вертикальными
-                // одновременно — они ортогональны) — детерминированный фолбэк без NaN на всякий случай.
-                flatForward = Vector3.forward;
-            }
-
-            return Quaternion.LookRotation(flatForward.normalized, Vector3.up);
         }
 
         private void PickWanderTarget(float radius, Vector3 center)
@@ -610,95 +562,13 @@ namespace BlackWhiteLike.Controllers.Village
             // цель за физический край земли (спавны у края + радиус давали точку на метр дальше
             // границы карты) — житель шёл к ней и падал в бездну. Кламп — по границе уровня
             // (VillageLayoutConfig.VillagerBoundsHalfExtent), а не по радиусу от спавна.
-            _wanderTarget = ClampToVillageBounds(rawTarget, _layout.VillagerBoundsHalfExtent);
+            _wanderTarget = VillagerMovementRules.ClampToVillageBounds(rawTarget, _layout.VillagerBoundsHalfExtent);
             _hasWanderTarget = true;
 
             // П3: новая попытка — таймауты считаем заново, старая "застрявшая" попытка не должна
             // немедленно засчитаться против свежевыбранной цели.
             _wanderTargetElapsed = 0f;
             _stuckTimer = 0f;
-        }
-
-        /// <summary>
-        /// Клампит точку в квадрат [-halfExtent; halfExtent] по X/Z (Y не трогаем — высота не часть
-        /// границы уровня). Чистая арифметика без обращений к состоянию компонента — тестируется без
-        /// Unity-сцены (см. VillagerControllerBoundsTests).
-        /// </summary>
-        public static Vector3 ClampToVillageBounds(Vector3 point, float halfExtent)
-        {
-            return new Vector3(
-                Mathf.Clamp(point.x, -halfExtent, halfExtent),
-                point.y,
-                Mathf.Clamp(point.z, -halfExtent, halfExtent));
-        }
-
-        /// <summary>
-        /// Направление бегства у границы уровня: если позиция уже на грани/за гранью и направление
-        /// продолжает толкать ЕЩЁ дальше по какой-то оси — эта составляющая гасится (не полная
-        /// остановка — скольжение вдоль края по оставшейся оси, как и просил владелец после
-        /// критического дефекта третьего playtest'а: "убегание от источника опасности у обрыва
-        /// гарантированно уводит за край, разворот вдоль неё, а не остановка"). Если это выродило
-        /// направление в ноль (уткнулся ровно в угол по обеим осям) — тангенциальный разворот на 90°
-        /// от исходного направления, лишь бы не стоять на месте у обрыва. Чистая арифметика — без
-        /// обращений к Transform/Rigidbody, тестируется без Unity-сцены.
-        /// </summary>
-        public static Vector3 ClampFleeDirectionToBounds(Vector3 position, Vector3 direction, float halfExtent)
-        {
-            var clamped = ZeroOutwardComponents(position, direction, halfExtent);
-
-            if (clamped.sqrMagnitude <= 0.0001f)
-            {
-                // Уткнулся в угол по обеим осям сразу — поворот исходного направления на 90° вокруг
-                // Y вместо остановки. Следующий тик пересчитает направление по новой позиции заново.
-                var tangent = new Vector3(-direction.z, 0f, direction.x);
-
-                // Вычитка диффа целиком (п.5): повёрнутый вектор мог толкать наружу по ВТОРОЙ оси —
-                // прогоняем его через те же проверки ещё раз, иначе функция нарушала бы собственный
-                // контракт "не возвращаю направление наружу".
-                clamped = ZeroOutwardComponents(position, tangent, halfExtent);
-
-                if (clamped.sqrMagnitude <= 0.0001f)
-                {
-                    // Теоретически недостижимо (тангенциальный вектор всегда содержит составляющую
-                    // хотя бы по одной "свободной" оси угла) — фолбэк ниже страхует от NaN.
-                    clamped = tangent;
-                }
-            }
-
-            return clamped.sqrMagnitude > 0.0001f ? clamped.normalized : Vector3.forward;
-        }
-
-        private static Vector3 ZeroOutwardComponents(Vector3 position, Vector3 direction, float halfExtent)
-        {
-            var result = direction;
-
-            if (position.x >= halfExtent && result.x > 0f) result.x = 0f;
-            if (position.x <= -halfExtent && result.x < 0f) result.x = 0f;
-            if (position.z >= halfExtent && result.z > 0f) result.z = 0f;
-            if (position.z <= -halfExtent && result.z < 0f) result.z = 0f;
-
-            return result;
-        }
-
-        /// <summary>
-        /// Жёсткий кламп скорости у границы уровня (правка после живого прогона: кламп ЦЕЛИ
-        /// блуждания/бегства недостаточен — физика/столкновения с другими жителями толкают дальше
-        /// клампнутой цели, и это подтверждено логом: FallKillHeight срабатывал регулярно). Гасится
-        /// ТОЛЬКО составляющая скорости, направленная НАРУЖУ за границу по конкретной оси —
-        /// тангенциальная составляющая (вдоль границы) сохраняется, житель продолжает скользить
-        /// вдоль края, а не "примерзает" к нему. Y (гравитация/вертикальная скорость) не трогается
-        /// никогда. Чистая арифметика — без обращений к Transform/Rigidbody, тестируется без Unity-сцены.
-        /// </summary>
-        public static Vector3 ClampVelocityToBounds(Vector3 position, Vector3 velocity, float halfExtent)
-        {
-            var clamped = velocity;
-
-            if (position.x >= halfExtent && clamped.x > 0f) clamped.x = 0f;
-            if (position.x <= -halfExtent && clamped.x < 0f) clamped.x = 0f;
-            if (position.z >= halfExtent && clamped.z > 0f) clamped.z = 0f;
-            if (position.z <= -halfExtent && clamped.z < 0f) clamped.z = 0f;
-
-            return clamped;
         }
 
         private void StopHorizontalMovement()
@@ -710,18 +580,19 @@ namespace BlackWhiteLike.Controllers.Village
         /// Жёсткий кламп позиции/скорости у границы уровня (правка после живого прогона: кламп
         /// ТОЛЬКО цели блуждания/бегства не спас — столкновение с другим жителем у края или овершут
         /// по инерции всё равно выталкивали за границу, лог подтвердил регулярные срабатывания
-        /// FallKillHeight). Позиция возвращается на границу тем же <see cref="ClampToVillageBounds"/>,
-        /// что и цель блуждания (единственный источник границы, не дублируем формулу); скорость —
-        /// <see cref="ClampVelocityToBounds"/> гасит только выталкивающую наружу составляющую,
-        /// тангенциальная (вдоль границы) остаётся нетронутой — житель скользит вдоль края, а не
-        /// "примерзает" к нему.
+        /// FallKillHeight). Позиция возвращается на границу тем же
+        /// <see cref="VillagerMovementRules.ClampToVillageBounds"/>, что и цель блуждания (единственный
+        /// источник границы, не дублируем формулу); скорость —
+        /// <see cref="VillagerMovementRules.ClampVelocityToBounds"/> гасит только выталкивающую наружу
+        /// составляющую, тангенциальная (вдоль границы) остаётся нетронутой — житель скользит вдоль
+        /// края, а не "примерзает" к нему.
         /// </summary>
         private void ClampBodyToBounds()
         {
             var halfExtent = _layout.VillagerBoundsHalfExtent;
             var position = transform.position;
 
-            var clampedPosition = ClampToVillageBounds(position, halfExtent);
+            var clampedPosition = VillagerMovementRules.ClampToVillageBounds(position, halfExtent);
             if (clampedPosition != position)
             {
                 // Правка по итогам вычитки диффа целиком: transform.position= на живом Rigidbody
@@ -732,7 +603,7 @@ namespace BlackWhiteLike.Controllers.Village
                 _body.position = clampedPosition;
             }
 
-            _body.linearVelocity = ClampVelocityToBounds(position, _body.linearVelocity, halfExtent);
+            _body.linearVelocity = VillagerMovementRules.ClampVelocityToBounds(position, _body.linearVelocity, halfExtent);
         }
 
         /// <summary>
@@ -744,7 +615,7 @@ namespace BlackWhiteLike.Controllers.Village
         /// </summary>
         private void RecoverFromFall()
         {
-            var recoveryPosition = FindNearestSpawnPosition(transform.position);
+            var recoveryPosition = VillagerMovementRules.FindNearestSpawnPosition(transform.position, _layout.VillagerSpawnPositions);
 
             Debug.LogWarning(
                 $"[VillagerController] Житель {_villagerId} провалился ниже FallKillHeight " +
@@ -780,11 +651,12 @@ namespace BlackWhiteLike.Controllers.Village
             ApplyPhysicsForState(VillagerState.Idle);
 
             // П1-регрессия (вычитка диффа целиком): раньше возвращаемое значение ApplyStateVisuals
-            // здесь игнорировалось. Шестой playtest шага 3 сузил правило до ShouldPlayStandUp
-            // (только из Stunned) — если жителя телепортировало из Tossed, previousState==Tossed,
-            // StandUp корректно НЕ стреляет (телепортирован стоя, вставать не с чего); если из
-            // Stunned — стреляет, и лок движения ниже обязан взвестись, иначе житель поедет по земле
-            // поверх клипа вставания. Обрабатываем возврат так же, как в OnVillagerStateChanged.
+            // здесь игнорировалось. Шестой playtest шага 3 сузил правило до
+            // VillagerPoseRules.ShouldPlayStandUp (только из Stunned) — если жителя телепортировало
+            // из Tossed, previousState==Tossed, StandUp корректно НЕ стреляет (телепортирован стоя,
+            // вставать не с чего); если из Stunned — стреляет, и лок движения ниже обязан взвестись,
+            // иначе житель поедет по земле поверх клипа вставания. Обрабатываем возврат так же, как в
+            // OnVillagerStateChanged.
             if (ApplyStateVisuals(previousState, VillagerState.Idle))
             {
                 _isStandingUp = true;
@@ -798,35 +670,6 @@ namespace BlackWhiteLike.Controllers.Village
             // вручную, а не через подписку на VillagerStateChangedEvent.
             _stateService.Unregister(_villagerId);
             _stateService.Register(_villagerId);
-        }
-
-        /// <summary>Ближайшая (по горизонтали) точка спавна к упавшему жителю; при пустом списке — координатный центр деревни как последний фолбэк.</summary>
-        private Vector3 FindNearestSpawnPosition(Vector3 fromPosition)
-        {
-            var positions = _layout.VillagerSpawnPositions;
-            if (positions == null || positions.Length == 0) return Vector3.zero;
-
-            var nearest = positions[0];
-            var nearestDistanceSqr = HorizontalDistanceSqr(fromPosition, nearest);
-
-            for (var i = 1; i < positions.Length; i++)
-            {
-                var distanceSqr = HorizontalDistanceSqr(fromPosition, positions[i]);
-                if (distanceSqr < nearestDistanceSqr)
-                {
-                    nearestDistanceSqr = distanceSqr;
-                    nearest = positions[i];
-                }
-            }
-
-            return nearest;
-        }
-
-        private static float HorizontalDistanceSqr(Vector3 a, Vector3 b)
-        {
-            var dx = a.x - b.x;
-            var dz = a.z - b.z;
-            return dx * dx + dz * dz;
         }
     }
 }

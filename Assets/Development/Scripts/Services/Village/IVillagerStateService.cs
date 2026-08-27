@@ -29,5 +29,12 @@ namespace BlackWhiteLike.Services.Village
 
         /// <summary>Тикает таймеры состояний с истечением (Panic/Worship/Stunned) — по истечении возврат в Idle.</summary>
         void Tick(float deltaTime);
+
+        /// <summary>
+        /// Таблица game-design §5 "какая нужда пугает жителей рядом" — единственный источник этого
+        /// правила, наряду с таблицей переходов внутри сервиса. Только Fire описан как источник
+        /// паники; Disease/Hunger по §5 источником паники не являются → false.
+        /// </summary>
+        bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus);
     }
 }

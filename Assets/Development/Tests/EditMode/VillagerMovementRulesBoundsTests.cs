@@ -1,16 +1,16 @@
 using NUnit.Framework;
 using UnityEngine;
-using BlackWhiteLike.Controllers.Village;
+using BlackWhiteLike.Services.Village;
 
 namespace BlackWhiteLike.Tests
 {
     /// <summary>
-    /// Тесты чистых статических хелперов <see cref="VillagerController"/>, отвечающих за границы
+    /// Тесты чистых статических хелперов <see cref="VillagerMovementRules"/>, отвечающих за границы
     /// уровня (критический дефект третьего playtest'а шага 3 — жители доходили до края земли и
     /// падали в бездну). Оба хелпера — арифметика над Vector3 без обращений к Transform/Rigidbody,
     /// поэтому тестируются без Unity-сцены.
     /// </summary>
-    public class VillagerControllerBoundsTests
+    public class VillagerMovementRulesBoundsTests
     {
         private const float HalfExtent = 9f;
 
@@ -21,7 +21,7 @@ namespace BlackWhiteLike.Tests
         {
             var point = new Vector3(3f, 0f, -4f);
 
-            var result = VillagerController.ClampToVillageBounds(point, HalfExtent);
+            var result = VillagerMovementRules.ClampToVillageBounds(point, HalfExtent);
 
             Assert.AreEqual(point, result);
         }
@@ -32,7 +32,7 @@ namespace BlackWhiteLike.Tests
             // Ровно сценарий дефекта: точка спавна + WanderRadius уводит на метр дальше края (x=11 > half=9).
             var point = new Vector3(11f, 0f, 2f);
 
-            var result = VillagerController.ClampToVillageBounds(point, HalfExtent);
+            var result = VillagerMovementRules.ClampToVillageBounds(point, HalfExtent);
 
             Assert.AreEqual(HalfExtent, result.x);
             Assert.AreEqual(2f, result.z); // ось, где не было выхода за границу, не трогается
@@ -43,7 +43,7 @@ namespace BlackWhiteLike.Tests
         {
             var point = new Vector3(1f, 0f, -20f);
 
-            var result = VillagerController.ClampToVillageBounds(point, HalfExtent);
+            var result = VillagerMovementRules.ClampToVillageBounds(point, HalfExtent);
 
             Assert.AreEqual(1f, result.x);
             Assert.AreEqual(-HalfExtent, result.z);
@@ -54,7 +54,7 @@ namespace BlackWhiteLike.Tests
         {
             var point = new Vector3(0f, 5f, 0f);
 
-            var result = VillagerController.ClampToVillageBounds(point, HalfExtent);
+            var result = VillagerMovementRules.ClampToVillageBounds(point, HalfExtent);
 
             Assert.AreEqual(5f, result.y);
         }
@@ -67,7 +67,7 @@ namespace BlackWhiteLike.Tests
             var position = Vector3.zero;
             var direction = new Vector3(1f, 0f, 0f);
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.AreEqual(direction, result);
         }
@@ -80,7 +80,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, 0f);
             var direction = new Vector3(1f, 0f, 1f).normalized;
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.AreEqual(0f, result.x, 0.0001f);
             Assert.Greater(result.z, 0f);
@@ -92,7 +92,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(0f, 0f, -HalfExtent);
             var direction = new Vector3(1f, 0f, -1f).normalized;
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.AreEqual(0f, result.z, 0.0001f);
             Assert.Greater(result.x, 0f);
@@ -105,7 +105,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, 0f);
             var direction = new Vector3(-1f, 0f, 0f);
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.AreEqual(direction, result);
         }
@@ -118,7 +118,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, HalfExtent);
             var direction = new Vector3(1f, 0f, 1f).normalized;
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.Greater(result.magnitude, 0.9f);
         }
@@ -132,7 +132,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, HalfExtent);
             var direction = new Vector3(1f, 0f, 1f).normalized; // строго по диагонали наружу
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.LessOrEqual(result.x, 0f);
             Assert.LessOrEqual(result.z, 0f);
@@ -144,7 +144,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, 3f);
             var direction = new Vector3(2f, 0f, 0f); // намеренно не единичной длины
 
-            var result = VillagerController.ClampFleeDirectionToBounds(position, direction, HalfExtent);
+            var result = VillagerMovementRules.ClampFleeDirectionToBounds(position, direction, HalfExtent);
 
             Assert.AreEqual(1f, result.magnitude, 0.0001f);
         }
@@ -160,7 +160,7 @@ namespace BlackWhiteLike.Tests
             var position = Vector3.zero;
             var velocity = new Vector3(5f, -9.8f, 3f);
 
-            var result = VillagerController.ClampVelocityToBounds(position, velocity, HalfExtent);
+            var result = VillagerMovementRules.ClampVelocityToBounds(position, velocity, HalfExtent);
 
             Assert.AreEqual(velocity, result);
         }
@@ -171,7 +171,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, 0f);
             var velocity = new Vector3(4f, -9.8f, 2f); // X наружу, Z вдоль границы, Y — гравитация
 
-            var result = VillagerController.ClampVelocityToBounds(position, velocity, HalfExtent);
+            var result = VillagerMovementRules.ClampVelocityToBounds(position, velocity, HalfExtent);
 
             Assert.AreEqual(0f, result.x);
             Assert.AreEqual(2f, result.z); // тангенциальная составляющая не тронута
@@ -185,7 +185,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, 0f);
             var velocity = new Vector3(-3f, 0f, 1f);
 
-            var result = VillagerController.ClampVelocityToBounds(position, velocity, HalfExtent);
+            var result = VillagerMovementRules.ClampVelocityToBounds(position, velocity, HalfExtent);
 
             Assert.AreEqual(velocity, result);
         }
@@ -197,7 +197,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent, 0f, -HalfExtent);
             var velocity = new Vector3(2f, 0f, -2f); // X наружу (+), Z наружу (-)
 
-            var result = VillagerController.ClampVelocityToBounds(position, velocity, HalfExtent);
+            var result = VillagerMovementRules.ClampVelocityToBounds(position, velocity, HalfExtent);
 
             Assert.AreEqual(0f, result.x);
             Assert.AreEqual(0f, result.z);
@@ -210,7 +210,7 @@ namespace BlackWhiteLike.Tests
             var position = new Vector3(HalfExtent + 2f, 0f, 0f);
             var velocity = new Vector3(1f, 0f, 0f);
 
-            var result = VillagerController.ClampVelocityToBounds(position, velocity, HalfExtent);
+            var result = VillagerMovementRules.ClampVelocityToBounds(position, velocity, HalfExtent);
 
             Assert.AreEqual(0f, result.x);
         }

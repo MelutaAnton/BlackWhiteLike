@@ -108,6 +108,23 @@ namespace BlackWhiteLike.Services.Village
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time (см. remarks класса).</summary>
         public void Tick() => Tick(UnityEngine.Time.deltaTime);
 
+        public bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus)
+        {
+            switch (type)
+            {
+                case NeedType.Fire:
+                    stimulus = VillagerStimulus.FireNearby;
+                    return true;
+
+                default:
+                    // Disease/Hunger (game-design §5) не описаны как источник паники — только
+                    // визуал/анимация по месту, без стимула жителям. Не изобретаем стимул,
+                    // которого нет в контракте VillagerStimulus.
+                    stimulus = default;
+                    return false;
+            }
+        }
+
         private void ApplyTransition(VillagerId id, Record record, VillagerState target)
         {
             var from = record.State;

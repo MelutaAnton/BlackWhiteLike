@@ -124,8 +124,8 @@ namespace BlackWhiteLike.Controllers.Village
             // но до жителей это не доходило вообще (единственные ReportStimulus были Grabbed/Landed/
             // HardLanded из самого VillagerController). Только Fire явно описан в game-design §5 как
             // "жители паникуют" — для Disease/Hunger подходящего VillagerStimulus пока нет, не
-            // выдумываем несуществующий (см. TryGetPanicStimulus).
-            if (TryGetPanicStimulus(evt.Type, out var stimulus))
+            // выдумываем несуществующий (см. IVillagerStateService.TryGetPanicStimulus).
+            if (_stateService.TryGetPanicStimulus(evt.Type, out var stimulus))
             {
                 ReportPanicStimulusToNearbyVillagers(stimulus);
             }
@@ -208,23 +208,6 @@ namespace BlackWhiteLike.Controllers.Village
 
                 villager.SetPanicSource(transform.position);
                 _stateService.ReportStimulus(villager.VillagerId, stimulus);
-            }
-        }
-
-        private static bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus)
-        {
-            switch (type)
-            {
-                case NeedType.Fire:
-                    stimulus = VillagerStimulus.FireNearby;
-                    return true;
-
-                default:
-                    // Disease/Hunger (game-design §5) не описаны как источник паники — только
-                    // визуал/анимация по месту, без стимула жителям. Не изобретаем стимул,
-                    // которого нет в контракте VillagerStimulus.
-                    stimulus = default;
-                    return false;
             }
         }
 
