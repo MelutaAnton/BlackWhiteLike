@@ -88,6 +88,24 @@ MCP-мост не отвечает **ни на что**, включая read-onl
 Осторожно с неявными модалками: сохранение никогда не сохранявшейся сцены само откроет
 системный «Save As», то есть проблему не решит — такой случай надо отсекать ошибкой.
 
+### ThirdParty-префаб — только через unpack completely, никогда инстансом
+Голый `PrefabUtility.InstantiatePrefab(<ассет из Assets/ThirdParty>)` в сцене или внутри
+собираемого нашего префаба запрещён (CLAUDE.md, «Из ThirdParty в сцену... только визуал»).
+Реальный случай (шаг 4): четыре нарушения сразу — дома/поле тестовой сцены были инстансами
+префабов Synty с нашим `NeedSiteController` сверху, префабы жителя и руки держали вложенные
+инстансы `SM_Chr_Peasant_Male_01` и `MaleHand.FBX`, VFX-обёртка — вложенный CFXR-префаб с
+`clearBehavior = Destroy` (уничтожал бы пуловый объект). Ни одно не поймано самопроверкой,
+потому что «сцена собралась и работает».
+
+Правило: единственная точка входа — `EditorPrefabUtility.InstantiateUnpacked(prefab, parent)`
+(`Editor/Common/`): `InstantiatePrefab` → `UnpackPrefabInstance(..., PrefabUnpackMode.Completely)`.
+Структуры сцены (дома, поля) — сначала свой префаб в `Development/Prefabs/Village/` (отдельный
+пункт `Prefabs/Setup ...`), сцена инстанцирует уже его. Скрипт, который создаёт объекты, в конце
+вызывает `EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root)` и логирует результат; пункт
+`BlackWhiteLike/Validation/Find ThirdParty Prefab Instances` — общая проверка открытой сцены и
+всех `Development/Prefabs`. Проверка численно — по `PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot`
+/ `GetCorrespondingObjectFromSource`, путь начинается с `Assets/ThirdParty/` = нарушение.
+
 ### Программное создание тегов
 Теги в Unity должны существовать в TagManager до их назначения объекту.
 Если префаб создаётся Editor-скриптом с кастомным тегом — добавить тег программно:

@@ -127,9 +127,17 @@ Assets/
 - В `Assets/Development/Scripts/...` — скрипты и префабы разные слои.
 - В корне `Assets/Development/` или `Assets/` — нет категории.
 
-### Связь Prefab → ThirdParty через ссылки, не копированием
+### Из ThirdParty в сцену и в наши префабы попадает только визуал, никогда — префаб-инстанс
 
-Префаб машины в `Development/Prefabs/Vehicles/Car_Sedan.prefab` **ссылается** на меш `Assets/ThirdParty/1Poly_DestructibleCars/Meshes/Sedan.fbx` через `MeshFilter.mesh`. Сам меш не дублируется. Это позволяет обновить пак без потери настройки префаба (Unity сохраняет ссылку по GUID).
+В сценах и внутри наших префабов **не бывает** инстансов префабов/моделей из `Assets/ThirdParty/` — ни корневых, ни вложенных (nested). Любой объект, на котором есть наш `MonoBehaviour` или компонент Unity API (коллайдер, Rigidbody, Animator, NavMeshAgent, триггер-зона, ParticleSystem-обёртка), — это **наш** префаб в `Assets/Development/Prefabs/<Category>/`. Причины: инстанс ThirdParty-префаба тянет за собой чужие компоненты и скрипты (`CFXR_Effect` с `clearBehavior = Destroy` уничтожает пуловый объект; демо-скрипты паков на legacy `Input` падают под Input System New), его override'ы живут в сцене и не переносятся между сценами, а изоляция ThirdParty перестаёт быть проверяемой.
+
+Если нужен готовый префаб/модель из пака (дом, персонаж, эмиттер), порядок один: инстанцировать → **Prefab → Unpack Completely** → добавить наши компоненты → сохранить как новый префаб в `Development/Prefabs/<Category>/`. Editor-скрипты делают это через единственную утилиту `EditorPrefabUtility.InstantiateUnpacked` (никогда голый `PrefabUtility.InstantiatePrefab` на ThirdParty-ассет), сцены собираются только из `Development`-префабов. Проверка — `BlackWhiteLike/Validation/Find ThirdParty Prefab Instances` (открытая сцена + все `Development/Prefabs`), прогоняется после каждого editor-скрипта, создающего объекты.
+
+После unpack связь с паком остаётся **только на уровне ассетов**: `MeshFilter.sharedMesh`, материалы, текстуры, Avatar, AnimationClip'ы, текстуры/материалы частиц ссылаются на файлы в `ThirdParty` по GUID и не дублируются. Обновление пака обновляет меши/материалы, но не структуру наших префабов — это осознанная цена изоляции (решение 2026-08-29).
+
+### Связь Prefab → ThirdParty через ссылки на ассеты, не копированием
+
+Префаб машины в `Development/Prefabs/Vehicles/Car_Sedan.prefab` **ссылается** на меш `Assets/ThirdParty/1Poly_DestructibleCars/Meshes/Sedan.fbx` через `MeshFilter.mesh`. Сам меш не дублируется. Это позволяет обновить пак без потери настройки префаба (Unity сохраняет ссылку по GUID). Ссылка — на **ассет** (меш, материал, клип), а не на префаб (см. раздел выше).
 
 ### Editor-скрипты автоматизируют сборку
 
@@ -256,6 +264,7 @@ _container.InjectGameObject(gameObject);  // using VContainer.Unity
 8. **Editor-скрипт правит существующую сцену/канвас** → миграционная идемпотентность: дособрать недостающее в собранное старой версией, без дублей.
 9. **Одноразовый ввод, потребляемый физикой** → буферизация Update→FixedUpdate (`.claude/rules/physics-input.md`).
 10. **Глобальный static-стейт** (`Time.timeScale` и т.п.): переживает загрузку сцены при per-scene scope — планировать страховки сброса.
+11. **Готовый префаб/модель из ThirdParty нужен в сцене или внутри нашего префаба** (дом, персонаж, эмиттер) → в плане появляется СВОЙ префаб в `Development/Prefabs/<Category>/` и пункт `Prefabs/Setup ...`, который его собирает через `EditorPrefabUtility.InstantiateUnpacked`; сцена инстанцирует только его. В промпте editor-агента — явный запрет голого `PrefabUtility.InstantiatePrefab` на ThirdParty-ассет и вызов `Validation/Find ThirdParty Prefab Instances` в конце (см. «Правила хранения контента»).
 
 ## Editor-автоматизация (обязательно)
 
