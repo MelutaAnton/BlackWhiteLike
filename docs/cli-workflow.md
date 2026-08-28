@@ -173,7 +173,7 @@ Implementation Order (§19 game-design.md): «<название шага>».
 
 **Шаг 4 (Чудеса + Faith):**
 - Только Rain и Fireball; Heal и Lightning — шаг 6.
-- Каждый каст — `CastMiracleCommand : ICommand` с `CanExecute()` (хватает Faith, цель валидна).
+- Каст — сессия в `MiracleService` (`CanCast` → `BeginCast` → `UpdateCast` → `ReleaseCast`/`CancelCast`), как `BeginHold/EndHold` у руки; Command НЕ вводить (решение §4 game-design).
 - Эффекты чудес применяются через события (`MiracleCastEvent` → подписчики `NeedSiteController`/`LevelEventService`), не прямыми ссылками чуда на объекты сцены.
 - Накачка hold: расход `HoldCostPerSecond`, радиус растёт до `MaxRadius` — всё из `MiracleConfig`.
 - VFX — только через `VfxFactory` (пул), enum `VfxEffectType`.

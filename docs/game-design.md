@@ -91,7 +91,7 @@ Pointer-абстракция: touch и mouse дают одинаковые со�
 
 ### Чудеса
 **MonoBehaviour:** `MiracleTargetingController` — превью зоны действия (projector/decal) под pointer'ом, индикация накачки силы.
-**Service:** `MiracleService` — pure C#: валидация каста (`CanCast`: хватает ли Faith, валидна ли цель), расчёт стоимости от накачки, публикация `MiracleCastEvent`. Каждый каст — `CastMiracleCommand : ICommand`.
+**Service:** `MiracleService` — pure C#: валидация каста (`CanCast`: хватает ли Faith, валидна ли цель), расчёт стоимости от накачки, публикация `MiracleCastEvent`. Каст — stateful-сессия внутри сервиса (`BeginCast` → `UpdateCast(dt)` накачка → `ReleaseCast` / `CancelCast`), симметрично `HandInteractionService.BeginHold/EndHold`; паттерн Command не применяется (решение 2026-08-28: обёртка `CanExecute/Execute` над сервисом не несла бы состояния и смысла — undo/очередь/множественные инвокеры касту не нужны).
 **Config:** `MiracleConfig` (SO, один на чудо) — `MiracleType type`, `BaseFaithCost`, `HoldCostPerSecond`, `BaseRadius`, `MaxRadius`, `EffectPower`, `AlignmentShift` (знак определяет добро/зло), `WorshipYield` (сколько Awe/Fear даёт применение по назначению), `VfxEffectType[] vfx`, `Sprite icon`, `int[] upgradeLevelPowerBonus`.
 **Каталог:** `MiracleCatalogConfig` (SO) — массив `MiracleConfig`, определяет состав панели.
 
@@ -313,7 +313,6 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 > Все пути — относительно `Assets/Development/Scripts/` (структура и правила — `CLAUDE.md`).
 
 ### Core
-- `Core/Commands/CastMiracleCommand.cs`, `Core/Commands/ThrowCommand.cs`
 - `Core/Events/Events.Hand.cs` — `ObjectGrabbedEvent`, `ObjectThrownEvent`, `ObjectLandedEvent`
 - `Core/Events/Events.Miracles.cs` — `MiracleSelectedEvent`, `MiracleCastEvent`, `FaithChangedEvent`
 - `Core/Events/Events.Village.cs` — `NeedTriggeredEvent`, `NeedResolvedEvent`, `NeedExpiredEvent`, `VillagerStateChangedEvent`
@@ -540,7 +539,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 2. **Камера + рука**: `CameraRig` + `IsometricPanZoomBehaviour`, `GodHandController` + `HandInteractionService`, `ThrowableObjectController`. Тестовая сцена `_TestHand` с plane и кубами. Цель: pan/zoom, таскать и швырять кубы пальцем/мышью.
 2.5. **Mobile smoke build** (вставлен 2026-08-18, вне исходного §19): первая сборка на устройство до накопления слоёв. `BlackWhiteLike/Setup/Apply Mobile Player Settings` (landscape-лок, bundle id, IL2CPP+ARM64, уровень качества Mobile) и `BlackWhiteLike/Build/Android Smoke Build` (сборка `_TestHand` в `Builds/Android/`). Цель: игра запускается на телефоне, рука хватается **пальцем** (захват идёт тонким лучом — `GrabRadius` удалён на шаге 2, палец толще курсора и закрывает цель собой). Полировка мобилки остаётся шагом 9.
 3. **Жители + события**: `VillagerController` + `VillagerStateService` + `VillagerFactory`, `NeedSiteController`, `LevelEventService`, первый черновой `LevelConfig`. Цель: деревня живёт, по таймлайну загорается дом, жителей можно бросать (Panic/Tossed видны).
-4. **Чудеса + Faith**: `MiracleService` + `CastMiracleCommand`, `FaithService`, `MiracleTargetingController`, `MiraclePanelView`, чудеса Rain + Fireball. Цель: тушить пожар дождём / поджигать дом файрболом, Faith тратится и регенится.
+4. **Чудеса + Faith**: `MiracleService` (сессия каста, без Command — см. §4), `FaithService`, `MiracleTargetingController`, `MiraclePanelView`, чудеса Rain + Fireball. Цель: тушить пожар дождём / поджигать дом файрболом, Faith тратится и регенится.
 5. **Worship + win**: `WorshipService`, `AlignmentService`, `LevelFlowService`, `LevelHudView` (бары, попапы), `LevelCompleteView`, soft-fail. Цель: уровень 1 проходится и добром, и злом.
 6. **Оставшиеся чудеса + alignment-визуал**: Heal + Lightning, Disease/Hunger нужды, `AlignmentVisualController` + `AlignmentVisualConfig` (material swap). Цель: все 4 чуда работают, храм/рука мутируют.
 7. **Уровни 2–5**: `LevelCatalogConfig`, `LevelSelectView`, editor-скрипт `Build Village Level`, сборка и настройка 4 конфигов. Цель: кампания из 5 уровней с прогрессией.

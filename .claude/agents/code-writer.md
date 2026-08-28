@@ -1,6 +1,6 @@
 ---
 name: "code-writer"
-description: "Use this agent when the user asks to write new code, implement a feature, add a class, create any C# script, or build a full service stack (interface + implementation + VContainer registration) for a Unity project with VContainer DI. Strictly follows the architecture defined in the project's CLAUDE.md (Clean Architecture, SOLID). Project-specific namespace, paths and Composition Root come from the agent's '## Project Variables' block.\\n\\n<example>\\nContext: User wants to add a new gameplay service to the project.\\nuser: \"добавь сервис здоровья игрока\"\\nassistant: \"I'll use the Agent tool to launch the code-writer agent to create the health service with interface, implementation, and VContainer registration.\"\\n<commentary>\\nThe user is requesting new C# code (a new service). The code-writer agent should be delegated to produce the full stack (IHealthService + HealthService + registration in GameLifetimeScope).\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User needs a new MonoBehaviour controller.\\nuser: \"напиши BulletController для полёта пули и возврата в пул\"\\nassistant: \"I'm going to use the Agent tool to launch the code-writer agent to implement BulletController following the project's Controller architecture.\"\\n<commentary>\\nImplementing a new Controller class falls directly under the code-writer's responsibility — it will follow the MonoBehaviour + [Inject] Construct() pattern defined in CLAUDE.md.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User asks for a new command class.\\nuser: \"создай команду для прыжка игрока\"\\nassistant: \"Let me use the Agent tool to launch the code-writer agent to implement the JumpCommand following the ICommand pattern.\"\\n<commentary>\\nNew command creation — exactly the code-writer's domain. It will produce an ICommand implementation with CanExecute/Execute.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User requests a feature that touches multiple layers.\\nuser: \"реализуй систему прокачки оружия: конфиг, сервис, команду\"\\nassistant: \"I'll launch the code-writer agent via the Agent tool to build the full weapon upgrade stack: ScriptableObject config, IWeaponUpgradeService + implementation, command, and VContainer registrations.\"\\n<commentary>\\nMulti-layer feature implementation is the code-writer's specialty — it knows how to lay down the complete stack correctly.\\n</commentary>\\n</example>"
+description: "Use this agent when the user asks to write new code, implement a feature, add a class, create any C# script, or build a full service stack (interface + implementation + VContainer registration) for a Unity project with VContainer DI. Strictly follows the architecture defined in the project's CLAUDE.md (Clean Architecture, SOLID). Project-specific namespace, paths and Composition Root come from the agent's '## Project Variables' block.\\n\\n<example>\\nContext: User wants to add a new gameplay service to the project.\\nuser: \"добавь сервис здоровья игрока\"\\nassistant: \"I'll use the Agent tool to launch the code-writer agent to create the health service with interface, implementation, and VContainer registration.\"\\n<commentary>\\nThe user is requesting new C# code (a new service). The code-writer agent should be delegated to produce the full stack (IHealthService + HealthService + registration in GameLifetimeScope).\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User needs a new MonoBehaviour controller.\\nuser: \"напиши BulletController для полёта пули и возврата в пул\"\\nassistant: \"I'm going to use the Agent tool to launch the code-writer agent to implement BulletController following the project's Controller architecture.\"\\n<commentary>\\nImplementing a new Controller class falls directly under the code-writer's responsibility — it will follow the MonoBehaviour + [Inject] Construct() pattern defined in CLAUDE.md.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User requests a feature that touches multiple layers.\\nuser: \"реализуй систему прокачки оружия: конфиг, сервис, регистрацию\"\\nassistant: \"I'll launch the code-writer agent via the Agent tool to build the full weapon upgrade stack: ScriptableObject config, IWeaponUpgradeService + implementation, and VContainer registrations.\"\\n<commentary>\\nMulti-layer feature implementation is the code-writer's specialty — it knows how to lay down the complete stack correctly.\\n</commentary>\\n</example>"
 model: sonnet
 effort: high
 color: green
@@ -29,7 +29,7 @@ memory: project
 
 1. **Найди похожий существующий код** через Grep/Glob — используй как образец стиля и паттернов. Не придумывай с нуля, если в проекте уже есть аналог.
 2. **Прочитай `GameLifetimeScope.cs`** — пойми существующие регистрации, лайфтаймы и зависимости. Это источник истины о том, какие сервисы уже есть.
-3. **Определи слой** нового кода: Service (чистый C#) / Controller (MonoBehaviour) / Factory / View (только UI) / Core (EventBus, Pool, StateMachine, Commands) / Config (SO) / Event (struct).
+3. **Определи слой** нового кода: Service (чистый C#) / Controller (MonoBehaviour) / Factory / View (только UI) / Core (EventBus, Pool, StateMachine, Input, Interaction) / Config (SO) / Event (struct).
 4. **Проверь папку** по таблице структуры из CLAUDE.md — размести файл в правильном каталоге.
 5. Только после этих шагов — пиши код.
 
@@ -163,16 +163,22 @@ public class XxxConfig : ScriptableObject
 - Каждый SO — в отдельном файле, имя файла = имя класса
 - Регистрация: `builder.RegisterInstance(_xxxConfig)` (SO не требует инъекции)
 
-### Command (`Core/Commands/`)
+### Действие с жизненным циклом (жест руки, накачка чуда) — сессия в сервисе
+Паттерн Command в проекте **не используется** (решение владельца 2026-08-28, game-design §4): обёртка
+`CanExecute/Execute` над сервисом не несёт ни состояния, ни смысла. Вместо неё — stateful-сессия в
+pure-C# сервисе, контроллер только транслирует ввод:
 ```csharp
-public class XxxCommand : ICommand
+public interface IXxxService
 {
-    private readonly IXxxService _service;
-    public XxxCommand(IXxxService service) => _service = service;
-    public bool CanExecute() => ...;
-    public void Execute() => _service.DoSomething();
+    bool CanBegin(...);          // валидация (ресурс, цель)
+    void Begin(...);             // старт сессии — фиксирует контекст
+    void Update(float dt);       // накачка/списание по времени
+    void Release(...);           // завершение — публикует событие
+    void Cancel();               // отмена — без события
 }
 ```
+Образец — `HandInteractionService.BeginHold/EndHold`. Сервис держит ровно одну активную сессию
+(ограничение зафиксировано в xml-doc, см. `HandInteractionService`).
 
 ### View (только UI, `Views/UI/`)
 - MVP: Model (данные) ← Presenter (логика) → IView (интерфейс)

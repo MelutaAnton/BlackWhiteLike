@@ -27,7 +27,7 @@
 
 - **DI**: VContainer, Composition Root в `GameLifetimeScope.cs`
 - **EventBus**: типизированная шина `Core/Events/EventBus.cs` (struct-события)
-- **Command**: `ICommand` с `CanExecute()` / `Execute()`
+- **Сессия жеста в сервисе**: действие с жизненным циклом (удержание рукой, накачка чуда) — stateful-сессия в pure-C# сервисе (`BeginHold/EndHold`, `BeginCast/UpdateCast/ReleaseCast/CancelCast`); контроллер только транслирует ввод. Паттерн Command в проекте не используется (решение 2026-08-28, game-design §4)
 - **State Machine**: generic FSM с push-pop для `GameState` (см. game-design §9); отдельная FSM жителя (§5)
 - **Object Pool**: `IPoolManager` для жителей, VFX, UI-попапов
 - **MVP** для UI: Model ← Presenter → View
@@ -54,7 +54,6 @@ Assets/
 └── Development/                    # Весь наш собственный контент и код
     ├── Scripts/
     │   ├── Core/                   # Переиспользуемый фреймворк
-    │   │   ├── Commands/           # ICommand, игровые команды
     │   │   ├── DI/                 # ServiceLocator (fallback)
     │   │   ├── Events/             # EventBus + game events (struct'ы)
     │   │   ├── Input/              # IInputProvider, InputRouter, Keyboard/Mobile providers
@@ -149,7 +148,6 @@ Assets/
 - События — `readonly struct`, публикуются через `IEventBus`. Единственное исключение из «один класс = один файл»: события группируются по доменам в `Core/Events/Events.<Domain>.cs` (`Events.Flow.cs`, `Events.Hand.cs`, `Events.Miracles.cs`, … — состав в game-design §12). На классы и SO исключение не распространяется.
 - Именование: `PascalCase` для публичных, `_camelCase` для приватных полей.
 - Каждый сервис имеет интерфейс (`IShootingService`, `IRagdollService`).
-- Команды реализуют `ICommand` с `CanExecute()` / `Execute()`.
 - Доступ к пулу инкапсулируется в фабрике; никакой внешний код не вызывает `IPoolManager` напрямую.
 - Views — только для UI.
 - Префабы лежат в `Assets/Development/Prefabs/<Category>/`. Сторонние ассеты — в `Assets/ThirdParty/<PackName>/`, без редактирования.
@@ -278,4 +276,4 @@ _container.InjectGameObject(gameObject);  // using VContainer.Unity
 | Обновление CLAUDE.md / MEMORY.md | skill `update-claude-md` |
 | Новый сервис | интерфейс + реализация + регистрация в `GameLifetimeScope` |
 | Новое игровое состояние | значение в `GameState` enum + реализация `IState` + регистрация в `GameFlowService` |
-| Новая команда | класс `: ICommand`, вызывать из контроллера |
+| Новое действие с жизненным циклом (жест, каст) | сессия `Begin/Update/Release/Cancel` в существующем или новом сервисе; контроллер транслирует ввод |
