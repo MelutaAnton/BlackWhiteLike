@@ -106,6 +106,17 @@ MCP-мост не отвечает **ни на что**, включая read-onl
 всех `Development/Prefabs`. Проверка численно — по `PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot`
 / `GetCorrespondingObjectFromSource`, путь начинается с `Assets/ThirdParty/` = нарушение.
 
+### Всё, на что ссылается сохраняемый ассет, само обязано быть ассетом
+`new Material(shader)`, `new Texture2D(...)`, `TMP_FontAsset.CreateFontAsset(font)` (атлас +
+материал) живут в памяти: пока объект в сцене текущей сессии — работает, после сохранения в
+префаб/`.asset` и перезагрузки ссылка становится missing (розовый меш, `MissingReferenceException`
+у TMP). Два случая за один playtest шага 4: атлас шрифта HUD и материалы маркеров NeedSite.
+Правило: либо `AssetDatabase.CreateAsset` в свою папку (`Art/Materials/...`, один ассет на
+роль, переиспользуется), либо `AssetDatabase.AddObjectToAsset(obj, владелец)` саб-ассетом —
+и численная проверка после сохранения (`AssetDatabase.IsSubAsset`, `sharedMaterial != null`,
+`m_Materials` без `{fileID: 0}` в YAML). Скрипт с миграцией обязан чинить и уже собранные
+объекты с missing-ссылкой.
+
 ### Программное создание тегов
 Теги в Unity должны существовать в TagManager до их назначения объекту.
 Если префаб создаётся Editor-скриптом с кастомным тегом — добавить тег программно:
