@@ -4,7 +4,11 @@
     "references": [
         "BlackWhiteLike",
         "VContainer",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor",
+        "UnityEngine.UI",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

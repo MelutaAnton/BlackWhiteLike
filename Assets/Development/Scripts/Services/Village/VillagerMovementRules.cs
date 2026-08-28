@@ -124,6 +124,24 @@ namespace BlackWhiteLike.Services.Village
             return Quaternion.LookRotation(flatForward.normalized, Vector3.up);
         }
 
+        /// <summary>
+        /// Шаг 4: скорость разлёта жителя от взрыва чуда (Fireball, game-design §4). Горизонтальное
+        /// направление — от <paramref name="origin"/> (точка каста) к <paramref name="position"/>
+        /// жителя; вырожденный случай (житель ровно в эпицентре) — Vector3.forward вместо NaN, тот
+        /// же приём, что в UpdateFlee. <paramref name="upwardBias"/> подмешивает вертикальную
+        /// составляющую (доля от <paramref name="power"/>) — иначе взрыв расшвыривал бы жителей
+        /// строго по земле. Чистая арифметика — тестируется без Unity-сцены.
+        /// </summary>
+        public static Vector3 ComputeBlastVelocity(Vector3 origin, Vector3 position, float power, float upwardBias)
+        {
+            var flat = position - origin;
+            flat.y = 0f;
+
+            var flatDirection = flat.sqrMagnitude > DirectionEpsilonSqr ? flat.normalized : Vector3.forward;
+
+            return (flatDirection + Vector3.up * upwardBias).normalized * power;
+        }
+
         /// <summary>Ближайшая (по горизонтали) точка спавна к упавшему жителю; при пустом списке — координатный центр деревни как последний фолбэк.</summary>
         public static Vector3 FindNearestSpawnPosition(Vector3 fromPosition, Vector3[] spawnPositions)
         {

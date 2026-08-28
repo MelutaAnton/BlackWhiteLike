@@ -291,7 +291,12 @@ namespace BlackWhiteLike.Editor.Setup
             }
             else
             {
-                var visualInstance = (GameObject)PrefabUtility.InstantiatePrefab(handFbx, root.transform);
+                // ThirdParty-визуал (CLAUDE.md "Из ThirdParty ... только визуал") — InstantiateUnpacked
+                // сразу распаковывает инстанс (Unpack Completely), разрывая prefab-связь на MaleHand.FBX;
+                // Visual пересобирается с нуля при КАЖДОМ прогоне (см. выше — existingVisual уничтожается
+                // безусловно), поэтому миграция уже собранного GodHand.prefab происходит автоматически
+                // при первом же запуске этого пункта меню после правки, без отдельной ветки.
+                var visualInstance = EditorPrefabUtility.InstantiateUnpacked(handFbx, root.transform);
                 visualInstance.name = VisualChildName;
                 visualTransform = visualInstance.transform;
 
@@ -354,6 +359,9 @@ namespace BlackWhiteLike.Editor.Setup
             // Иначе масштаб корня, уже подкрученный пользователем, не трогаем.
 
             WireController(root, visualTransform, grabAnchor, animator, groundLayer, grabbableLayer);
+
+            // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ДО SaveAsPrefabAsset.
+            EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, "GodHand.prefab");
 
             if (existed)
             {

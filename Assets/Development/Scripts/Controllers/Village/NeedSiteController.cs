@@ -1,5 +1,6 @@
 using System;
 using BlackWhiteLike.Core.Events;
+using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Village;
@@ -14,8 +15,9 @@ namespace BlackWhiteLike.Controllers.Village
     /// репортит стимулы соседним жителям (Д3, ревью плейтеста шага 3 — недостающее звено §5:
     /// "рядом пожар/взрыв → Panic; нужда разрешена рядом → Worship"), подписываясь на
     /// <c>NeedTriggeredEvent</c>/<c>NeedResolvedEvent</c>/<c>NeedExpiredEvent</c> от
-    /// <c>LevelEventService</c>. Разрешение нужды чудом — шаг 4+ (здесь не реализуется), но
-    /// триггер-зона попадания чуда обязана существовать уже сейчас с корректной физикой.
+    /// <c>LevelEventService</c>. Шаг 4: разрешение/создание нужды попаданием чуда — подписка на
+    /// <c>MiracleCastEvent</c>, маппинг "чудо → нужда" читается из <c>MiracleConfig</c> (данные, не
+    /// код, game-design §14.2) — сама точка не хранит правило, только применяет его к себе.
     /// </summary>
     public sealed class NeedSiteController : MonoBehaviour
     {
@@ -43,18 +45,35 @@ namespace BlackWhiteLike.Controllers.Village
         private IEventBus _eventBus;
         private IVillagerStateService _stateService;
         private VillagerConfig _villagerConfig;
+        private ILevelEventService _levelEventService;
+        private MiracleCatalogConfig _miracleCatalog;
         private bool _initialized;
+
+        // Шаг 4: true между Triggered и Resolved/Expired — читается обработчиком MiracleCastEvent,
+        // чтобы решить "это попадание разрешает нужду или создаёт новую" (game-design §5).
+        // Ограничение "сайт обслуживает одну нужду за раз" — то же самое, что уже подразумевает
+        // NeedSiteController._needType (один тип на точку); снято будет на шаге 6/7 вместе с
+        // расширением на несколько одновременных нужд на одной точке, если понадобится.
+        private bool _isNeedActive;
 
         private IDisposable _triggeredSubscription;
         private IDisposable _resolvedSubscription;
         private IDisposable _expiredSubscription;
+        private IDisposable _miracleCastSubscription;
 
         [Inject]
-        public void Construct(IEventBus eventBus, IVillagerStateService stateService, VillagerConfig villagerConfig)
+        public void Construct(
+            IEventBus eventBus,
+            IVillagerStateService stateService,
+            VillagerConfig villagerConfig,
+            ILevelEventService levelEventService,
+            MiracleCatalogConfig miracleCatalog)
         {
             _eventBus = eventBus;
             _stateService = stateService;
             _villagerConfig = villagerConfig;
+            _levelEventService = levelEventService;
+            _miracleCatalog = miracleCatalog;
 
             // Триггеры требуют Rigidbody (CLAUDE.md, "Известные нюансы Unity Physics") — без него
             // OnTriggerEnter молчит, если ни у одного участника нет Rigidbody. Kinematic + без
@@ -68,6 +87,11 @@ namespace BlackWhiteLike.Controllers.Village
             body.isKinematic = true;
             body.useGravity = false;
 
+            // Незначительное (ревью шага 4): явный сброс на Construct, симметрично OnDisable ниже —
+            // консервативное решение владельца на случай повторного использования объекта (если
+            // когда-нибудь появится пул точек события): свежий Construct не должен унаследовать
+            // _isNeedActive=true от предыдущей жизни того же компонента.
+            _isNeedActive = false;
             SetVisualState(VisualState.Normal);
 
             // В8 (ревью шага 3): подписка — здесь, а не в OnEnable под "if (!_initialized) return"
@@ -94,6 +118,15 @@ namespace BlackWhiteLike.Controllers.Village
         private void OnDisable()
         {
             Unsubscribe();
+
+            // Незначительное (ревью шага 4): сайт выключен — дальнейшее состояние нужды неизвестно
+            // (пока подписки сняты, LevelEventService мог бы разрешить/просрочить её без участия
+            // этого объекта). Решение владельца — консервативный сброс в false: при повторном
+            // включении Fireball создаст нужду заново, если её на самом деле уже нет (CreatesNeed);
+            // если нужда на самом деле ещё активна — TriggerNeed увидит её в LevelEventService и
+            // сделает штатный no-op ("уже активна"), а Resolve сработает по факту события. Риск —
+            // разве что лишний кадр визуала Normal до следующего события.
+            _isNeedActive = false;
         }
 
         private void Subscribe()
@@ -102,6 +135,7 @@ namespace BlackWhiteLike.Controllers.Village
             _triggeredSubscription = _eventBus.Subscribe<NeedTriggeredEvent>(OnTriggered);
             _resolvedSubscription = _eventBus.Subscribe<NeedResolvedEvent>(OnResolved);
             _expiredSubscription = _eventBus.Subscribe<NeedExpiredEvent>(OnExpired);
+            _miracleCastSubscription = _eventBus.Subscribe<MiracleCastEvent>(OnMiracleCast);
         }
 
         private void Unsubscribe()
@@ -109,15 +143,18 @@ namespace BlackWhiteLike.Controllers.Village
             _triggeredSubscription?.Dispose();
             _resolvedSubscription?.Dispose();
             _expiredSubscription?.Dispose();
+            _miracleCastSubscription?.Dispose();
 
             _triggeredSubscription = null;
             _resolvedSubscription = null;
             _expiredSubscription = null;
+            _miracleCastSubscription = null;
         }
 
         private void OnTriggered(NeedTriggeredEvent evt)
         {
             if (!MatchesThisSite(evt.SiteIndex, evt.Type, nameof(NeedTriggeredEvent))) return;
+            _isNeedActive = true;
             SetVisualState(VisualState.Active);
 
             // Д3 (ревью плейтеста шага 3): недостающее звено §5 — таймлайн срабатывал, дом "горел",
@@ -134,6 +171,7 @@ namespace BlackWhiteLike.Controllers.Village
         private void OnResolved(NeedResolvedEvent evt)
         {
             if (!MatchesThisSite(evt.SiteIndex, evt.Type, nameof(NeedResolvedEvent))) return;
+            _isNeedActive = false;
             SetVisualState(VisualState.Normal);
 
             // Д3: разрешение нужды рядом → Worship (game-design §5), независимо от типа нужды.
@@ -143,7 +181,37 @@ namespace BlackWhiteLike.Controllers.Village
         private void OnExpired(NeedExpiredEvent evt)
         {
             if (!MatchesThisSite(evt.SiteIndex, evt.Type, nameof(NeedExpiredEvent))) return;
+            _isNeedActive = false;
             SetVisualState(VisualState.Expired);
+        }
+
+        /// <summary>
+        /// Шаг 4: попадание чуда в зону этой точки (game-design §4, §5) — горизонтальная дистанция
+        /// до <see cref="MiracleCastEvent.Point"/> в пределах <see cref="MiracleCastEvent.Radius"/>.
+        /// Маппинг "какое чудо что делает с какой нуждой" — целиком в MiracleConfig (данные, не код,
+        /// §14.2): точка либо разрешает уже активную нужду своего типа, либо создаёт новую, если
+        /// нужды сейчас нет и это чудо помечено как создающее её именно этого типа.
+        /// </summary>
+        private void OnMiracleCast(MiracleCastEvent evt)
+        {
+            if (HorizontalDistance(transform.position, evt.Point) > evt.Radius) return;
+            if (!_miracleCatalog.TryGet(evt.Type, out var config)) return;
+
+            if (_isNeedActive && config.ResolvesNeed(_needType))
+            {
+                _levelEventService.ResolveNeed(_needType, _siteIndex, byPlayer: true);
+            }
+            else if (!_isNeedActive && config.CreatesNeed && config.CreatedNeed == _needType)
+            {
+                _levelEventService.TriggerNeed(_needType, _siteIndex, config.CreatedNeedDuration, byPlayer: true);
+            }
+        }
+
+        private static float HorizontalDistance(Vector3 a, Vector3 b)
+        {
+            var dx = a.x - b.x;
+            var dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
         }
 
         /// <summary>

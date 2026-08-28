@@ -1,10 +1,15 @@
 using System;
 using System.IO;
 using BlackWhiteLike.Data.Configs.Camera;
+using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
+using BlackWhiteLike.Data.Configs.Vfx;
+using BlackWhiteLike.Editor.Common;
+using BlackWhiteLike.Models;
 using UnityEditor;
 using UnityEngine;
 
@@ -47,6 +52,15 @@ namespace BlackWhiteLike.Editor.Configs
     {
         private const string ConfigsRoot = "Assets/Development/Data/Configs";
 
+        private const string MiracleRainPath = ConfigsRoot + "/Miracles/Miracle_Rain.asset";
+        private const string MiracleFireballPath = ConfigsRoot + "/Miracles/Miracle_Fireball.asset";
+        private const string MiracleCatalogPath = ConfigsRoot + "/Miracles/MiracleCatalog.asset";
+
+        // Иконки — единственный источник путей: BlackWhiteLike.Editor.Common.EditorSpriteUtility.MiracleIconPaths
+        // (правка после ревью: строки дублировались здесь и в Editor/UI/LevelHudSetupEditor.cs).
+        private const string RainIconPath = EditorSpriteUtility.MiracleIconPaths.Rain;
+        private const string FireballIconPath = EditorSpriteUtility.MiracleIconPaths.Fireball;
+
         /// <summary>
         /// Единственное место, где перечислены создаваемые SO. Новый конфиг = новая строка.
         /// </summary>
@@ -59,7 +73,78 @@ namespace BlackWhiteLike.Editor.Configs
             new ConfigAssetDescriptor(typeof(LevelConfig), ConfigsRoot + "/Levels/LevelConfig_01.asset"),
             new ConfigAssetDescriptor(typeof(VillageLayoutConfig), ConfigsRoot + "/Levels/VillageLayout_01.asset"),
             new ConfigAssetDescriptor(typeof(ThrowableConfig), ConfigsRoot + "/Throwable/ThrowableConfig.asset"),
+            // Шаг 4 — Чудеса + Faith (game-design.md §19.4). Инициализаторы выполняются ТОЛЬКО при
+            // создании ассета — пересериализация существующего их не вызывает (см. class-doc).
+            // Порядок важен: сначала оба MiracleConfig, потом каталог (ссылается на них по пути).
+            new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleRainPath, InitRainMiracle),
+            new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleFireballPath, InitFireballMiracle),
+            new ConfigAssetDescriptor(typeof(MiracleCatalogConfig), MiracleCatalogPath, InitMiracleCatalog),
+            new ConfigAssetDescriptor(typeof(FaithConfig), ConfigsRoot + "/Faith/FaithConfig.asset"),
+            // _entries прошивает Editor/Prefabs/MiracleVfxPrefabSetupEditor после сборки VFX-префабов.
+            new ConfigAssetDescriptor(typeof(VfxConfig), ConfigsRoot + "/Vfx/VfxConfig.asset"),
         };
+
+        /// <summary>Дождь (game-design.md §19.4): исцеляет Fire/Hunger, без удержания-накопления вреда.</summary>
+        private static void InitRainMiracle(SerializedObject so)
+        {
+            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Rain;
+            so.FindProperty("_baseFaithCost").floatValue = 20f;
+            so.FindProperty("_holdCostPerSecond").floatValue = 10f;
+            so.FindProperty("_baseRadius").floatValue = 2f;
+            so.FindProperty("_maxRadius").floatValue = 5f;
+            so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
+            so.FindProperty("_effectPower").floatValue = 0f;
+            so.FindProperty("_alignmentShift").floatValue = 10f;
+            so.FindProperty("_worshipYield").intValue = 10;
+            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.RainCast;
+            so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(RainIconPath);
+
+            var resolvesNeeds = so.FindProperty("_resolvesNeeds");
+            resolvesNeeds.arraySize = 2;
+            resolvesNeeds.GetArrayElementAtIndex(0).enumValueIndex = (int)NeedType.Fire;
+            resolvesNeeds.GetArrayElementAtIndex(1).enumValueIndex = (int)NeedType.Hunger;
+
+            so.FindProperty("_createsNeed").boolValue = false;
+            so.FindProperty("_blastsVillagers").boolValue = false;
+        }
+
+        /// <summary>Фаербол (game-design.md §19.4): наносит урон, создаёт Fire-нужду, разбрасывает жителей.</summary>
+        private static void InitFireballMiracle(SerializedObject so)
+        {
+            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Fireball;
+            so.FindProperty("_baseFaithCost").floatValue = 30f;
+            so.FindProperty("_holdCostPerSecond").floatValue = 15f;
+            so.FindProperty("_baseRadius").floatValue = 1.5f;
+            so.FindProperty("_maxRadius").floatValue = 3.5f;
+            so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
+            so.FindProperty("_effectPower").floatValue = 8f;
+            so.FindProperty("_alignmentShift").floatValue = -10f;
+            so.FindProperty("_worshipYield").intValue = 15;
+            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.FireballExplosion;
+            so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(FireballIconPath);
+
+            so.FindProperty("_resolvesNeeds").arraySize = 0;
+
+            so.FindProperty("_createsNeed").boolValue = true;
+            so.FindProperty("_createdNeed").enumValueIndex = (int)NeedType.Fire;
+            so.FindProperty("_createdNeedDuration").floatValue = 15f;
+            so.FindProperty("_blastsVillagers").boolValue = true;
+        }
+
+        /// <summary>Каталог — ссылки грузятся по пути: оба MiracleConfig уже созданы предыдущими строками Descriptors.</summary>
+        private static void InitMiracleCatalog(SerializedObject so)
+        {
+            var rain = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleRainPath);
+            var fireball = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleFireballPath);
+
+            var miracles = so.FindProperty("_miracles");
+            miracles.arraySize = 2;
+            miracles.GetArrayElementAtIndex(0).objectReferenceValue = rain;
+            miracles.GetArrayElementAtIndex(1).objectReferenceValue = fireball;
+
+            if (rain == null || fireball == null)
+                Debug.LogWarning("[Editor] MiracleCatalog: одна из ссылок (Miracle_Rain/Miracle_Fireball) не найдена при создании.");
+        }
 
         [MenuItem("BlackWhiteLike/Configs/Create Empty SO Set")]
         public static void CreateAll()
@@ -124,7 +209,16 @@ namespace BlackWhiteLike.Editor.Configs
             AssetDatabase.CreateAsset(instance, descriptor.AssetPath);
             // Undo на ассетах не регистрируем — см. .claude/rules/editor-files.md.
 
-            Debug.Log($"[Editor] Создан конфиг: {descriptor.AssetPath}");
+            if (descriptor.Initializer != null)
+            {
+                var so = new SerializedObject(instance);
+                descriptor.Initializer(so);
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(instance);
+            }
+
+            Debug.Log($"[Editor] Создан конфиг: {descriptor.AssetPath}" +
+                      (descriptor.Initializer != null ? " (значения по умолчанию прошиты инициализатором)." : "."));
             return true;
         }
 
@@ -144,17 +238,22 @@ namespace BlackWhiteLike.Editor.Configs
         }
 
         /// <summary>
-        /// Описание одного создаваемого SO-ассета: тип класса + целевой путь.
+        /// Описание одного создаваемого SO-ассета: тип класса + целевой путь + опциональный
+        /// инициализатор дефолтных значений, вызываемый ТОЛЬКО в момент создания ассета (шаг 4,
+        /// game-design.md §19.4) — при пересериализации существующего ассета не выполняется,
+        /// чтобы не затирать значения, подкрученные владельцем в Inspector.
         /// </summary>
         private readonly struct ConfigAssetDescriptor
         {
             public readonly Type SoType;
             public readonly string AssetPath;
+            public readonly Action<SerializedObject> Initializer;
 
-            public ConfigAssetDescriptor(Type soType, string assetPath)
+            public ConfigAssetDescriptor(Type soType, string assetPath, Action<SerializedObject> initializer = null)
             {
                 SoType = soType;
                 AssetPath = assetPath;
+                Initializer = initializer;
             }
         }
     }

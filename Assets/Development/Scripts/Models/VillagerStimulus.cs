@@ -13,6 +13,9 @@ namespace BlackWhiteLike.Models
         NeedResolvedNearby,
         Grabbed,
         Landed,
-        HardLanded
+        HardLanded,
+
+        /// <summary>Взрыв чуда Fireball разбрасывает жителя (game-design §4, шаг 4) — переход в Tossed, та же ветка, что Grabbed.</summary>
+        Blasted
     }
 }

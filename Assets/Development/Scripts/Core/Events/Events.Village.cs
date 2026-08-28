@@ -2,16 +2,23 @@ using BlackWhiteLike.Models;
 
 namespace BlackWhiteLike.Core.Events
 {
-    /// <summary>Публикуется <c>LevelEventService</c> при срабатывании нужды по таймлайну LevelConfig (game-design §5, §13).</summary>
+    /// <summary>
+    /// Публикуется <c>LevelEventService</c> при срабатывании нужды — как по таймлайну LevelConfig,
+    /// так и рантайм-записью через <c>ILevelEventService.TriggerNeed</c> (game-design §5, §13, шаг 4).
+    /// <see cref="ByPlayer"/> — true, если нужду создало действие игрока (например, Fireball поджёг
+    /// дом); записи скриптованного таймлайна всегда несут false.
+    /// </summary>
     public readonly struct NeedTriggeredEvent
     {
         public readonly NeedType Type;
         public readonly int SiteIndex;
+        public readonly bool ByPlayer;
 
-        public NeedTriggeredEvent(NeedType type, int siteIndex)
+        public NeedTriggeredEvent(NeedType type, int siteIndex, bool byPlayer)
         {
             Type = type;
             SiteIndex = siteIndex;
+            ByPlayer = byPlayer;
         }
     }
 
@@ -34,16 +41,22 @@ namespace BlackWhiteLike.Core.Events
         }
     }
 
-    /// <summary>Публикуется <c>LevelEventService</c>, если нужда не разрешена до истечения <c>duration</c> (game-design §5, §13).</summary>
+    /// <summary>
+    /// Публикуется <c>LevelEventService</c>, если нужда не разрешена до истечения <c>duration</c>
+    /// (game-design §5, §13). <see cref="ByPlayer"/> — тот же смысл, что у <see cref="NeedTriggeredEvent.ByPlayer"/>:
+    /// true для рантайм-записей, созданных игроком, false для записей скриптованного таймлайна.
+    /// </summary>
     public readonly struct NeedExpiredEvent
     {
         public readonly NeedType Type;
         public readonly int SiteIndex;
+        public readonly bool ByPlayer;
 
-        public NeedExpiredEvent(NeedType type, int siteIndex)
+        public NeedExpiredEvent(NeedType type, int siteIndex, bool byPlayer)
         {
             Type = type;
             SiteIndex = siteIndex;
+            ByPlayer = byPlayer;
         }
     }
 

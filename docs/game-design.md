@@ -391,9 +391,9 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 | `MiracleSelectedEvent`   | `MiracleType type, bool selected`                               | `HandModeService`        |
 | `MiracleCastEvent`       | `MiracleType type, Vector3 point, float power, float radius`    | `MiracleService`         |
 | `FaithChangedEvent`      | `float oldValue, float newValue, float capacity`                | `FaithService`           |
-| `NeedTriggeredEvent`     | `NeedType type, int siteIndex`                                  | `LevelEventService`      |
+| `NeedTriggeredEvent`     | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService` — `byPlayer = true`, если нужду создало чудо игрока (Fireball поджёг дом, §5), false — таймлайн |
 | `NeedResolvedEvent`      | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService`      |
-| `NeedExpiredEvent`       | `NeedType type, int siteIndex`                                  | `LevelEventService`      |
+| `NeedExpiredEvent`       | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService` — тот же флаг, что у Triggered (шаг 5: Fear за сгоревший дом только при `byPlayer`) |
 | `VillagerStateChangedEvent` | `int villagerId, VillagerState from, VillagerState to`       | `VillagerStateService`   |
 | `WorshipChangedEvent`    | `int oldValue, int newValue, int target, WorshipSource source`  | `WorshipService`         |
 | `AlignmentChangedEvent`  | `float oldScore, float newScore`                                | `AlignmentService`       |

@@ -2,31 +2,49 @@ using System.Collections.Generic;
 using System.IO;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
+using BlackWhiteLike.Controllers.Miracles;
+using BlackWhiteLike.Controllers.Vfx;
 using BlackWhiteLike.Controllers.Village;
 using BlackWhiteLike.Data.Configs.Camera;
+using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
+using BlackWhiteLike.Data.Configs.Vfx;
 using BlackWhiteLike.Editor.Common;
+using BlackWhiteLike.Editor.Configs;
+using BlackWhiteLike.Editor.Prefabs;
+using BlackWhiteLike.Editor.UI;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Hud;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 namespace BlackWhiteLike.Editor.Setup
 {
     /// <summary>
     /// Собирает временную песочницу _TestVillage.unity (game-design.md §19.3, шаг 3
-    /// "Жители + события"): земля, 3 дома + 1 поле из POLYGON Fantasy Kingdom / Farm Pack (3 из
-    /// них с NeedSiteController — Fire/Disease/Hunger), рука + камера (переиспользуют код
-    /// TestHandSceneSetupEditor), [Systems] с прошитыми _villagerConfig/_levelConfig/_throwableConfig.
+    /// "Жители + события"; §19.4, шаг 4 "Чудеса + Faith"): земля, 3 дома + 1 поле — инстансы НАШИХ
+    /// префабов структур деревни (Assets/Development/Prefabs/Village/, собираются
+    /// <see cref="VillageStructurePrefabSetupEditor"/> из визуала POLYGON Fantasy Kingdom / Farm Pack;
+    /// правка после playtest'а шага 4 — CLAUDE.md "Из ThirdParty ... только визуал, никогда —
+    /// префаб-инстанс", 3 из них с NeedSiteController — Fire/Disease/Hunger), рука +
+    /// камера (переиспользуют код TestHandSceneSetupEditor), [Systems] с прошитыми
+    /// _villagerConfig/_levelConfig/_throwableConfig, [Miracles] (прицеливание/удар/VFX чудес) и
+    /// HUD (LevelHudCanvas.prefab + EventSystem).
     /// Жителей сцена БОЛЬШЕ НЕ расставляет статически (ревью шага 3, контракт с code-writer'ом):
     /// их спавнит рантаймовый <c>VillagerSpawnService</c> из <c>LevelConfig.VillagerCount</c> и
     /// <c>VillageLayoutConfig.VillagerSpawnPositions</c> — эта сцена только наполняет эти два поля
     /// тестовыми данными (если они ещё пустые) и тестовый таймлайн событий-нужд.
+    /// Шаг 4 добавил конвейер зависимостей "конфиги → VFX-префабы → HUD → сцена" — каждый этап
+    /// вызывается через публичный метод соответствующего Editor-скрипта, только если его результат
+    /// ещё отсутствует на диске (см. EnsureStep4Configs/EnsureStep4VfxPrefabs/EnsureHudInstance).
     /// Временная сцена (подчёркивание в имени) — в Build Settings не добавляется.
     /// Идемпотентен: повторный запуск дособирает недостающее, не плодит объекты, не перезаписывает
     /// уже заполненные данные (позиции спавна/таймлайн — данные владельца, не производные).
@@ -43,23 +61,31 @@ namespace BlackWhiteLike.Editor.Setup
         private const string VillageLayoutConfigPath = "Assets/Development/Data/Configs/Levels/VillageLayout_01.asset";
         private const string ThrowableConfigPath = "Assets/Development/Data/Configs/Throwable/ThrowableConfig.asset";
 
-        // --- ThirdParty-источники домов/поля (только чтение) ---
-        private const string HouseFolder =
-            "Assets/ThirdParty/3D Environment/POLYGON - Fantasy Kingdom Pack/PolygonFantasyKingdom/Prefabs/Buildings/Presets/";
-        private const string FarmPlantsFolder = "Assets/ThirdParty/3D Environment/POLYGON - Farm Pack/Prefabs/Plants/";
+        // Шаг 4 — Чудеса + Faith (game-design.md §19.4).
+        private const string MiracleCatalogConfigPath = "Assets/Development/Data/Configs/Miracles/MiracleCatalog.asset";
+        private const string FaithConfigPath = "Assets/Development/Data/Configs/Faith/FaithConfig.asset";
+        private const string VfxConfigPath = "Assets/Development/Data/Configs/Vfx/VfxConfig.asset";
+        private const string FireballVfxPrefabPath = "Assets/Development/Prefabs/VFX/Vfx_FireballExplosion.prefab";
+        private const string RainVfxPrefabPath = "Assets/Development/Prefabs/VFX/Vfx_RainCast.prefab";
+        private const string HudPrefabPath = "Assets/Development/Prefabs/UI/LevelHudCanvas.prefab";
+        private const string MiraclePreviewRingMaterialPath = "Assets/Development/Art/Materials/MiraclePreviewRing.mat";
 
         /// <summary>
-        /// Дома/поле: имя сценного объекта ← путь ThirdParty-префаба ← позиция ← тип нужды
-        /// (null = без NeedSiteController). siteIndex назначается последовательно по порядку записей
-        /// с ненулевым NeedType (см. EnsureStructures) — House_01=0/Fire, House_02=1/Disease,
-        /// Field_Carrots=2/Hunger, House_03 без сайта (ревью шага 3, Б2).
+        /// Позиции структур на сцене. Имя ← ThirdParty-источник ← масштаб ← NeedType — теперь
+        /// единственный источник таблицы <see cref="VillageStructurePrefabSetupEditor.Structures"/>
+        /// (правка после playtest'а шага 4, CLAUDE.md "Из ThirdParty ... только визуал"): эта сцена
+        /// больше не инстанцирует ThirdParty-префабы напрямую, только позиционирует НАШИ префабы
+        /// структур (Assets/Development/Prefabs/Village/&lt;Name&gt;.prefab). siteIndex назначается
+        /// последовательно по порядку записей с ненулевым NeedType (см. EnsureStructures) —
+        /// House_01=0/Fire, House_02=1/Disease, Field_Carrots=2/Hunger, House_03 без сайта
+        /// (ревью шага 3, Б2).
         /// </summary>
-        private static readonly (string Name, string PrefabPath, Vector3 Position, NeedType? NeedType)[] Structures =
+        private static readonly (string Name, Vector3 Position)[] StructurePositions =
         {
-            ("House_01", HouseFolder + "SM_Bld_Preset_House_01_A_Optimized.prefab", new Vector3(-6f, 0f, -6f), NeedType.Fire),
-            ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(0f, 0f, -6f), NeedType.Disease),
-            ("House_03", HouseFolder + "SM_Bld_Preset_House_03_Optimized.prefab", new Vector3(6f, 0f, -6f), null),
-            ("Field_Carrots", FarmPlantsFolder + "SM_Prop_Carrot_01_Group.prefab", new Vector3(0f, 0f, 6f), NeedType.Hunger),
+            ("House_01", new Vector3(-6f, 0f, -6f)),
+            ("House_02", new Vector3(0f, 0f, -6f)),
+            ("House_03", new Vector3(6f, 0f, -6f)),
+            ("Field_Carrots", new Vector3(0f, 0f, 6f)),
         };
 
         // Позиции спавна жителей (были статичной расстановкой до ревью шага 3) — теперь заполняют
@@ -71,7 +97,7 @@ namespace BlackWhiteLike.Editor.Setup
             new Vector3(-6f, 0f, 2f), new Vector3(-2f, 0f, 2f), new Vector3(2f, 0f, 2f), new Vector3(6f, 0f, 2f),
         };
 
-        /// <summary>Тестовый таймлайн (Б2-доп, ревью шага 3) — targetSiteIndex сверен с порядком в <see cref="Structures"/>.</summary>
+        /// <summary>Тестовый таймлайн (Б2-доп, ревью шага 3) — targetSiteIndex сверен с порядком в <see cref="StructurePositions"/>.</summary>
         private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] DefaultEventTimeline =
         {
             (NeedType.Fire, 3f, 0, 15f),
@@ -82,6 +108,15 @@ namespace BlackWhiteLike.Editor.Setup
         [MenuItem("BlackWhiteLike/Setup/Build Test Village Scene")]
         public static void BuildTestVillageScene()
         {
+            // Шаг 4 — зависимости, не привязанные к активной сцене (конфиги, VFX-префабы):
+            // собираются здесь, ДО работы со сценой, чтобы порядок "конфиги → VFX-префабы → HUD →
+            // сцена" был гарантирован при первом же прогоне на чистом проекте. Каждый шаг
+            // идемпотентен сам по себе — вызывается только если результат ещё отсутствует на диске.
+            EnsureStep4Configs();
+            EnsureStep4VfxPrefabs();
+            // HUD (Editor/UI/LevelHudSetupEditor) собирается ПОСЛЕ открытия/создания _TestVillage —
+            // его EnsureSceneInstance кладёт инстанс в АКТИВНУЮ сцену, см. ниже по методу.
+
             // БЕЗ модального диалога (ревью шага 3: EditorUtility.DisplayDialog вешает MCP-мост
             // намертво, пока диалог не закроет человек мышкой — реальный инцидент на этом самом
             // пункте меню) — либо сохраняем сами, либо отказываемся с понятным Debug.LogError.
@@ -127,12 +162,18 @@ namespace BlackWhiteLike.Editor.Setup
             var levelConfig = AssetDatabase.LoadAssetAtPath<LevelConfig>(LevelConfigPath);
             var villageLayoutConfig = AssetDatabase.LoadAssetAtPath<VillageLayoutConfig>(VillageLayoutConfigPath);
             var throwableConfig = AssetDatabase.LoadAssetAtPath<ThrowableConfig>(ThrowableConfigPath);
+            var miracleCatalogConfig = AssetDatabase.LoadAssetAtPath<MiracleCatalogConfig>(MiracleCatalogConfigPath);
+            var faithConfig = AssetDatabase.LoadAssetAtPath<FaithConfig>(FaithConfigPath);
+            var vfxConfig = AssetDatabase.LoadAssetAtPath<VfxConfig>(VfxConfigPath);
             WarnIfMissing(handConfig, HandConfigPath);
             WarnIfMissing(cameraConfig, CameraConfigPath);
             WarnIfMissing(villagerConfig, VillagerConfigPath);
             WarnIfMissing(levelConfig, LevelConfigPath);
             WarnIfMissing(villageLayoutConfig, VillageLayoutConfigPath);
             WarnIfMissing(throwableConfig, ThrowableConfigPath);
+            WarnIfMissing(miracleCatalogConfig, MiracleCatalogConfigPath);
+            WarnIfMissing(faithConfig, FaithConfigPath);
+            WarnIfMissing(vfxConfig, VfxConfigPath);
 
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Test Village Scene");
@@ -158,11 +199,44 @@ namespace BlackWhiteLike.Editor.Setup
             TestHandSceneSetupEditor.EnsureMainCameraAndListener();
             var systemsScope = TestHandSceneSetupEditor.EnsureSystemsInstance();
 
-            WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig);
+            // Шаг 4 — [Miracles]: контроллеры прицеливания/удара/VFX чудес.
+            var miraclesGo = EnsureMiraclesObject(groundLayer, grabbableLayer);
+            var miracleTargeting = miraclesGo.GetComponent<MiracleTargetingController>();
+            var miracleImpact = miraclesGo.GetComponent<MiracleImpactController>();
+            var miracleVfx = miraclesGo.GetComponent<MiracleVfxController>();
 
-            // Только NeedSite-объекты — статических жителей в сцене больше нет (их Construct/Launch
-            // вызывает VillagerFactory.Spawn через InjectGameObject, не autoInjectGameObjects).
-            TestHandSceneSetupEditor.EnsureAutoInjectGameObjects(systemsScope, needSiteObjects);
+            // Шаг 4 — HUD: EventSystem (Input System New) + инстанс LevelHudCanvas.prefab в АКТИВНОЙ
+            // сцене (_TestVillage уже открыта/создана выше).
+            LevelHudSetupEditor.EnsureEventSystem();
+            EnsureHudInstance();
+            var miraclePanelView = Object.FindAnyObjectByType<MiraclePanelView>(FindObjectsInactive.Include);
+            var faithBarView = Object.FindAnyObjectByType<FaithBarView>(FindObjectsInactive.Include);
+
+            WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
+                miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView);
+
+            // NeedSite-объекты — MonoBehaviour без RegisterComponent, нужны в autoInjectGameObjects
+            // (см. память агента "vcontainer-autoinjectgameobjects"). [Miracles] сюда НЕ входит:
+            // его три контроллера прошиты в GameLifetimeScope через RegisterComponent из
+            // SerializeField-полей (см. WireScope) — второй путь инъекции через autoInjectGameObjects
+            // вызвал бы Construct() дважды (правка после ревью). HUD-View'ы по той же причине тоже
+            // не добавляются: RegisterComponent из полей scope, презентеры — pure C#.
+            // Миграция структур (см. EnsureStructures) уничтожает старые ThirdParty-объекты и
+            // создаёт новые инстансы наших префабов — старые ссылки в autoInjectGameObjects
+            // превращаются в missing-элементы (не null для C#, "fake-null" Unity-объекта), которые
+            // EnsureAutoInjectGameObjects сам не убирает (только добавляет недостающее). Чистим их
+            // здесь ДО добавления новых — иначе список растёт мусором с каждым прогоном на
+            // немигрированной сцене.
+            RemoveMissingAutoInjectEntries(systemsScope);
+
+            var autoInjectObjects = new List<GameObject>(needSiteObjects);
+            TestHandSceneSetupEditor.EnsureAutoInjectGameObjects(systemsScope, autoInjectObjects);
+            RemoveFromAutoInject(systemsScope, miraclesGo);
+
+            // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ВСЮ собранную сцену
+            // перед сохранением (обходит корневые объекты активной сцены, включая только что
+            // мигрированные структуры).
+            AssertNoThirdPartyPrefabLinksInScene(scene);
 
             Undo.CollapseUndoOperations(undoGroup);
 
@@ -179,6 +253,51 @@ namespace BlackWhiteLike.Editor.Setup
                       " (в Build Settings не добавлена — временная песочница).");
         }
 
+        /// <summary>
+        /// Удаляет из <c>autoInjectGameObjects</c> элементы, чья ссылка стала missing (объект
+        /// уничтожен — например, миграцией структур в <see cref="EnsureStructures"/>). Такие элементы
+        /// НЕ null для C# (Unity-объект living dead, "fake-null" — CLAUDE.md, "??/?. запрещены с
+        /// Unity-объектами"), явное сравнение с null через оператор Unity корректно ловит и это, и
+        /// настоящий null. Идемпотентно: на уже чистом списке — no-op без лога.
+        /// </summary>
+        private static void RemoveMissingAutoInjectEntries(GameLifetimeScope scope)
+        {
+            if (scope == null) return;
+
+            var so = new SerializedObject(scope);
+            var listProp = so.FindProperty("autoInjectGameObjects");
+            if (listProp == null) return;
+
+            int removed = 0;
+            for (int i = listProp.arraySize - 1; i >= 0; i--)
+            {
+                var element = listProp.GetArrayElementAtIndex(i);
+                // Явный "== null" (не ?./??) корректно ловит и missing-ссылку на уничтоженный
+                // объект, и настоящую пустую ссылку — оба варианта здесь мусор.
+                if (element.objectReferenceValue == null)
+                {
+                    listProp.DeleteArrayElementAtIndex(i);
+                    removed++;
+                }
+            }
+
+            if (removed == 0) return;
+
+            so.ApplyModifiedProperties();
+            Debug.Log($"[Editor] autoInjectGameObjects: удалено {removed} missing/пустых элемент(ов) (объекты уничтожены миграцией), " +
+                      $"осталось {listProp.arraySize}.");
+        }
+
+        /// <summary>
+        /// Правило CLAUDE.md "Из ThirdParty в сцену и в наши префабы попадает только визуал" —
+        /// проверка ВСЕХ корневых объектов активной сцены после сборки/миграции структур.
+        /// </summary>
+        private static void AssertNoThirdPartyPrefabLinksInScene(Scene scene)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+                EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, "_TestVillage/\"" + root.name + "\"");
+        }
+
         private static void WarnIfMissing(Object asset, string path)
         {
             if (asset == null)
@@ -186,144 +305,426 @@ namespace BlackWhiteLike.Editor.Setup
                                   "\"BlackWhiteLike/Configs/Create Empty SO Set\".");
         }
 
+        /// <summary>
+        /// Миграция (правка после ревью): в первом прогоне <c>[Miracles]</c> ошибочно попал в
+        /// <c>autoInjectGameObjects</c> одновременно с RegisterComponent его контроллеров в
+        /// GameLifetimeScope — Construct() вызывался бы дважды. Удаляет объект из списка, если он
+        /// там есть; идемпотентно (повторный прогон на уже мигрированной сцене — no-op без лога).
+        /// </summary>
+        private static void RemoveFromAutoInject(GameLifetimeScope scope, GameObject go)
+        {
+            if (scope == null || go == null) return;
+
+            var so = new SerializedObject(scope);
+            var listProp = so.FindProperty("autoInjectGameObjects");
+            if (listProp == null) return;
+
+            for (int i = 0; i < listProp.arraySize; i++)
+            {
+                if (listProp.GetArrayElementAtIndex(i).objectReferenceValue as GameObject != go)
+                    continue;
+
+                listProp.DeleteArrayElementAtIndex(i);
+                so.ApplyModifiedProperties();
+                Debug.Log($"[Editor] autoInjectGameObjects: \"{go.name}\" удалён (миграция — регистрируется через " +
+                          $"RegisterComponent в GameLifetimeScope), всего в списке {listProp.arraySize}.");
+                return;
+            }
+        }
+
         // ------------------------------------------------------------------------------------
-        // Дома / поле + NeedSiteController
+        // Шаг 4 — зависимости конвейера: конфиги → VFX-префабы → HUD (см. вызовы в начале
+        // BuildTestVillageScene). Каждый шаг идемпотентен и вызывается только если результата
+        // ещё нет на диске — повторный прогон не плодит лишних логов от уже собранных шагов.
         // ------------------------------------------------------------------------------------
 
+        private static void EnsureStep4Configs()
+        {
+            if (File.Exists(MiracleCatalogConfigPath) && File.Exists(FaithConfigPath) && File.Exists(VfxConfigPath))
+                return;
+
+            Debug.Log("[Editor] Конфиги шага 4 (Miracles/Faith/Vfx) не найдены — вызываю ConfigAssetCreatorEditor.CreateAll().");
+            ConfigAssetCreatorEditor.CreateAll();
+        }
+
+        private static void EnsureStep4VfxPrefabs()
+        {
+            if (File.Exists(FireballVfxPrefabPath) && File.Exists(RainVfxPrefabPath))
+                return;
+
+            Debug.Log("[Editor] VFX-префабы шага 4 не найдены — вызываю MiracleVfxPrefabSetupEditor.SetupMiracleVfxPrefabs().");
+            MiracleVfxPrefabSetupEditor.SetupMiracleVfxPrefabs();
+        }
+
+        /// <summary>
+        /// HUD собирается ПОСЛЕ открытия/создания _TestVillage — EnsureSceneInstance кладёт инстанс
+        /// в АКТИВНУЮ сцену (SceneManager.GetActiveScene()), которой к моменту вызова уже является
+        /// _TestVillage.
+        /// </summary>
+        private static void EnsureHudInstance()
+        {
+            var existingView = Object.FindAnyObjectByType<MiraclePanelView>(FindObjectsInactive.Include);
+            if (existingView != null) return;
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(HudPrefabPath);
+            if (prefab == null)
+            {
+                Debug.LogWarning("[Editor] " + HudPrefabPath + " не найден — вызываю LevelHudSetupEditor.BuildLevelHud().");
+                LevelHudSetupEditor.BuildLevelHud();
+                prefab = AssetDatabase.LoadAssetAtPath<GameObject>(HudPrefabPath);
+            }
+
+            if (prefab == null)
+            {
+                Debug.LogError("[Editor] " + HudPrefabPath + " всё ещё не собран (см. лог выше — возможно, ждёт " +
+                                "асинхронного импорта TMP Essentials) — HUD не размещён в _TestVillage. " +
+                                "Прогоните \"BlackWhiteLike/UI/Build Level HUD\" вручную и повторите сборку сцены.");
+                return;
+            }
+
+            // BuildLevelHud() уже мог сам разместить инстанс в активной сцене — проверяем ещё раз,
+            // чтобы не создать дубль.
+            if (Object.FindAnyObjectByType<MiraclePanelView>(FindObjectsInactive.Include) != null) return;
+
+            LevelHudSetupEditor.EnsureSceneInstance(prefab);
+        }
+
+        // ------------------------------------------------------------------------------------
+        // Шаг 4 — [Miracles]: прицеливание/удар/VFX чудес
+        // ------------------------------------------------------------------------------------
+
+        private static GameObject EnsureMiraclesObject(int groundLayer, int grabbableLayer)
+        {
+            var go = TestHandSceneSetupEditor.FindInSceneIncludingInactive("[Miracles]");
+            if (go == null)
+            {
+                go = new GameObject("[Miracles]");
+                Undo.RegisterCreatedObjectUndo(go, "Create [Miracles]");
+                Debug.Log("[Editor] Создан объект \"[Miracles]\".");
+            }
+
+            var targeting = go.GetComponent<MiracleTargetingController>();
+            if (targeting == null) targeting = Undo.AddComponent<MiracleTargetingController>(go);
+
+            var impact = go.GetComponent<MiracleImpactController>();
+            if (impact == null) impact = Undo.AddComponent<MiracleImpactController>(go);
+
+            if (go.GetComponent<MiracleVfxController>() == null)
+                Undo.AddComponent<MiracleVfxController>(go);
+
+            var previewRoot = EnsurePreviewRing(go);
+
+            WireMiracleTargeting(targeting, previewRoot, groundLayer);
+            WireMiracleImpact(impact, grabbableLayer);
+
+            return go;
+        }
+
+        /// <summary>
+        /// Двухуровневая иерархия превью-кольца чуда: <c>PreviewRoot</c> (это <c>_previewRoot</c> —
+        /// контроллер масштабирует ЕГО как (d,1,d), см. контракт) → дочерний <c>Ring</c> (примитив
+        /// Cylinder с фиксированным localScale (1,0.02,1) — тонкий диск при localScale родителя (1,1,1)
+        /// = диаметр 1 м). Коллайдер примитива удалён — кольцо визуальное, не должно участвовать в
+        /// физике. Выключен по умолчанию (появляется только во время прицеливания).
+        /// </summary>
+        private static Transform EnsurePreviewRing(GameObject miraclesGo)
+        {
+            var previewRootTransform = miraclesGo.transform.Find("PreviewRoot");
+            GameObject previewRootGo;
+            if (previewRootTransform == null)
+            {
+                previewRootGo = new GameObject("PreviewRoot");
+                Undo.RegisterCreatedObjectUndo(previewRootGo, "Create PreviewRoot");
+                previewRootGo.transform.SetParent(miraclesGo.transform, worldPositionStays: false);
+                Debug.Log("[Editor] Создан \"PreviewRoot\" под \"[Miracles]\".");
+            }
+            else
+            {
+                previewRootGo = previewRootTransform.gameObject;
+            }
+
+            previewRootGo.transform.localScale = Vector3.one;
+
+            var ringTransform = previewRootGo.transform.Find("Ring");
+            GameObject ringGo;
+            if (ringTransform == null)
+            {
+                ringGo = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                ringGo.name = "Ring";
+                Undo.RegisterCreatedObjectUndo(ringGo, "Create Ring");
+                ringGo.transform.SetParent(previewRootGo.transform, worldPositionStays: false);
+                ringGo.transform.localPosition = Vector3.zero;
+
+                var ringCollider = ringGo.GetComponent<Collider>();
+                if (ringCollider != null) Undo.DestroyObjectImmediate(ringCollider);
+
+                var renderer = ringGo.GetComponent<MeshRenderer>();
+                if (renderer != null) renderer.sharedMaterial = EnsurePreviewRingMaterial();
+
+                Debug.Log("[Editor] Создан \"Ring\" под \"PreviewRoot\".");
+            }
+            else
+            {
+                ringGo = ringTransform.gameObject;
+            }
+
+            ringGo.transform.localScale = new Vector3(1f, 0.02f, 1f);
+            previewRootGo.SetActive(false);
+
+            return previewRootGo.transform;
+        }
+
+        private static Material EnsurePreviewRingMaterial()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(MiraclePreviewRingMaterialPath);
+            if (existing != null) return existing;
+
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                Debug.LogError("[Editor] Шейдер \"Universal Render Pipeline/Lit\" не найден — MiraclePreviewRing.mat не создан.");
+                return null;
+            }
+
+            var material = new Material(shader) { name = "MiraclePreviewRing" };
+            material.SetFloat("_Surface", 1f); // Transparent
+            material.SetFloat("_Blend", 0f); // Alpha
+            material.SetColor("_BaseColor", new Color(0.4f, 0.8f, 1f, 0.35f));
+            material.renderQueue = (int)RenderQueue.Transparent;
+
+            EnsureFolder("Assets/Development/Art/Materials");
+            AssetDatabase.CreateAsset(material, MiraclePreviewRingMaterialPath);
+            Debug.Log("[Editor] Создан материал: " + MiraclePreviewRingMaterialPath);
+            return material;
+        }
+
+        private static void WireMiracleTargeting(MiracleTargetingController controller, Transform previewRoot, int groundLayer)
+        {
+            const int expected = 2;
+            var so = new SerializedObject(controller);
+            var ownerLabel = "MiracleTargetingController";
+
+            int wired = 0;
+            wired += SetRef(so, "_previewRoot", previewRoot, ownerLabel) ? 1 : 0;
+            // Баг с playtest'а шага 4: дома лежат на слое Default с MeshCollider (структуры сцены не
+            // переводятся на Ground), а луч таргетинга ходил только по Ground — в изометрии он
+            // проходил СКВОЗЬ дом насквозь и клал точку каста на землю ЗА домом, вне радиуса чуда.
+            // Маска расширена на Ground|Default — WireLayerMask здесь не подходит (та утилита
+            // прошивает ровно один слой), маска считается и проверяется явно.
+            wired += WireGroundAndDefaultMask(so, "_groundMask", groundLayer, ownerLabel) ? 1 : 0;
+            so.ApplyModifiedProperties();
+
+            if (wired == expected)
+                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected} (_groundMask=Ground|Default — таргетинг по структурам).");
+            else
+                Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей.");
+        }
+
+        /// <summary>
+        /// Прошивает <paramref name="propertyName"/> битовой маской Ground|Default (Default всегда
+        /// слой 0). Численная проверка результата (.claude/rules/editor-files.md): m_Bits должен
+        /// точно совпасть с ожидаемой комбинацией, а не просто "поле не пустое".
+        /// </summary>
+        private static bool WireGroundAndDefaultMask(SerializedObject so, string propertyName, int groundLayer, string ownerLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — маска не прошита.");
+                return false;
+            }
+
+            if (groundLayer < 0)
+            {
+                Debug.LogWarning($"[Editor] Слой Ground не создан — \"{propertyName}\" на {ownerLabel} оставлена как была.");
+                return false;
+            }
+
+            int expectedBits = (1 << groundLayer) | 1; // Ground | Default(0)
+            prop.intValue = expectedBits;
+            return prop.intValue == expectedBits;
+        }
+
+        private static void WireMiracleImpact(MiracleImpactController controller, int grabbableLayer)
+        {
+            const int expected = 1;
+            var so = new SerializedObject(controller);
+            var ownerLabel = "MiracleImpactController";
+
+            int wired = WireLayerMask(so, "_villagerMask", grabbableLayer, ownerLabel) ? 1 : 0;
+            so.ApplyModifiedProperties();
+
+            if (wired == expected)
+                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected} (_villagerMask=Grabbable).");
+            else
+                Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей.");
+        }
+
+        // ------------------------------------------------------------------------------------
+        // Дома / поле — наши префабы (VillageStructurePrefabSetupEditor), позиционирование +
+        // прошивка _siteIndex/_villagerMask на сценном инстансе
+        // ------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Расставляет структуры деревни как инстансы НАШИХ префабов
+        /// (Assets/Development/Prefabs/Village/&lt;Name&gt;.prefab — собираются
+        /// <see cref="VillageStructurePrefabSetupEditor"/>, если их ещё нет на диске). Мигрирует уже
+        /// существующие на сцене голые ThirdParty-инстансы (старая версия этой сцены) в наши префабы,
+        /// сохраняя позицию/поворот — правка после playtest'а шага 4, CLAUDE.md "Из ThirdParty ...
+        /// только визуал, никогда — префаб-инстанс".
+        /// </summary>
         private static List<GameObject> EnsureStructures(int grabbableLayer)
         {
+            bool anyPrefabMissing = false;
+            foreach (var definition in VillageStructurePrefabSetupEditor.Structures)
+            {
+                if (!File.Exists(VillageStructurePrefabSetupEditor.GetPrefabPath(definition.Name)))
+                {
+                    anyPrefabMissing = true;
+                    break;
+                }
+            }
+
+            if (anyPrefabMissing)
+            {
+                Debug.Log("[Editor] Не все префабы структур деревни найдены на диске — вызываю " +
+                          "VillageStructurePrefabSetupEditor.SetupVillageStructurePrefabs().");
+                VillageStructurePrefabSetupEditor.SetupVillageStructurePrefabs();
+            }
+
             var needSiteObjects = new List<GameObject>();
             int nextSiteIndex = 0;
+            int migratedCount = 0;
 
-            foreach (var (name, prefabPath, position, needType) in Structures)
+            foreach (var (name, position) in StructurePositions)
             {
-                var go = TestHandSceneSetupEditor.FindInSceneIncludingInactive(name);
-                bool isNew = go == null;
-
-                if (isNew)
+                var definition = FindStructureDefinition(name);
+                var prefabPath = VillageStructurePrefabSetupEditor.GetPrefabPath(name);
+                var ourPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (ourPrefab == null)
                 {
-                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (prefab == null)
-                    {
-                        Debug.LogWarning("[Editor] Не найден ThirdParty-префаб " + prefabPath + " — \"" + name + "\" не создан.");
-                        continue;
-                    }
+                    Debug.LogWarning("[Editor] " + prefabPath + " не найден (см. лог выше) — \"" + name + "\" не размещён в сцене.");
+                    continue;
+                }
 
-                    var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                var go = TestHandSceneSetupEditor.FindInSceneIncludingInactive(name);
+
+                if (go == null)
+                {
+                    var instance = (GameObject)PrefabUtility.InstantiatePrefab(ourPrefab);
                     instance.name = name;
                     Undo.RegisterCreatedObjectUndo(instance, "Create " + name);
+                    instance.transform.position = position;
                     go = instance;
-                    go.transform.position = position;
-                    Debug.Log("[Editor] Создан объект структуры: " + name + " (" + prefabPath + ").");
+                    Debug.Log("[Editor] Создан объект структуры (наш префаб): " + name + " (" + prefabPath + ").");
                 }
-                // Позицию существующего объекта не трогаем — расстановка на сцене могла быть
-                // подкручена вручную (тот же принцип, что и для бочек в TestHandSceneSetupEditor).
-
-                if (needType.HasValue)
+                else
                 {
-                    EnsureNeedSite(go, nextSiteIndex, needType.Value, grabbableLayer);
+                    var correspondingSource = PrefabUtility.GetCorrespondingObjectFromSource(go);
+                    var sourcePath = correspondingSource != null ? AssetDatabase.GetAssetPath(correspondingSource) : null;
+                    bool isThirdPartyInstance = correspondingSource != null && EditorPrefabUtility.IsThirdPartyPath(sourcePath);
+
+                    if (isThirdPartyInstance)
+                    {
+                        // Миграция: старая версия сцены держала голый ThirdParty-инстанс с нашим
+                        // NeedSiteController поверх — заменяем на инстанс нашего префаба, сохраняя
+                        // позицию/поворот (масштаб теперь берётся из префаба — Structures).
+                        var savedPosition = go.transform.position;
+                        var savedRotation = go.transform.rotation;
+                        Undo.DestroyObjectImmediate(go);
+
+                        var migrated = (GameObject)PrefabUtility.InstantiatePrefab(ourPrefab);
+                        migrated.name = name;
+                        Undo.RegisterCreatedObjectUndo(migrated, "Migrate " + name);
+                        migrated.transform.position = savedPosition;
+                        migrated.transform.rotation = savedRotation;
+                        go = migrated;
+                        migratedCount++;
+                        Debug.Log("[Editor] \"" + name + "\" мигрирован: ThirdParty-инстанс (" + sourcePath +
+                                  ") → наш префаб " + prefabPath + " (позиция/поворот сохранены).");
+                    }
+                    // Иначе уже инстанс нашего префаба (или неизвестный объект без source) — transform не трогаем.
+                }
+
+                if (definition.NeedType.HasValue)
+                {
+                    EnsureNeedSiteOnInstance(go, nextSiteIndex, definition.NeedType.Value, grabbableLayer);
                     needSiteObjects.Add(go);
                     nextSiteIndex++;
                 }
             }
 
-            Debug.Log($"[Editor] Структуры деревни: {Structures.Length} всего, NeedSiteController на " +
+            if (migratedCount > 0)
+                Debug.Log($"[Editor] Структуры деревни: мигрировано {migratedCount} объект(ов) с ThirdParty-инстансов на наши префабы.");
+
+            Debug.Log($"[Editor] Структуры деревни: {StructurePositions.Length} всего, NeedSiteController на " +
                       $"{needSiteObjects.Count} (индексы 0..{needSiteObjects.Count - 1}).");
             return needSiteObjects;
         }
 
-        /// <summary>
-        /// Добавляет триггер-зону чуда на структуру: kinematic Rigidbody (обязателен для срабатывания
-        /// OnTrigger* — см. CLAUDE.md, "Триггеры требуют Rigidbody"), BoxCollider(isTrigger) по bounds
-        /// рендереров, NeedSiteController с прошитыми _siteIndex/_needType/_villagerMask и тремя
-        /// визуальными маркерами (ревью шага 3, Б2 — раньше все три сайта получали дефолт
-        /// siteIndex=0/Fire без единого прошитого поля, фича не имела наблюдаемого результата).
-        /// _villagerMask (LayerMask, ревью плейтеста шага 3) — маска слоя Grabbable, по которой
-        /// NeedSiteController собирает жителей Physics.OverlapSphere при срабатывании нужды; без неё
-        /// OverlapSphere не находит никого, и паника не возникает вообще (code-writer'у нужна эта
-        /// прошивка, чтобы правка была не бесполезной). Размер BoxCollider выставляется только при
-        /// первом добавлении компонента — повторный запуск не затирает подкрученный вручную объём триггера.
-        /// </summary>
-        private static void EnsureNeedSite(GameObject go, int siteIndex, NeedType needType, int grabbableLayer)
+        private static (string Name, string SourcePrefabPath, Vector3 Scale, NeedType? NeedType) FindStructureDefinition(string name)
         {
-            var rigidbody = go.GetComponent<Rigidbody>();
-            if (rigidbody == null) rigidbody = Undo.AddComponent<Rigidbody>(go);
-            rigidbody.isKinematic = true;
-            rigidbody.useGravity = false;
-
-            var box = go.GetComponent<BoxCollider>();
-            bool boxIsNew = box == null;
-            if (boxIsNew)
+            foreach (var definition in VillageStructurePrefabSetupEditor.Structures)
             {
-                box = Undo.AddComponent<BoxCollider>(go);
-                box.isTrigger = true;
-                SizeBoxFromRenderers(go, box);
-            }
-            else if (!box.isTrigger)
-            {
-                Undo.RecordObject(box, "Mark NeedSite Trigger");
-                box.isTrigger = true;
+                if (definition.Name == name) return definition;
             }
 
+            Debug.LogError("[Editor] \"" + name + "\" не найден в VillageStructurePrefabSetupEditor.Structures — " +
+                            "таблицы позиций и структур рассинхронизированы.");
+            return (name, null, Vector3.one, null);
+        }
+
+        /// <summary>
+        /// Прошивает <c>_siteIndex</c>/<c>_villagerMask</c> на КОНКРЕТНОМ сценном инстансе структуры
+        /// (правка после playtest'а шага 4: триггер/маркеры/NeedType теперь собраны в самом префабе
+        /// VillageStructurePrefabSetupEditor'ом — здесь остаётся только то, что зависит от конкретной
+        /// сцены/позиции в таймлайне). _villagerMask (ревью плейтеста шага 3) — маска слоя Grabbable,
+        /// по которой NeedSiteController собирает жителей Physics.OverlapSphere при срабатывании нужды.
+        /// Сверяет needType в префабе с ожидаемым для этой позиции — расхождение (битая таблица) не
+        /// молчит, а предупреждает.
+        /// </summary>
+        private static void EnsureNeedSiteOnInstance(GameObject go, int siteIndex, NeedType expectedNeedType, int grabbableLayer)
+        {
             var controller = go.GetComponent<NeedSiteController>();
             if (controller == null)
             {
-                controller = Undo.AddComponent<NeedSiteController>(go);
-                Debug.Log("[Editor] NeedSiteController добавлен на \"" + go.name + "\".");
+                Debug.LogError("[Editor] \"" + go.name + "\": NeedSiteController отсутствует на инстансе нашего префаба — " +
+                                "проверьте VillageStructurePrefabSetupEditor (возможно, устаревший префаб на диске).");
+                return;
             }
 
-            float topLocalY = ComputeLocalTopY(go);
-            var markerLocalPosition = new Vector3(0f, topLocalY + 0.5f, 0f);
-            var normalMarker = EnsureVisualMarker(go, "Visual_Normal", new Color(0.2f, 0.85f, 0.2f), markerLocalPosition, initiallyActive: true);
-            var activeMarker = EnsureVisualMarker(go, "Visual_Active", new Color(0.95f, 0.3f, 0.05f), markerLocalPosition, initiallyActive: false);
-            var expiredMarker = EnsureVisualMarker(go, "Visual_Expired", new Color(0.35f, 0.35f, 0.35f), markerLocalPosition, initiallyActive: false);
-
-            WireNeedSite(controller, siteIndex, needType, normalMarker, activeMarker, expiredMarker, grabbableLayer);
-        }
-
-        /// <summary>
-        /// Прошивает все 6 обязательных полей NeedSiteController (Н8, ревью шага 3; _villagerMask
-        /// добавлен ревью плейтеста шага 3): счётчик "прошито N из M" — LogError, если не все поля
-        /// прошиты (частичная прошивка = сцена собралась, но фича молча не работает в Play Mode,
-        /// см. .claude/rules/editor-files.md).
-        /// </summary>
-        private static void WireNeedSite(NeedSiteController controller, int siteIndex, NeedType needType,
-            GameObject normalVisual, GameObject activeVisual, GameObject expiredVisual, int grabbableLayer)
-        {
-            const int expected = 6;
+            const int expected = 2;
             var so = new SerializedObject(controller);
-            var ownerLabel = "NeedSiteController(\"" + controller.name + "\")";
+            var ownerLabel = "NeedSiteController(\"" + go.name + "\")";
+
+            var needTypeProp = so.FindProperty("_needType");
+            if (needTypeProp != null && needTypeProp.intValue != (int)expectedNeedType)
+            {
+                Debug.LogWarning($"[Editor] {ownerLabel}: _needType в префабе ({(NeedType)needTypeProp.intValue}) не совпадает " +
+                                  $"с ожидаемым для этой позиции ({expectedNeedType}) — проверьте VillageStructurePrefabSetupEditor.Structures.");
+            }
 
             int wired = 0;
             wired += SetIntProp(so, "_siteIndex", siteIndex, ownerLabel) ? 1 : 0;
-            wired += SetIntProp(so, "_needType", (int)needType, ownerLabel) ? 1 : 0;
-            wired += SetRef(so, "_normalVisual", normalVisual, ownerLabel) ? 1 : 0;
-            wired += SetRef(so, "_activeVisual", activeVisual, ownerLabel) ? 1 : 0;
-            wired += SetRef(so, "_expiredVisual", expiredVisual, ownerLabel) ? 1 : 0;
-            wired += WireVillagerMask(so, "_villagerMask", grabbableLayer, ownerLabel) ? 1 : 0;
-
+            wired += WireLayerMask(so, "_villagerMask", grabbableLayer, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)
-            {
-                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected} (siteIndex={siteIndex}, needType={needType}, " +
-                          $"_villagerMask=Grabbable).");
-            }
+                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected} (siteIndex={siteIndex}, _villagerMask=Grabbable).");
             else
-            {
                 Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей — " +
                                 "проверьте имена SerializeField в NeedSiteController, иначе фича молча не работает в Play Mode.");
-            }
         }
 
         /// <summary>
-        /// Прошивает LayerMask-поле слоем Grabbable через единственный источник — EditorLayerUtility.
-        /// SetLayerMask (та же утилита, что и для рук/камеры) — и подтверждает успех численно
+        /// Прошивает LayerMask-поле через единственный источник — EditorLayerUtility.SetLayerMask
+        /// (та же утилита, что и для рук/камеры/чудес) — и подтверждает успех численно
         /// (m_Bits == 1 &lt;&lt; layerIndex), а не «поле не пустое»: пустая маска молча делает
-        /// Physics.OverlapSphere в NeedSiteController бесполезным (OverlapSphere не находит никого),
-        /// поэтому недостаточно просто не упасть на LogWarning — нужно подтвердить конкретное число.
+        /// Physics.OverlapSphere/Physics.CheckSphere бесполезным, поэтому недостаточно просто не
+        /// упасть на LogWarning — нужно подтвердить конкретное число. Изначально назывался
+        /// WireVillagerMask (NeedSite/шаг 3) — обобщён под шаг 4 ([Miracles]._groundMask/_villagerMask).
         /// </summary>
-        private static bool WireVillagerMask(SerializedObject so, string propertyName, int layerIndex, string ownerLabel)
+        private static bool WireLayerMask(SerializedObject so, string propertyName, int layerIndex, string ownerLabel)
         {
             EditorLayerUtility.SetLayerMask(so, propertyName, layerIndex, ownerLabel);
 
@@ -331,89 +732,6 @@ namespace BlackWhiteLike.Editor.Setup
             if (prop == null || layerIndex < 0) return false; // EditorLayerUtility уже залогировал причину.
 
             return prop.intValue == (1 << layerIndex);
-        }
-
-        /// <summary>
-        /// Верх bounds структуры в её локальных координатах (для позиции визуальных маркеров над
-        /// крышей/грядкой) — считается по GetComponentsInChildren&lt;Renderer&gt;, тот же подход,
-        /// что и SizeBoxFromRenderers/SizeCapsuleFromRenderers в соседних скриптах.
-        /// </summary>
-        private static float ComputeLocalTopY(GameObject go)
-        {
-            var renderers = go.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0) return 1f;
-
-            var bounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                bounds.Encapsulate(renderers[i].bounds);
-
-            var topWorld = new Vector3(bounds.center.x, bounds.max.y, bounds.center.z);
-            return go.transform.InverseTransformPoint(topWorld).y;
-        }
-
-        /// <summary>
-        /// Создаёт (если ещё нет) простой примитив-маркер под визуальное состояние NeedSite.
-        /// Идемпотентен по имени child'а — уже существующий маркер не трогается (цвет/позиция могут
-        /// быть подкручены художником вручную). Коллайдер примитива уничтожается — маркер чисто
-        /// визуальный и не должен участвовать в физике/триггере самого NeedSite.
-        /// </summary>
-        private static GameObject EnsureVisualMarker(GameObject parent, string name, Color color, Vector3 localPosition, bool initiallyActive)
-        {
-            var existing = parent.transform.Find(name);
-            if (existing != null) return existing.gameObject;
-
-            var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            marker.name = name;
-            Undo.RegisterCreatedObjectUndo(marker, "Create " + name);
-            marker.transform.SetParent(parent.transform, worldPositionStays: false);
-            marker.transform.localPosition = localPosition;
-            marker.transform.localScale = Vector3.one * 0.6f;
-
-            var markerCollider = marker.GetComponent<Collider>();
-            if (markerCollider != null)
-                Undo.DestroyObjectImmediate(markerCollider);
-
-            var renderer = marker.GetComponent<MeshRenderer>();
-            if (renderer != null)
-            {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null)
-                {
-                    var material = new Material(shader) { name = name + "_Mat" };
-                    material.SetColor("_BaseColor", color);
-                    renderer.sharedMaterial = material;
-                }
-                else
-                {
-                    Debug.LogWarning("[Editor] Шейдер \"Universal Render Pipeline/Lit\" не найден — маркер \"" + name + "\" останется с дефолтным материалом.");
-                }
-            }
-
-            marker.SetActive(initiallyActive);
-            Debug.Log("[Editor] Создан визуальный маркер \"" + name + "\" под \"" + parent.name + "\".");
-            return marker;
-        }
-
-        private static void SizeBoxFromRenderers(GameObject go, BoxCollider box)
-        {
-            var renderers = go.GetComponentsInChildren<Renderer>(true);
-            if (renderers.Length == 0)
-            {
-                Debug.LogWarning("[Editor] \"" + go.name + "\": рендереры не найдены — BoxCollider оставлен с дефолтными размерами.");
-                return;
-            }
-
-            var bounds = renderers[0].bounds;
-            for (int i = 1; i < renderers.Length; i++)
-                bounds.Encapsulate(renderers[i].bounds);
-
-            box.center = go.transform.InverseTransformPoint(bounds.center);
-
-            var scale = go.transform.lossyScale;
-            box.size = new Vector3(
-                scale.x != 0f ? bounds.size.x / scale.x : bounds.size.x,
-                scale.y != 0f ? bounds.size.y / scale.y : bounds.size.y,
-                scale.z != 0f ? bounds.size.z / scale.z : bounds.size.z);
         }
 
         // ------------------------------------------------------------------------------------
@@ -543,7 +861,10 @@ namespace BlackWhiteLike.Editor.Setup
 
         private static void WireScope(GameLifetimeScope scope, HandConfig handConfig, IsometricCameraConfig cameraConfig,
             VillagerConfig villagerConfig, LevelConfig levelConfig, ThrowableConfig throwableConfig,
-            GodHandController godHand, CameraRig cameraRig)
+            GodHandController godHand, CameraRig cameraRig,
+            MiracleCatalogConfig miracleCatalogConfig, FaithConfig faithConfig, VfxConfig vfxConfig,
+            MiracleTargetingController miracleTargeting, MiracleImpactController miracleImpact, MiracleVfxController miracleVfx,
+            MiraclePanelView miraclePanelView, FaithBarView faithBarView)
         {
             if (scope == null)
             {
@@ -551,7 +872,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 7;
+            const int expected = 15;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -563,6 +884,15 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetRef(so, "_throwableConfig", throwableConfig, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_godHandController", godHand, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_cameraRig", cameraRig, ownerLabel) ? 1 : 0;
+            // Шаг 4 — Чудеса + Faith (game-design.md §19.4).
+            wired += SetRef(so, "_miracleCatalogConfig", miracleCatalogConfig, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_faithConfig", faithConfig, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_vfxConfig", vfxConfig, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_miracleTargetingController", miracleTargeting, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_miracleImpactController", miracleImpact, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_miracleVfxController", miracleVfx, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_miraclePanelView", miraclePanelView, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_faithBarView", faithBarView, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)

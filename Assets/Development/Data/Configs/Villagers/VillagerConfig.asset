@@ -28,6 +28,7 @@ MonoBehaviour:
   _tossAngularVelocityMin: 2
   _tossAngularVelocityMax: 6
   _hardLandingSpeedThreshold: 4
+  _blastUpwardBias: 0.7
   _tossedTimeout: 6
   _mass: 10
   _fallKillHeight: -5

@@ -1,0 +1,55 @@
+using UnityEditor;
+using UnityEngine;
+
+namespace BlackWhiteLike.Editor.Common
+{
+    /// <summary>
+    /// Гарантирует, что ThirdParty-текстура импортирована как Sprite (иконки UI зачастую лежат
+    /// в паках с Texture Type = Default), и отдаёт готовый <see cref="Sprite"/> без редактирования
+    /// самого файла (только .meta/importer-настройки — см. CLAUDE.md, "не редактировать ThirdParty").
+    /// Используется шагом 4 (иконки чудес — Editor/Configs/ConfigAssetCreatorEditor.cs,
+    /// Editor/UI/LevelHudSetupEditor.cs).
+    /// </summary>
+    public static class EditorSpriteUtility
+    {
+        /// <summary>
+        /// Единственный источник путей к иконкам чудес (правка после ревью: строки дублировались в
+        /// Editor/Configs/ConfigAssetCreatorEditor.cs и Editor/UI/LevelHudSetupEditor.cs — нарушение
+        /// CLAUDE.md "идентификатор объявляется один раз"). Оба скрипта ссылаются на эти константы.
+        /// </summary>
+        public static class MiracleIconPaths
+        {
+            private const string BlueIconsFolder = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/UIicons/Flat/Blue/";
+
+            public const string Rain = BlueIconsFolder + "129_A_drop.png";
+            public const string Heal = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/Skill_icons/Heal_potion_nobg.png";
+            public const string Fireball = BlueIconsFolder + "240_fire.png";
+            public const string Lightning = BlueIconsFolder + "90_lightning.png";
+        }
+
+        public static Sprite EnsureSpriteAtPath(string texturePath)
+        {
+            var importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+            if (importer == null)
+            {
+                Debug.LogWarning("[Editor] Текстура не найдена или не является TextureImporter: " + texturePath);
+                return null;
+            }
+
+            if (importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                EditorUtility.SetDirty(importer);
+                importer.SaveAndReimport();
+                Debug.Log("[Editor] Texture Type переведён в Sprite: " + texturePath);
+            }
+
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(texturePath);
+            if (sprite == null)
+                Debug.LogWarning("[Editor] Не удалось загрузить Sprite после реимпорта: " + texturePath);
+
+            return sprite;
+        }
+    }
+}

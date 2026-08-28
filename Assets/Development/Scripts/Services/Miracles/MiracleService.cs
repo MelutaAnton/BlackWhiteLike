@@ -1,0 +1,100 @@
+using BlackWhiteLike.Core.Events;
+using BlackWhiteLike.Data.Configs.Miracles;
+using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Faith;
+using UnityEngine;
+
+namespace BlackWhiteLike.Services.Miracles
+{
+    /// <summary>
+    /// Реализация <see cref="IMiracleService"/>. Pure C# — держит ровно одну активную сессию каста
+    /// (см. xml-doc интерфейса), тот же прецедент, что <c>HandInteractionService</c>.
+    /// </summary>
+    public sealed class MiracleService : IMiracleService
+    {
+        private readonly IEventBus _eventBus;
+        private readonly IFaithService _faithService;
+        private readonly MiracleCatalogConfig _catalog;
+
+        private bool _isCasting;
+        private MiracleType _type;
+        private MiracleConfig _config;
+        private Vector3 _point;
+        private float _holdTime;
+        private float _radius;
+
+        public MiracleService(IEventBus eventBus, IFaithService faithService, MiracleCatalogConfig catalog)
+        {
+            _eventBus = eventBus;
+            _faithService = faithService;
+            _catalog = catalog;
+        }
+
+        public bool IsCasting => _isCasting;
+        public float CurrentRadius => _isCasting ? _radius : 0f;
+
+        public bool CanCast(MiracleType type)
+        {
+            if (!_catalog.TryGet(type, out var config)) return false;
+            return _faithService.CanAfford(config.BaseFaithCost);
+        }
+
+        public bool BeginCast(MiracleType type, Vector3 point)
+        {
+            if (_isCasting) return false; // одна активная сессия одновременно
+            if (!_catalog.TryGet(type, out var config)) return false;
+            if (!_faithService.TrySpend(config.BaseFaithCost)) return false;
+
+            _isCasting = true;
+            _type = type;
+            _config = config;
+            _point = point;
+            _holdTime = 0f;
+            _radius = config.BaseRadius;
+
+            return true;
+        }
+
+        public void UpdateCast(float deltaTime, Vector3 point)
+        {
+            if (!_isCasting) return;
+
+            _point = point;
+
+            var holdCost = _config.HoldCostPerSecond * deltaTime;
+            if (_faithService.TrySpend(holdCost))
+            {
+                _holdTime += deltaTime;
+                var t = Mathf.Clamp01(_holdTime / _config.HoldSecondsToMaxRadius);
+                _radius = Mathf.Lerp(_config.BaseRadius, _config.MaxRadius, t);
+            }
+            // Иначе — Faith не хватило на этот тик накачки: радиус замирает на текущем значении,
+            // сессия остаётся легальной (BaseFaithCost уже оплачен при BeginCast).
+        }
+
+        public void ReleaseCast()
+        {
+            if (!_isCasting) return;
+
+            var power = _config.EffectPower * (_radius / _config.BaseRadius);
+            _eventBus.Publish(new MiracleCastEvent(_type, _point, power, _radius));
+
+            CloseSession();
+        }
+
+        public void CancelCast()
+        {
+            if (!_isCasting) return;
+
+            CloseSession(); // без события, без возврата Faith
+        }
+
+        private void CloseSession()
+        {
+            _isCasting = false;
+            _config = null;
+            _holdTime = 0f;
+            _radius = 0f;
+        }
+    }
+}

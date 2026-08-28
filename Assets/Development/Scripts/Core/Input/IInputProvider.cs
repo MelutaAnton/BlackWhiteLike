@@ -49,5 +49,12 @@ namespace BlackWhiteLike.Core.Input
         /// Та же оговорка про FixedUpdate-потребителей, что и у <see cref="PointerDown"/>.
         /// </summary>
         bool PausePressed { get; }
+
+        /// <summary>
+        /// Continuous: true, если pointer сейчас над элементом UI (HUD). Единый источник этого
+        /// ответа для руки/камеры/таргетинга чуда (шаг 4) — полноценный InputRouter с разделением
+        /// контекстов Gameplay/UI (game-design §3) появится на шаге 5, здесь только сам предикат.
+        /// </summary>
+        bool IsPointerOverUi { get; }
     }
 }

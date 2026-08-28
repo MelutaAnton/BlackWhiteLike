@@ -1,6 +1,7 @@
 using BlackWhiteLike.Core.Input;
 using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Data.Configs.Camera;
+using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Hand;
 using UnityEngine;
 using VContainer;
@@ -57,6 +58,7 @@ namespace BlackWhiteLike.Controllers.Camera
         private IsometricCameraConfig _config;
         private IHandInteractionService _handInteractionService;
         private IPointerWorldProjector _pointerWorldProjector;
+        private IHandModeService _handModeService;
         private bool _initialized;
         private bool _isActive;
 
@@ -79,12 +81,14 @@ namespace BlackWhiteLike.Controllers.Camera
             IInputProvider inputProvider,
             IsometricCameraConfig config,
             IHandInteractionService handInteractionService,
-            IPointerWorldProjector pointerWorldProjector)
+            IPointerWorldProjector pointerWorldProjector,
+            IHandModeService handModeService)
         {
             _inputProvider = inputProvider;
             _config = config;
             _handInteractionService = handInteractionService;
             _pointerWorldProjector = pointerWorldProjector;
+            _handModeService = handModeService;
             _currentZoomDistance = config.DefaultZoomDistance;
             ApplyZoomDistance();
 
@@ -130,13 +134,23 @@ namespace BlackWhiteLike.Controllers.Camera
         {
             if (_inputProvider.PointerDown)
             {
-                // Первое касание решает конфликт с захватом (game-design §3): под pointer'ом есть
-                // IGrabbable — drag-pan в этом жесте не участвует. Единый критерий с рукой —
-                // TryPickGrabbable того же IPointerWorldProjector, что использует GodHandController.
-                var grabbableUnderPointer = _pointerWorldProjector.TryPickGrabbable(
-                    _inputProvider.PointerPosition, _grabbableMask, out _);
-                _dragPanEngaged = !grabbableUnderPointer &&
-                                   _pointerWorldProjector.TryProjectToGround(_inputProvider.PointerPosition, _groundMask, out _dragPanWorldAnchor);
+                // Шаг 4: в режиме Miracle тап по земле — это каст (game-design §3), не pan; тап по
+                // HUD тоже не должен утаскивать камеру. Оба условия проверяем ДО TryPickGrabbable —
+                // раньше выхода незачем гонять лишний raycast.
+                if (_handModeService.Mode != HandMode.Grab || _inputProvider.IsPointerOverUi)
+                {
+                    _dragPanEngaged = false;
+                }
+                else
+                {
+                    // Первое касание решает конфликт с захватом (game-design §3): под pointer'ом есть
+                    // IGrabbable — drag-pan в этом жесте не участвует. Единый критерий с рукой —
+                    // TryPickGrabbable того же IPointerWorldProjector, что использует GodHandController.
+                    var grabbableUnderPointer = _pointerWorldProjector.TryPickGrabbable(
+                        _inputProvider.PointerPosition, _grabbableMask, out _);
+                    _dragPanEngaged = !grabbableUnderPointer &&
+                                       _pointerWorldProjector.TryProjectToGround(_inputProvider.PointerPosition, _groundMask, out _dragPanWorldAnchor);
+                }
             }
 
             if (_dragPanEngaged && _inputProvider.IsPointerHeld)
@@ -157,13 +171,26 @@ namespace BlackWhiteLike.Controllers.Camera
         {
             var panActive = _inputProvider.Pan.sqrMagnitude > 0f;
 
-            if (panActive && !_rmbPanEngaged)
+            // Блокер 3 (ревью шага 4): провайдер пишет Pan на любом одиночном тач-жесте
+            // (PointerInputProvider.UpdateTouchGestures) — на тач-устройствах Pan всегда идёт
+            // вместе с IsPointerHeld, поэтому без этого гейта HandleRmbPan стартовал pan-жест
+            // камеры в режиме Miracle (накачка чуда тащила бы камеру) и при протаскивании пальца
+            // по HUD. На PC не проявлялось: там Pan приходит только от RMB (IsPointerHeld относится
+            // к основной pointer-кнопке/пальцу, а не к ПКМ), так что этот гейт десктопный путь ни в
+            // одном режиме руки не трогает. Различить источник Pan (RMB vs одиночный тач) через
+            // IInputProvider нельзя — провайдер физически не знает о режиме руки.
+            var blockedByHandOrUi = _inputProvider.IsPointerHeld &&
+                                     (_handModeService.Mode != HandMode.Grab || _inputProvider.IsPointerOverUi);
+
+            if (panActive && !_rmbPanEngaged && !blockedByHandOrUi)
             {
                 _rmbPanEngaged = _pointerWorldProjector.TryProjectToGround(
                     _inputProvider.PointerPosition, _groundMask, out _rmbPanWorldAnchor);
             }
-            else if (!panActive)
+            else if (!panActive || blockedByHandOrUi)
             {
+                // blockedByHandOrUi сбрасывает и уже взведённый pan — смена режима руки/выход
+                // pointer'а на HUD посреди жеста не должны оставлять его висеть до следующего кадра.
                 _rmbPanEngaged = false;
             }
 

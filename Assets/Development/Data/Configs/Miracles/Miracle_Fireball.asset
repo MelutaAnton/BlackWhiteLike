@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee0b44b6266fa864c847c8d2ef0ab236, type: 3}
+  m_Name: Miracle_Fireball
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Data.Configs.Miracles.MiracleConfig
+  _type: 2
+  _baseFaithCost: 30
+  _holdCostPerSecond: 15
+  _baseRadius: 1.5
+  _maxRadius: 3.5
+  _holdSecondsToMaxRadius: 1.5
+  _effectPower: 8
+  _alignmentShift: -10
+  _worshipYield: 15
+  _castVfx: 1
+  _icon: {fileID: 21300000, guid: b6ebb98de1e739d4da0dd3a92b3e68b4, type: 3}
+  _upgradeLevelPowerBonus: 
+  _resolvesNeeds: 
+  _createsNeed: 1
+  _createdNeed: 0
+  _createdNeedDuration: 15
+  _blastsVillagers: 1

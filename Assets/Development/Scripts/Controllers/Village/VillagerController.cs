@@ -220,7 +220,35 @@ namespace BlackWhiteLike.Controllers.Village
             _body.useGravity = _gravityBeforeGrab;
             _body.linearVelocity = throwVelocity;
 
-            // Случайный тумбл при броске (game-design §4/§5) — из VillagerConfig, не из физики захвата.
+            ApplyTossTumble();
+        }
+
+        /// <summary>
+        /// Шаг 4: разброс жителя взрывом чуда Fireball (game-design §4 — "разбрасывает жителей
+        /// взрывом"). Вызывается <c>MiracleImpactController</c> по <c>MiracleCastEvent</c>, никогда
+        /// напрямую из чуда — единственная связь чуда со сценой это событие (см. CLAUDE.md §4).
+        /// В руке взрыв не вмешивается — симметрично тому, как OnGrabbed/OnReleased уже владеют
+        /// физикой захвата целиком.
+        /// </summary>
+        public void ApplyBlast(Vector3 origin, float power)
+        {
+            if (_isGrabbed) return;
+
+            // ReportStimulus публикует VillagerStateChangedEvent синхронно (тот же контракт, что в
+            // OnGrabbed) — ApplyPhysicsForState(Tossed) снимает constraints/выставляет
+            // CollisionDetectionMode ДО того, как ниже будет выставлена скорость разлёта.
+            _stateService.ReportStimulus(_villagerId, VillagerStimulus.Blasted);
+
+            _body.linearVelocity = VillagerMovementRules.ComputeBlastVelocity(origin, _body.position, power, _config.BlastUpwardBias);
+            ApplyTossTumble();
+        }
+
+        /// <summary>
+        /// Случайный тумбл (game-design §4/§5) — общий кусок для броска рукой (OnReleased) и взрыва
+        /// чуда (ApplyBlast), вынесен, чтобы не дублировать три Random.Range.
+        /// </summary>
+        private void ApplyTossTumble()
+        {
             _body.angularVelocity = new Vector3(
                 UnityEngine.Random.Range(_config.TossAngularVelocityMin, _config.TossAngularVelocityMax),
                 UnityEngine.Random.Range(_config.TossAngularVelocityMin, _config.TossAngularVelocityMax),

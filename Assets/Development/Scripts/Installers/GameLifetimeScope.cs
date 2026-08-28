@@ -1,22 +1,31 @@
 using System;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
+using BlackWhiteLike.Controllers.Miracles;
+using BlackWhiteLike.Controllers.Vfx;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Core.Input;
 using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Core.Pool;
 using BlackWhiteLike.Data.Configs.Camera;
+using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
+using BlackWhiteLike.Data.Configs.Vfx;
 using BlackWhiteLike.Factories.Village;
+using BlackWhiteLike.Factories.Vfx;
+using BlackWhiteLike.Services.Faith;
 using BlackWhiteLike.Services.Flow;
 using BlackWhiteLike.Services.Flow.States;
 using BlackWhiteLike.Services.Hand;
 using BlackWhiteLike.Services.Idle;
 using BlackWhiteLike.Services.Meta;
+using BlackWhiteLike.Services.Miracles;
 using BlackWhiteLike.Services.Village;
+using BlackWhiteLike.Views.UI.Hud;
 using UnityEngine;
 using VContainer;
 using VContainer.Unity;
@@ -40,6 +49,16 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private VillagerConfig _villagerConfig;
         [SerializeField] private LevelConfig _levelConfig;
         [SerializeField] private ThrowableConfig _throwableConfig;
+
+        [Header("Шаг 4 — Чудеса + Faith")]
+        [SerializeField] private MiracleCatalogConfig _miracleCatalogConfig;
+        [SerializeField] private FaithConfig _faithConfig;
+        [SerializeField] private VfxConfig _vfxConfig;
+        [SerializeField] private MiracleTargetingController _miracleTargetingController;
+        [SerializeField] private MiracleImpactController _miracleImpactController;
+        [SerializeField] private MiracleVfxController _miracleVfxController;
+        [SerializeField] private MiraclePanelView _miraclePanelView;
+        [SerializeField] private FaithBarView _faithBarView;
 
         protected override void Configure(IContainerBuilder builder)
         {
@@ -74,6 +93,9 @@ namespace BlackWhiteLike.Installers
 
             // Шаг 3 — Жители + события.
             RegisterVillageSystems(builder);
+
+            // Шаг 4 — Чудеса + Faith.
+            RegisterMiracleSystems(builder);
 
             // Точка входа
             builder.RegisterEntryPoint<GameBootstrap>();
@@ -210,6 +232,101 @@ namespace BlackWhiteLike.Installers
             // Б3 (ревью шага 3): без этого сервиса IVillagerFactory не имел ни одного вызывающего.
             // IStartable — обоснование см. VillagerSpawnService (remarks).
             builder.Register<VillagerSpawnService>(Lifetime.Singleton).As<IVillagerSpawnService, IStartable>();
+        }
+
+        /// <summary>
+        /// Конфиги, сервисы, контроллеры и UI чудес/Faith (game-design §4, §12, шаг 4). Тот же
+        /// fallback-паттерн для конфигов, что у остальных SO проекта (см. remarks выше);
+        /// MiracleService/HandModeService не ITickable — их порядок регистрации друг относительно
+        /// друга и Input значения не имеет. FaithService — ITickable, регистрируется явным списком
+        /// интерфейсов (тот же приём, что VillagerStateService/LevelEventService): реген должен
+        /// тикаться после того, как VillagerStateService в этом же кадре уже применил все переходы
+        /// FSM (иначе счёт молящихся на этом Tick мог бы быть на кадр устаревшим), поэтому
+        /// регистрация — строго после RegisterVillageSystems.
+        /// </summary>
+        private void RegisterMiracleSystems(IContainerBuilder builder)
+        {
+            var miracleCatalogConfig = _miracleCatalogConfig;
+            if (miracleCatalogConfig == null)
+            {
+                Debug.LogWarning("[GameLifetimeScope] _miracleCatalogConfig не прошит (ожидаемо для сцен без чудес) — используется fallback MiracleCatalogConfig с пустым каталогом (все чудеса недоступны).");
+                miracleCatalogConfig = ScriptableObject.CreateInstance<MiracleCatalogConfig>();
+            }
+
+            builder.RegisterInstance(miracleCatalogConfig);
+
+            var faithConfig = _faithConfig;
+            if (faithConfig == null)
+            {
+                Debug.LogWarning("[GameLifetimeScope] _faithConfig не прошит (ожидаемо для сцен без Faith) — используется fallback FaithConfig с дефолтами.");
+                faithConfig = ScriptableObject.CreateInstance<FaithConfig>();
+            }
+
+            builder.RegisterInstance(faithConfig);
+
+            var vfxConfig = _vfxConfig;
+            if (vfxConfig == null)
+            {
+                Debug.LogWarning("[GameLifetimeScope] _vfxConfig не прошит (ожидаемо для сцен без VFX) — используется fallback VfxConfig с пустым каталогом (эффекты не проигрываются, только LogWarning).");
+                vfxConfig = ScriptableObject.CreateInstance<VfxConfig>();
+            }
+
+            builder.RegisterInstance(vfxConfig);
+
+            // HandModeService нужен руке и камере всегда (даже без выбранного чуда — Mode стартует
+            // Grab), регистрируется безусловно.
+            builder.Register<HandModeService>(Lifetime.Singleton).As<IHandModeService>();
+
+            builder.Register<FaithService>(Lifetime.Singleton).As<IFaithService, ITickable>();
+            builder.Register<MiracleService>(Lifetime.Singleton).As<IMiracleService>();
+            builder.Register<VfxFactory>(Lifetime.Singleton).As<IVfxFactory>();
+
+            if (_miracleTargetingController != null)
+            {
+                builder.RegisterComponent(_miracleTargetingController);
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _miracleTargetingController не прошит — превью и ввод каста чуда не будут работать в этой сцене.");
+            }
+
+            if (_miracleImpactController != null)
+            {
+                builder.RegisterComponent(_miracleImpactController);
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _miracleImpactController не прошит — Fireball не будет разбрасывать жителей в этой сцене.");
+            }
+
+            if (_miracleVfxController != null)
+            {
+                builder.RegisterComponent(_miracleVfxController);
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _miracleVfxController не прошит — VFX каста чуда не будет проигрываться в этой сцене.");
+            }
+
+            if (_miraclePanelView != null)
+            {
+                builder.RegisterComponent<IMiraclePanelView>(_miraclePanelView);
+                builder.RegisterEntryPoint<MiraclePanelPresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _miraclePanelView не прошит — панель чудес не будет работать в этой сцене (презентер не регистрируется, чтобы не упасть на резолве отсутствующего view).");
+            }
+
+            if (_faithBarView != null)
+            {
+                builder.RegisterComponent<IFaithBarView>(_faithBarView);
+                builder.RegisterEntryPoint<FaithBarPresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _faithBarView не прошит — бар Faith не будет работать в этой сцене.");
+            }
         }
     }
 }

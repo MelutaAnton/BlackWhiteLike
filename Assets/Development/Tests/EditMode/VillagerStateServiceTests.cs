@@ -382,5 +382,93 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsFalse(result);
         }
+
+        // --- Шаг 4: Blasted (взрыв чуда Fireball разбрасывает жителей, game-design §4) ---
+
+        [Test]
+        public void ReportStimulus_Blasted_FromWorship_TransitionsToTossed()
+        {
+            var service = CreateService(out _);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.NeedResolvedNearby); // -> Worship
+
+            service.ReportStimulus(id, VillagerStimulus.Blasted);
+
+            Assert.AreEqual(VillagerState.Tossed, service.GetState(id));
+        }
+
+        [Test]
+        public void ReportStimulus_Blasted_FromIdle_TransitionsToTossed_AndPublishesEvent()
+        {
+            var service = CreateService(out var eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+
+            service.ReportStimulus(id, VillagerStimulus.Blasted);
+
+            Assert.AreEqual(VillagerState.Tossed, service.GetState(id));
+            var evt = eventBus.PublishedEvents.OfType<VillagerStateChangedEvent>().Single();
+            Assert.AreEqual(VillagerState.Idle, evt.From);
+            Assert.AreEqual(VillagerState.Tossed, evt.To);
+        }
+
+        [Test]
+        public void ReportStimulus_Blasted_WhileAlreadyTossed_IsSelfLoop_WithoutEvent()
+        {
+            var service = CreateService(out var eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.Grabbed); // -> Tossed
+            eventBus.PublishedEvents.Clear();
+
+            service.ReportStimulus(id, VillagerStimulus.Blasted);
+
+            Assert.AreEqual(VillagerState.Tossed, service.GetState(id));
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<VillagerStateChangedEvent>());
+        }
+
+        // --- Шаг 4: CountInState (FaithService считает молящихся) ---
+
+        [Test]
+        public void CountInState_NoVillagers_ReturnsZero()
+        {
+            var service = CreateService(out _);
+
+            Assert.AreEqual(0, service.CountInState(VillagerState.Worship));
+        }
+
+        [Test]
+        public void CountInState_CountsOnlyMatchingState()
+        {
+            var service = CreateService(out _);
+            var idA = VillagerId.FromInstanceId(1);
+            var idB = VillagerId.FromInstanceId(2);
+            var idC = VillagerId.FromInstanceId(3);
+            service.Register(idA);
+            service.Register(idB);
+            service.Register(idC);
+            service.ReportStimulus(idA, VillagerStimulus.NeedResolvedNearby); // -> Worship
+            service.ReportStimulus(idB, VillagerStimulus.NeedResolvedNearby); // -> Worship
+            service.ReportStimulus(idC, VillagerStimulus.FireNearby); // -> Panic
+
+            Assert.AreEqual(2, service.CountInState(VillagerState.Worship));
+            Assert.AreEqual(1, service.CountInState(VillagerState.Panic));
+            Assert.AreEqual(0, service.CountInState(VillagerState.Idle));
+        }
+
+        [Test]
+        public void CountInState_UpdatesAfterTransitionOut()
+        {
+            var service = CreateService(out _);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.NeedResolvedNearby); // -> Worship
+            Assert.AreEqual(1, service.CountInState(VillagerState.Worship));
+
+            service.Tick(3.1f); // дефолт WorshipDuration = 3с -> Idle
+
+            Assert.AreEqual(0, service.CountInState(VillagerState.Worship));
+        }
     }
 }

@@ -55,6 +55,7 @@ namespace BlackWhiteLike.Tests
             var evt = eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Single();
             Assert.AreEqual(NeedType.Fire, evt.Type);
             Assert.AreEqual(2, evt.SiteIndex);
+            Assert.IsFalse(evt.ByPlayer); // запись скриптованного таймлайна — всегда false
         }
 
         [Test]
@@ -128,6 +129,7 @@ namespace BlackWhiteLike.Tests
             var evt = eventBus.PublishedEvents.OfType<NeedExpiredEvent>().Single();
             Assert.AreEqual(NeedType.Disease, evt.Type);
             Assert.AreEqual(0, evt.SiteIndex);
+            Assert.IsFalse(evt.ByPlayer); // запись скриптованного таймлайна — всегда false
         }
 
         [Test]
@@ -212,6 +214,112 @@ namespace BlackWhiteLike.Tests
             service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
 
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<NeedResolvedEvent>());
+        }
+
+        // --- Шаг 4: TriggerNeed — рантайм-запись поверх таймлайна (например, Fireball поджёг дом) ---
+
+        [Test]
+        public void TriggerNeed_PublishesNeedTriggeredEvent_WithByPlayerTrue()
+        {
+            var service = CreateService(out var eventBus); // пустой таймлайн
+
+            service.TriggerNeed(NeedType.Fire, 5, duration: 10f, byPlayer: true);
+
+            var evt = eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Single();
+            Assert.AreEqual(NeedType.Fire, evt.Type);
+            Assert.AreEqual(5, evt.SiteIndex);
+            Assert.IsTrue(evt.ByPlayer);
+        }
+
+        [Test]
+        public void TriggerNeed_WhileAlreadyActiveOnSameSite_DoesNotPublishSecondEvent()
+        {
+            var service = CreateService(out var eventBus);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            eventBus.PublishedEvents.Clear();
+
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true); // "дом уже горит" — штатный no-op
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<NeedTriggeredEvent>());
+        }
+
+        [Test]
+        public void TriggerNeed_DifferentSiteIndex_TriggersIndependently()
+        {
+            var service = CreateService(out var eventBus);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            eventBus.PublishedEvents.Clear();
+
+            service.TriggerNeed(NeedType.Fire, 1, duration: 10f, byPlayer: true);
+
+            Assert.AreEqual(1, eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Count());
+        }
+
+        [Test]
+        public void TriggerNeed_ExpiresAfterDuration_WithByPlayerTrue()
+        {
+            var service = CreateService(out var eventBus);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+            eventBus.PublishedEvents.Clear();
+
+            service.Tick(5.1f);
+
+            var evt = eventBus.PublishedEvents.OfType<NeedExpiredEvent>().Single();
+            Assert.AreEqual(NeedType.Fire, evt.Type);
+            Assert.AreEqual(0, evt.SiteIndex);
+            Assert.IsTrue(evt.ByPlayer);
+        }
+
+        [Test]
+        public void ResolveNeed_OnRuntimeTriggeredEntry_PublishesNeedResolvedEvent()
+        {
+            var service = CreateService(out var eventBus);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            eventBus.PublishedEvents.Clear();
+
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
+
+            var evt = eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Single();
+            Assert.AreEqual(NeedType.Fire, evt.Type);
+            Assert.AreEqual(0, evt.SiteIndex);
+            Assert.IsTrue(evt.ByPlayer);
+        }
+
+        [Test]
+        public void TriggerNeed_AfterPreviousRuntimeEntryExpired_TriggersAgain()
+        {
+            var service = CreateService(out var eventBus);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+            service.Tick(5.1f); // истекает
+            eventBus.PublishedEvents.Clear();
+
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+
+            Assert.AreEqual(1, eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Count());
+        }
+
+        // --- Незначительное (ревью шага 4): реентерантный TriggerNeed из обработчика Tick'а ---
+
+        [Test]
+        public void Tick_TriggerNeedCalledFromNeedTriggeredHandler_DoesNotThrow()
+        {
+            // FakeEventBus.Publish не рассылает подписчикам (см. FakeEventBus.cs) — для этого теста
+            // нужен настоящий синхронный EventBus, чтобы подписчик реально исполнился ВНУТРИ Tick,
+            // имитируя NeedSiteController-подобную реакцию на своё же NeedTriggeredEvent.
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 1f, targetSiteIndex = 0, duration = 10f };
+            var config = CreateLevelConfig(entry);
+            var eventBus = new EventBus();
+            var service = new LevelEventService(eventBus, config);
+
+            using (eventBus.Subscribe<NeedTriggeredEvent>(_ =>
+                   {
+                       // Другой (type, siteIndex) — не штатный no-op "уже активна", а реальное
+                       // добавление в _entries во время текущего Tick.
+                       service.TriggerNeed(NeedType.Hunger, 99, duration: 5f, byPlayer: true);
+                   }))
+            {
+                Assert.DoesNotThrow(() => service.Tick(1f));
+            }
         }
     }
 }

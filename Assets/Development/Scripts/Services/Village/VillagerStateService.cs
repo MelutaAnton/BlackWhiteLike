@@ -108,6 +108,17 @@ namespace BlackWhiteLike.Services.Village
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time (см. remarks класса).</summary>
         public void Tick() => Tick(UnityEngine.Time.deltaTime);
 
+        public int CountInState(VillagerState state)
+        {
+            var count = 0;
+            foreach (var kvp in _records)
+            {
+                if (kvp.Value.State == state) count++;
+            }
+
+            return count;
+        }
+
         public bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus)
         {
             switch (type)
@@ -157,8 +168,11 @@ namespace BlackWhiteLike.Services.Village
             switch (stimulus)
             {
                 case VillagerStimulus.Grabbed:
-                    // Взять рукой можно из любого состояния — если уже Tossed, сработает self-loop
-                    // (target == current) без лишнего события.
+                case VillagerStimulus.Blasted:
+                    // Взять рукой или разбросать взрывом чуда (game-design §4 "Fireball разбрасывает
+                    // жителей взрывом") можно из любого состояния — если уже Tossed, сработает
+                    // self-loop (target == current) без лишнего события. Обе причины ведут в один и
+                    // тот же Tossed, разбирать их отдельно смысла нет.
                     target = VillagerState.Tossed;
                     return true;
 

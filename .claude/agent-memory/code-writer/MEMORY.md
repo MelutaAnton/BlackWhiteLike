@@ -1,0 +1,1 @@
+- [Шаг 4: Чудеса + Faith](project_step4_miracles_faith.md) — что уже реализовано (сервисы/конфиги/UI), чего ещё нет (Heal/Lightning/Worship), как расширять новым чудом/нуждой

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.EnhancedTouch;
 using UnityEngine.InputSystem.Utilities;
@@ -11,9 +13,9 @@ namespace BlackWhiteLike.Core.Input
     /// <summary>
     /// Единственная реализация <see cref="IInputProvider"/> (game-design §3).
     /// Pure C# + <see cref="ITickable"/> — тикается VContainer каждый кадр, MonoBehaviour не нужен.
-    /// Использует новый Input System (Active Input Handling = Both, но провайдер не трогает legacy
-    /// <c>UnityEngine.Input</c> вовсе — переход сделан ради Android, где "Both" не поддерживается,
-    /// см. CLAUDE.md). Mouse и touch дают одинаковые логические события через свойства
+    /// Использует новый Input System (Active Input Handling = New — переход сделан ради Android,
+    /// где "Both" не поддерживается, см. CLAUDE.md); провайдер не трогает legacy
+    /// <c>UnityEngine.Input</c> вовсе. Mouse и touch дают одинаковые логические события через свойства
     /// <see cref="IInputProvider"/>: позиция/press читаются с общего <see cref="Pointer.current"/>
     /// (единый путь для мыши и тача — в этом и смысл pointer-абстракции), платформенные различия
     /// (pinch vs колесо, RMB-pan vs single-touch-pan) инкапсулированы внутри отдельных веток.
@@ -42,6 +44,13 @@ namespace BlackWhiteLike.Core.Input
         private float _zoom;
         private bool _pausePressed;
 
+        // Блокер 2 (ревью шага 4): кэш IsPointerOverUi на кадр (Time.frameCount), а не поле,
+        // обновляемое в Tick — см. геттер IsPointerOverUi ниже, почему вычисление перенесено туда.
+        private int _pointerOverUiCachedFrame = -1;
+        private bool _pointerOverUiCached;
+        private PointerEventData _uiRaycastEventData;
+        private readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
+
         // Нет валидной позиции с прошлого кадра — например, самый первый Tick или пойнтер только
         // что появился/сменил источник (mouse↔touch). Пока флаг false, дельта не считается,
         // только запоминается точка — иначе первый кадр даёт скачок на всю дистанцию до (0,0)
@@ -61,6 +70,28 @@ namespace BlackWhiteLike.Core.Input
         public Vector2 Pan => _pan;
         public float Zoom => _zoom;
         public bool PausePressed => _pausePressed;
+
+        /// <summary>
+        /// Блокер 2 (ревью шага 4): вычисляется лениво собственным UI-raycast'ом, а не в <see cref="Tick"/>.
+        /// Причина — VContainer тикает <see cref="ITickable"/> ДО Update-фазы MonoBehaviour, то есть
+        /// раньше <c>EventSystem.Update()</c>; <c>EventSystem.IsPointerOverGameObject()</c>,
+        /// вызванный из Tick, отдавал бы состояние ПРОШЛОГО кадра (задокументировано в
+        /// InputSystemUIInputModule), а для нового touchId на первом кадре нажатия состояния не было
+        /// вовсе (false) — все три защиты шага 4 (рука, drag-pan, таргетинг чуда) на Android были
+        /// сломаны. Раскачка не зависит от порядка выполнения систем; кэш на <see cref="Time.frameCount"/>
+        /// не даёт нескольким потребителям (рука/камера/таргетинг) за кадр гонять несколько raycast'ов.
+        /// </summary>
+        public bool IsPointerOverUi
+        {
+            get
+            {
+                if (Time.frameCount == _pointerOverUiCachedFrame) return _pointerOverUiCached;
+
+                _pointerOverUiCachedFrame = Time.frameCount;
+                _pointerOverUiCached = ComputeIsPointerOverUi();
+                return _pointerOverUiCached;
+            }
+        }
 
         /// <summary>
         /// EnhancedTouch — глобальный статический подписчик на низкоуровневые touch-события
@@ -153,6 +184,31 @@ namespace BlackWhiteLike.Core.Input
             // unscaledDeltaTime — удержание должно считаться и на паузе (timeScale = 0), иначе Pause
             // "замерзает" сам себя: PausePressed продолжает работать, а зависимая от holdTime логика — нет.
             _pointerHoldTime = held ? _pointerHoldTime + Time.unscaledDeltaTime : 0f;
+        }
+
+        /// <summary>
+        /// Шаг 4: единый источник "pointer над HUD" для руки/камеры/таргетинга чуда (см. IInputProvider).
+        /// <see cref="EventSystem.current"/> может быть null (сцена без EventSystem, например
+        /// тестовая сцена без UI) — тогда HUD не может ничего перекрыть, false. Собственный raycast
+        /// по текущей позиции pointer'а (общей для мыши и тача, см. class-doc) не нуждается в
+        /// отдельном touchId — жесты чуда/руки в проекте однопальцевые (pinch гасит pointer-семантику
+        /// целиком, см. UpdateTouchGestures), а один и тот же переиспользуемый <see cref="PointerEventData"/>
+        /// и буфер результатов не аллоцируют в стационарном режиме.
+        /// </summary>
+        private bool ComputeIsPointerOverUi()
+        {
+            var eventSystem = EventSystem.current;
+            if (eventSystem == null) return false;
+
+            if (_uiRaycastEventData == null)
+            {
+                _uiRaycastEventData = new PointerEventData(eventSystem);
+            }
+
+            _uiRaycastEventData.position = _pointerPosition;
+            _uiRaycastResults.Clear();
+            eventSystem.RaycastAll(_uiRaycastEventData, _uiRaycastResults);
+            return _uiRaycastResults.Count > 0;
         }
 
         private void UpdateMouseGestures()

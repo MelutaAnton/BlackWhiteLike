@@ -577,6 +577,23 @@ namespace BlackWhiteLike.Editor.Setup
             if (existed)
             {
                 root = PrefabUtility.LoadPrefabContents(PrefabPath);
+
+                // Миграция (правка после playtest'а шага 4, CLAUDE.md "Из ThirdParty ... только
+                // визуал"): старая версия Villager.prefab была Prefab Variant поверх
+                // SM_Chr_Peasant_Male_01.prefab (корень контента — сам ThirdParty prefab-инстанс).
+                // Распаковываем на месте, сохраняя все прошитые компоненты/ссылки — Unpack Completely
+                // переносит значения, а не сбрасывает их.
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(root))
+                {
+                    var rootSource = PrefabUtility.GetCorrespondingObjectFromSource(root);
+                    var rootSourcePath = rootSource != null ? AssetDatabase.GetAssetPath(rootSource) : null;
+                    if (EditorPrefabUtility.IsThirdPartyPath(rootSourcePath))
+                    {
+                        PrefabUtility.UnpackPrefabInstance(root, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                        Debug.Log("[Editor] Villager.prefab мигрирован: корень был ThirdParty prefab-инстансом (" +
+                                  rootSourcePath + ") — распакован (Unpack Completely), компоненты/ссылки сохранены.");
+                    }
+                }
             }
             else
             {
@@ -587,9 +604,11 @@ namespace BlackWhiteLike.Editor.Setup
                     return;
                 }
 
-                // Корень — сам инстанс ThirdParty-префаба (ссылка, не копия): SaveAsPrefabAsset на уже
-                // связанном с другим префабом инстансе создаёт Prefab Variant, а не независимую копию.
-                tempInstance = (GameObject)PrefabUtility.InstantiatePrefab(peasantPrefab);
+                // Корень — распакованная копия визуала ThirdParty-префаба (EditorPrefabUtility —
+                // CLAUDE.md "Из ThirdParty ... только визуал"): InstantiateUnpacked сразу разрывает
+                // prefab-связь (Unpack Completely), поэтому SaveAsPrefabAsset создаёт независимый
+                // префаб, а не Prefab Variant поверх пака.
+                tempInstance = EditorPrefabUtility.InstantiateUnpacked(peasantPrefab);
                 root = tempInstance;
             }
 
@@ -665,6 +684,10 @@ namespace BlackWhiteLike.Editor.Setup
                 villagerController = root.AddComponent<VillagerController>();
 
             WireVillagerController(villagerController, animator);
+
+            // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ДО SaveAsPrefabAsset,
+            // пока root ещё живой GameObject (contents или tempInstance — работает одинаково).
+            EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, "Villager.prefab");
 
             if (existed)
             {

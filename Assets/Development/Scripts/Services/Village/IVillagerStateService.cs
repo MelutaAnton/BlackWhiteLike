@@ -31,6 +31,13 @@ namespace BlackWhiteLike.Services.Village
         void Tick(float deltaTime);
 
         /// <summary>
+        /// Число зарегистрированных жителей, находящихся в <paramref name="state"/> прямо сейчас
+        /// (шаг 4: FaithService считает реген по числу молящихся). Без аллокаций — линейный проход
+        /// по внутреннему словарю записей.
+        /// </summary>
+        int CountInState(VillagerState state);
+
+        /// <summary>
         /// Таблица game-design §5 "какая нужда пугает жителей рядом" — единственный источник этого
         /// правила, наряду с таблицей переходов внутри сервиса. Только Fire описан как источник
         /// паники; Disease/Hunger по §5 источником паники не являются → false.

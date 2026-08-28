@@ -17,6 +17,15 @@ namespace BlackWhiteLike.Services.Village
         /// </summary>
         void ResolveNeed(NeedType type, int siteIndex, bool byPlayer);
 
+        /// <summary>
+        /// Рантайм-триггер нужды поверх скриптованного таймлайна (game-design §4, §5, шаг 4) — например,
+        /// Fireball поджёг дом. Если на (<paramref name="type"/>, <paramref name="siteIndex"/>) уже есть
+        /// активная запись — штатный no-op ("дом уже горит"), без предупреждения в лог. Иначе создаёт
+        /// новую активную запись с истечением через <paramref name="duration"/> и публикует
+        /// <c>NeedTriggeredEvent</c> с <c>ByPlayer</c> = <paramref name="byPlayer"/>.
+        /// </summary>
+        void TriggerNeed(NeedType type, int siteIndex, float duration, bool byPlayer);
+
         /// <summary>Продвигает таймлайн: триггерит записи по <c>triggerTime</c>, истекает нетронутые по <c>duration</c>.</summary>
         void Tick(float deltaTime);
     }

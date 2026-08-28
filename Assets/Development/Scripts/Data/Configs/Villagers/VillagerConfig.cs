@@ -66,6 +66,9 @@ namespace BlackWhiteLike.Data.Configs.Villagers
         [Tooltip("Порог относительной скорости приземления, начиная с которого приземление жёсткое (Stunned вместо возврата в Idle).")]
         [SerializeField] private float _hardLandingSpeedThreshold = 4f;
 
+        [Tooltip("Шаг 4: доля вертикальной составляющей скорости разлёта жителя от взрыва чуда (Fireball) — см. VillagerMovementRules.ComputeBlastVelocity.")]
+        [SerializeField] private float _blastUpwardBias = 0.7f;
+
         [Tooltip(
             "Н3 (ревью шага 3): страховочный таймаут Tossed → Idle. Если Landed/HardLanded так и не " +
             "пришёл (улетел за коллайдеры, застрял в геометрии), житель не должен зависать навсегда " +
@@ -105,6 +108,7 @@ namespace BlackWhiteLike.Data.Configs.Villagers
         public float TossAngularVelocityMin => _tossAngularVelocityMin;
         public float TossAngularVelocityMax => _tossAngularVelocityMax;
         public float HardLandingSpeedThreshold => _hardLandingSpeedThreshold;
+        public float BlastUpwardBias => _blastUpwardBias;
         public float TossedTimeout => _tossedTimeout;
         public float Mass => _mass;
         public float FallKillHeight => _fallKillHeight;

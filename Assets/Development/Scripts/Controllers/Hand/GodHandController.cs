@@ -38,6 +38,7 @@ namespace BlackWhiteLike.Controllers.Hand
         private IEventBus _eventBus;
         private HandConfig _handConfig;
         private IPointerWorldProjector _pointerWorldProjector;
+        private IHandModeService _handModeService;
         private bool _initialized;
 
         // Буфер одноразового ввода до ближайшего физтика (см. .claude/rules/physics-input.md):
@@ -60,13 +61,15 @@ namespace BlackWhiteLike.Controllers.Hand
             IHandInteractionService handInteractionService,
             IEventBus eventBus,
             HandConfig handConfig,
-            IPointerWorldProjector pointerWorldProjector)
+            IPointerWorldProjector pointerWorldProjector,
+            IHandModeService handModeService)
         {
             _inputProvider = inputProvider;
             _handInteractionService = handInteractionService;
             _eventBus = eventBus;
             _handConfig = handConfig;
             _pointerWorldProjector = pointerWorldProjector;
+            _handModeService = handModeService;
 
             // В11: _grabAnchor используется без null-проверки в каждом FixedUpdate (в отличие от
             // _visualRoot, который per-frame переживает отсутствие ссылки) — без него первое же
@@ -102,7 +105,8 @@ namespace BlackWhiteLike.Controllers.Hand
 
             UpdateHandPosition();
 
-            if (_inputProvider.PointerDown) _pointerDownQueued = true;
+            // Шаг 4: тап по HUD (панель чудес) не должен запускать захват под ним.
+            if (_inputProvider.PointerDown && !_inputProvider.IsPointerOverUi) _pointerDownQueued = true;
             if (_inputProvider.PointerUp) _pointerUpQueued = true;
 
             if (_grabbedObject != null)
@@ -121,6 +125,15 @@ namespace BlackWhiteLike.Controllers.Hand
             _pointerDownQueued = false;
             _pointerUpQueued = false;
 
+            // Шаг 4: режим сменился на Miracle прямо во время удержания — рука в этом режиме не
+            // хватает вовсе (game-design §3), объект не должен зависнуть в ней навсегда. Мягкая
+            // постановка (Vector3.zero), не бросок — смена режима не жест игрока на бросок.
+            if (_grabbedObject != null && _handModeService.Mode == HandMode.Miracle)
+            {
+                ReleaseGrabbedObject(Vector3.zero, publishEvent: true);
+                return;
+            }
+
             if (_grabbedObject == null)
             {
                 // Б2 (ревью шага 2): раньше здесь стоял безусловный return после TryGrab(), из-за
@@ -128,6 +141,7 @@ namespace BlackWhiteLike.Controllers.Hand
                 // терялся — куб залипал в руке без гравитации. Теперь после успешного захвата тик
                 // продолжается и Up того же тика обрабатывается ниже.
                 if (!pointerDown) return;
+                if (_handModeService.Mode != HandMode.Grab) return; // §3: в режиме Miracle рука не хватает
 
                 TryGrab();
                 if (_grabbedObject == null) return; // не нашли что взять в этот тик

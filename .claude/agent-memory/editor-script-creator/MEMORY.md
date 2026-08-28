@@ -3,3 +3,4 @@
 - [Prefab content editing pattern](prefab_content_editing_pattern.md) — `LoadPrefabContents`/`SaveAsPrefabAsset` for idempotent rebuild-but-preserve-user-tweaks prefabs
 - [VContainer autoInjectGameObjects](vcontainer_autoinject.md) — field name + idempotent list-append pattern for wiring plain scene GameObjects into DI auto-inject
 - [CameraRig pivot/zoom wiring](cameraRig_pivot_wiring.md) — pivot = rig's own transform, vcam is a child with identity local rotation at -Z dolly offset
+- [CFXR clearBehavior + TMP/UGUI asmdefs](cfxr_clearbehavior_and_tmp_ugui_asmdefs.md) — ClearBehavior enum/field for pooled ThirdParty VFX, and exact asmdef reference names for TMPro/UGUI/InputSystem UI in Editor scripts
