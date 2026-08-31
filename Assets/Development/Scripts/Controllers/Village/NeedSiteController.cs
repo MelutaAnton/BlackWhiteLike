@@ -199,11 +199,11 @@ namespace BlackWhiteLike.Controllers.Village
 
             if (_isNeedActive && config.ResolvesNeed(_needType))
             {
-                _levelEventService.ResolveNeed(_needType, _siteIndex, byPlayer: true);
+                _levelEventService.ResolveNeed(_needType, _siteIndex, byPlayer: true, causeMiracle: evt.Type);
             }
             else if (!_isNeedActive && config.CreatesNeed && config.CreatedNeed == _needType)
             {
-                _levelEventService.TriggerNeed(_needType, _siteIndex, config.CreatedNeedDuration, byPlayer: true);
+                _levelEventService.TriggerNeed(_needType, _siteIndex, config.CreatedNeedDuration, byPlayer: true, causeMiracle: evt.Type);
             }
         }
 

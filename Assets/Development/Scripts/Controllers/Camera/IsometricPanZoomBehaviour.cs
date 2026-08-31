@@ -55,6 +55,7 @@ namespace BlackWhiteLike.Controllers.Camera
         private const float PanAnomalyMultiplier = 10f;
 
         private IInputProvider _inputProvider;
+        private IInputRouter _inputRouter;
         private IsometricCameraConfig _config;
         private IHandInteractionService _handInteractionService;
         private IPointerWorldProjector _pointerWorldProjector;
@@ -79,12 +80,14 @@ namespace BlackWhiteLike.Controllers.Camera
         [Inject]
         public void Construct(
             IInputProvider inputProvider,
+            IInputRouter inputRouter,
             IsometricCameraConfig config,
             IHandInteractionService handInteractionService,
             IPointerWorldProjector pointerWorldProjector,
             IHandModeService handModeService)
         {
             _inputProvider = inputProvider;
+            _inputRouter = inputRouter;
             _config = config;
             _handInteractionService = handInteractionService;
             _pointerWorldProjector = pointerWorldProjector;
@@ -108,6 +111,16 @@ namespace BlackWhiteLike.Controllers.Camera
         {
             if (!_initialized || !_isActive) return;
             if (_pivot == null) return;
+
+            if (!_inputRouter.IsGameplay)
+            {
+                // Шаг 5: контекст ушёл из Gameplay (пауза/меню) — гасим оба пути pan'а, чтобы после
+                // возврата жест не продолжился рывком от устаревшего anchor'а (тот же приём, что
+                // и для IHandInteractionService.IsHolding в HandlePan).
+                _dragPanEngaged = false;
+                _rmbPanEngaged = false;
+                return;
+            }
 
             HandlePan();
             HandleZoom();

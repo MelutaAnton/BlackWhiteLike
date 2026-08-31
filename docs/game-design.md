@@ -92,7 +92,7 @@ Pointer-абстракция: touch и mouse дают одинаковые со�
 ### Чудеса
 **MonoBehaviour:** `MiracleTargetingController` — превью зоны действия (projector/decal) под pointer'ом, индикация накачки силы.
 **Service:** `MiracleService` — pure C#: валидация каста (`CanCast`: хватает ли Faith, валидна ли цель), расчёт стоимости от накачки, публикация `MiracleCastEvent`. Каст — stateful-сессия внутри сервиса (`BeginCast` → `UpdateCast(dt)` накачка → `ReleaseCast` / `CancelCast`), симметрично `HandInteractionService.BeginHold/EndHold`; паттерн Command не применяется (решение 2026-08-28: обёртка `CanExecute/Execute` над сервисом не несла бы состояния и смысла — undo/очередь/множественные инвокеры касту не нужны).
-**Config:** `MiracleConfig` (SO, один на чудо) — `MiracleType type`, `BaseFaithCost`, `HoldCostPerSecond`, `BaseRadius`, `MaxRadius`, `EffectPower`, `AlignmentShift` (знак определяет добро/зло), `WorshipYield` (сколько Awe/Fear даёт применение по назначению), `VfxEffectType[] vfx`, `Sprite icon`, `int[] upgradeLevelPowerBonus`.
+**Config:** `MiracleConfig` (SO, один на чудо) — `MiracleType type`, `BaseFaithCost`, `HoldCostPerSecond`, `BaseRadius`, `MaxRadius`, `EffectPower`, `AlignmentShift` (знак определяет добро/зло; применяется по исходу — нужда реально разрешена/создана, шаг 5), `VfxEffectType[] vfx`, `Sprite icon`, `int[] upgradeLevelPowerBonus`.
 **Каталог:** `MiracleCatalogConfig` (SO) — массив `MiracleConfig`, определяет состав панели.
 
 Чудеса среза:
@@ -109,7 +109,7 @@ Pointer-абстракция: touch и mouse дают одинаковые со�
 **Config:** `FaithConfig` (SO) — `BaseCapacity`, `RegenPerWorshipper`, `StartingFaithPercent`.
 
 ### Worship и Alignment
-**Service:** `WorshipService` — pure C#: единая шкала 0…`WorshipTarget` (из `LevelConfig`). Источники: разрешённая нужда (Awe), акт террора (Fear) — величины из `WorshipConfig` и `MiracleConfig.WorshipYield`. Публикует `WorshipChangedEvent`; при достижении порога — `LevelCompletedEvent`.
+**Service:** `WorshipService` — pure C#: единая шкала 0…`WorshipTarget` (из `LevelConfig`). Источники: разрешённая нужда (Awe), акт террора (Fear) — величины только из `WorshipConfig` (Awe — по нужде `AwePerNeedResolved`, Fear — по акту `FearPerTerrorAct`; `MiracleConfig.WorshipYield` удалён на шаге 5 как дубль). Публикует `WorshipChangedEvent`; при достижении порога — `LevelCompletedEvent`.
 **Service:** `AlignmentService` — pure C#: `AlignmentScore` −100…+100, сдвигается `AlignmentShift`'ами действий. Публикует `AlignmentChangedEvent` (на него подпишутся визуал §11.1 и будущее существо §15).
 **Config:** `WorshipConfig` (SO) — `AwePerNeedResolved` (per need type), `FearPerTerrorAct` (per act type), `WorshipDecayPerSecond` (по умолчанию 0 — Open Question #2).
 
@@ -187,6 +187,7 @@ UI-сцена `LevelSelect` (или панель в Main Menu): 5 карточе
 | Lightning по жителю/объекту               | Fear     | +из SO  | −evil          |
 | Бросок жителя (жёсткое приземление)       | Fear     | +из SO  | −evil (малый)  |
 | Бросок объекта в дом (разрушение декора)  | Fear     | +из SO  | −evil (малый)  |
+| Взрыв чуда: жёсткое приземление отброшенного жителя | Fear | +из SO (`VillagerBlasted`, отдельная ставка — решение 2026-08-29) | — (сдвиг только у самого чуда по исходу) |
 
 Все величины — `WorshipConfig` + `MiracleConfig`. Balance-рычаг: Fear даёт Worship быстрее, но паника временно снижает число молящихся → падает Faith-реген (самобалансирующийся trade-off, кода не требует — следствие FSM жителей).
 
@@ -391,10 +392,10 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 | `MiracleSelectedEvent`   | `MiracleType type, bool selected`                               | `HandModeService`        |
 | `MiracleCastEvent`       | `MiracleType type, Vector3 point, float power, float radius`    | `MiracleService`         |
 | `FaithChangedEvent`      | `float oldValue, float newValue, float capacity`                | `FaithService`           |
-| `NeedTriggeredEvent`     | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService` — `byPlayer = true`, если нужду создало чудо игрока (Fireball поджёг дом, §5), false — таймлайн |
-| `NeedResolvedEvent`      | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService`      |
+| `NeedTriggeredEvent`     | `NeedType type, int siteIndex, bool byPlayer, MiracleType causeMiracle` | `LevelEventService` — `byPlayer = true`, если нужду создало чудо игрока (Fireball поджёг дом, §5), false — таймлайн |
+| `NeedResolvedEvent`      | `NeedType type, int siteIndex, bool byPlayer, MiracleType causeMiracle` | `LevelEventService` — `causeMiracle` валиден только при `byPlayer` (AlignmentShift чуда по исходу, шаг 5) |
 | `NeedExpiredEvent`       | `NeedType type, int siteIndex, bool byPlayer`                   | `LevelEventService` — тот же флаг, что у Triggered (шаг 5: Fear за сгоревший дом только при `byPlayer`) |
-| `VillagerStateChangedEvent` | `int villagerId, VillagerState from, VillagerState to`       | `VillagerStateService`   |
+| `VillagerStateChangedEvent` | `VillagerId id, VillagerState from, VillagerState to, VillagerStimulus cause` (`None` — переход по таймеру; шаг 5: Fear за жёсткое приземление только при `cause == Grabbed`, не `Blasted`) | `VillagerStateService`   |
 | `WorshipChangedEvent`    | `int oldValue, int newValue, int target, WorshipSource source`  | `WorshipService`         |
 | `AlignmentChangedEvent`  | `float oldScore, float newScore`                                | `AlignmentService`       |
 | `LevelCompletedEvent`    | `LevelId id, int aweTotal, int fearTotal, float duration`       | `LevelFlowService`       |
@@ -522,7 +523,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 
 1. **Захват рукой: joint или velocity-follow?** Velocity-follow (Rigidbody следует за точкой под пальцем) обычно стабильнее на мобиле; joint честнее физически. Решить на шаге 2 по ощущению.
 2. **Worship decay.** Нужен ли спад шкалы со временем (давление на темп)? По умолчанию 0; поле в SO есть.
-3. **Численный баланс.** `WorshipYield`/`AwePerNeed`/`FearPerAct`, стоимость чудес, Faith-реген, пороги уровней — стартовые значения задать «на глаз», крутить по playtest.
+3. **Численный баланс.** `AwePerNeedResolved`/`FearPerTerrorAct`, стоимость чудес, Faith-реген, пороги уровней — стартовые значения задать «на глаз», крутить по playtest.
 4. **Пороги alignment-стейджей.** 5 стейджей: ±30/±70? Подбор по визуалу.
 5. **Fear-инфляция.** Нужен ли diminishing returns на повторный террор по одной цели (чтобы зло не было строго доминирующей стратегией)? Поле-множитель в `WorshipConfig`, по умолчанию 1.0.
 6. **Таймер уровня.** Поле `optionalTimerSeconds` есть, выключено. Включать ли на уровнях 4–5 для темпа?

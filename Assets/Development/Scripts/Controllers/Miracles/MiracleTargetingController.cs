@@ -30,6 +30,7 @@ namespace BlackWhiteLike.Controllers.Miracles
         [SerializeField] private LayerMask _groundMask;
 
         private IInputProvider _inputProvider;
+        private IInputRouter _inputRouter;
         private IHandModeService _handModeService;
         private IMiracleService _miracleService;
         private IPointerWorldProjector _pointerWorldProjector;
@@ -44,12 +45,14 @@ namespace BlackWhiteLike.Controllers.Miracles
         [Inject]
         public void Construct(
             IInputProvider inputProvider,
+            IInputRouter inputRouter,
             IHandModeService handModeService,
             IMiracleService miracleService,
             IPointerWorldProjector pointerWorldProjector,
             MiracleCatalogConfig catalog)
         {
             _inputProvider = inputProvider;
+            _inputRouter = inputRouter;
             _handModeService = handModeService;
             _miracleService = miracleService;
             _pointerWorldProjector = pointerWorldProjector;
@@ -71,6 +74,15 @@ namespace BlackWhiteLike.Controllers.Miracles
         private void Update()
         {
             if (!_initialized) return;
+
+            if (!_inputRouter.IsGameplay)
+            {
+                // Шаг 5: контекст ушёл из Gameplay (пауза/меню) — сессия каста отменяется без
+                // события (это не жест игрока на релиз), превью гасится.
+                if (_miracleService.IsCasting) _miracleService.CancelCast();
+                SetPreviewActive(false);
+                return;
+            }
 
             if (_handModeService.Mode != HandMode.Miracle || !_handModeService.TryGetSelectedMiracle(out var type))
             {

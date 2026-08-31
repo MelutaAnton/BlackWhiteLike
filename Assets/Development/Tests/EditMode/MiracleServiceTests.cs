@@ -37,6 +37,10 @@ namespace BlackWhiteLike.Tests
             public void Tick(float deltaTime)
             {
             }
+
+            public void RefillToCapacity()
+            {
+            }
         }
 
         private static MiracleConfig CreateMiracleConfig(
@@ -46,7 +50,8 @@ namespace BlackWhiteLike.Tests
             float baseRadius = 2f,
             float maxRadius = 5f,
             float holdSecondsToMaxRadius = 1.5f,
-            float effectPower = 8f)
+            float effectPower = 8f,
+            float holdGraceSeconds = 0f)
         {
             var config = ScriptableObject.CreateInstance<MiracleConfig>();
             var so = new SerializedObject(config);
@@ -57,6 +62,7 @@ namespace BlackWhiteLike.Tests
             so.FindProperty("_maxRadius").floatValue = maxRadius;
             so.FindProperty("_holdSecondsToMaxRadius").floatValue = holdSecondsToMaxRadius;
             so.FindProperty("_effectPower").floatValue = effectPower;
+            so.FindProperty("_holdGraceSeconds").floatValue = holdGraceSeconds;
             so.ApplyModifiedPropertiesWithoutUndo();
             return config;
         }
@@ -189,6 +195,47 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsTrue(service.IsCasting);
             Assert.AreEqual(2f, service.CurrentRadius, 0.001f);
+        }
+
+        [Test]
+        public void UpdateCast_WithinGraceWindow_SpendsNothing_AndRadiusStaysBase()
+        {
+            // Льготное окно (game-design, playtest шага 5): человеческий тап (~0.1с) не должен
+            // стоить дороже BaseFaithCost — hold-стоимость не списывается, радиус не растёт.
+            var catalog = CreateCatalog(CreateMiracleConfig(
+                baseFaithCost: 20f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f,
+                holdSecondsToMaxRadius: 1.5f, holdGraceSeconds: 0.15f));
+            var faith = new FakeFaithService { Current = 100f };
+            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero); // списывает ровно BaseFaithCost (20)
+            service.UpdateCast(0.05f, Vector3.zero);
+            service.UpdateCast(0.05f, Vector3.zero); // суммарно 0.1с — в пределах grace (0.15с)
+
+            Assert.AreEqual(80f, faith.Current, 0.001f); // 100 - BaseFaithCost, hold-стоимость не списана
+            Assert.AreEqual(2f, service.CurrentRadius, 0.001f); // BaseRadius, накачка ещё не началась
+        }
+
+        [Test]
+        public void UpdateCast_PastGraceWindow_SpendsAndGrowsRadius_FromGracePoint()
+        {
+            // После истечения grace-окна накачиваемое время растёт вместе с holdTime — за
+            // HoldSecondsToMaxRadius накачиваемого времени радиус достигает MaxRadius.
+            var catalog = CreateCatalog(CreateMiracleConfig(
+                baseFaithCost: 0f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f,
+                holdSecondsToMaxRadius: 1.5f, holdGraceSeconds: 0.15f));
+            var faith = new FakeFaithService { Current = 1000f };
+            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            service.UpdateCast(0.15f, Vector3.zero); // ровно grace — накачка ещё не началась
+            Assert.AreEqual(2f, service.CurrentRadius, 0.001f);
+            Assert.AreEqual(1000f, faith.Current, 0.001f);
+
+            service.UpdateCast(1.5f, Vector3.zero); // 1.5с накачиваемого времени сверх grace -> MaxRadius
+
+            Assert.AreEqual(5f, service.CurrentRadius, 0.001f);
+            Assert.AreEqual(1000f - 1.5f * 10f, faith.Current, 0.001f); // списано только за накачиваемое время
         }
 
         [Test]

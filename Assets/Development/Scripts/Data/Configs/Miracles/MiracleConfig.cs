@@ -20,6 +20,11 @@ namespace BlackWhiteLike.Data.Configs.Miracles
         [Tooltip("Faith/сек, списываемый во время накачки (UpdateCast) — растит радиус до MaxRadius.")]
         [SerializeField] private float _holdCostPerSecond = 10f;
 
+        [Tooltip("Льготное окно удержания в секундах — первые N секунд hold-стоимость не списывается " +
+                 "и радиус не растёт (человеческий тап ~0.1с не должен стоить дороже BaseFaithCost). " +
+                 "Накачка (списание + рост радиуса) начинается после истечения этого окна.")]
+        [SerializeField] private float _holdGraceSeconds = 0.15f;
+
         [Header("Радиус")]
         [Tooltip("Радиус каста без накачки (моментальный тап).")]
         [SerializeField] private float _baseRadius = 2f;
@@ -36,9 +41,6 @@ namespace BlackWhiteLike.Data.Configs.Miracles
 
         [Tooltip("Знак определяет добро/зло (game-design §4, §7) — задел на AlignmentService, шаг 5. Положительное — Good, отрицательное — Evil.")]
         [SerializeField] private float _alignmentShift;
-
-        [Tooltip("Сколько Awe/Fear даёт применение чуда по назначению (game-design §7) — задел на WorshipService, шаг 5.")]
-        [SerializeField] private int _worshipYield = 10;
 
         [SerializeField] private VfxEffectType _castVfx;
         [SerializeField] private Sprite _icon;
@@ -64,12 +66,12 @@ namespace BlackWhiteLike.Data.Configs.Miracles
         public MiracleType Type => _type;
         public float BaseFaithCost => _baseFaithCost;
         public float HoldCostPerSecond => _holdCostPerSecond;
+        public float HoldGraceSeconds => _holdGraceSeconds;
         public float BaseRadius => _baseRadius;
         public float MaxRadius => _maxRadius;
         public float HoldSecondsToMaxRadius => _holdSecondsToMaxRadius;
         public float EffectPower => _effectPower;
         public float AlignmentShift => _alignmentShift;
-        public int WorshipYield => _worshipYield;
         public VfxEffectType CastVfx => _castVfx;
         public Sprite Icon => _icon;
         public int[] UpgradeLevelPowerBonus => _upgradeLevelPowerBonus;
@@ -100,6 +102,7 @@ namespace BlackWhiteLike.Data.Configs.Miracles
             _baseRadius = Mathf.Max(0.01f, _baseRadius);
             _maxRadius = Mathf.Max(_baseRadius, _maxRadius);
             _holdSecondsToMaxRadius = Mathf.Max(0.01f, _holdSecondsToMaxRadius);
+            _holdGraceSeconds = Mathf.Max(0f, _holdGraceSeconds);
         }
     }
 }

@@ -76,6 +76,10 @@ namespace BlackWhiteLike.Editor.Setup
 
             var systemsRoot = EnsureSystemsRoot();
             EnsureCameraAndAudioListener();
+            // Шаг 5 — явный дефолт состояния FSM для холодного старта (перед сохранением как
+            // префаба — на новом [Systems] это станет дефолтным значением поля самого префаба;
+            // сцены, где нужен другой стартовый стейт, переопределяют его в своей WireScope).
+            WireInitialState(systemsRoot.GetComponent<GameLifetimeScope>(), GameState.MainMenu);
             EnsureSystemsPrefab(systemsRoot);
 
             Undo.CollapseUndoOperations(undoGroup);
@@ -258,6 +262,29 @@ namespace BlackWhiteLike.Editor.Setup
 
             PrefabUtility.SaveAsPrefabAssetAndConnect(systemsRoot, PrefabPath, InteractionMode.AutomatedAction);
             Debug.Log("[Editor] Сохранён префаб: " + PrefabPath);
+        }
+
+        /// <summary>Шаг 5 — явная прошивка стартового GameState (SerializeField enum) на Composition Root.</summary>
+        private static void WireInitialState(GameLifetimeScope scope, GameState state)
+        {
+            if (scope == null)
+            {
+                Debug.LogWarning("[Editor] GameLifetimeScope не найден на [Systems] — _initialState не прошит.");
+                return;
+            }
+
+            var so = new SerializedObject(scope);
+            var prop = so.FindProperty("_initialState");
+            if (prop == null)
+            {
+                Debug.LogWarning("[Editor] Поле \"_initialState\" не найдено на GameLifetimeScope — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return;
+            }
+
+            prop.intValue = (int)state;
+            so.ApplyModifiedProperties();
+            Debug.Log($"[Editor] GameLifetimeScope._initialState прошито значением {state}.");
         }
 
         private static void EnsureFolder(string folderPath)

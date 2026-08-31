@@ -56,6 +56,8 @@ namespace BlackWhiteLike.Services.Faith
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time.</summary>
         public void Tick() => Tick(UnityEngine.Time.deltaTime);
 
+        public void RefillToCapacity() => SetCurrent(Capacity);
+
         private void SetCurrent(float value)
         {
             if (Mathf.Approximately(value, _current)) return; // реального изменения нет — событие не публикуем

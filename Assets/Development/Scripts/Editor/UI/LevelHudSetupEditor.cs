@@ -3,6 +3,7 @@ using System.IO;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Views.UI.Hud;
+using BlackWhiteLike.Views.UI.Overlay;
 using TMPro;
 using TMPro.EditorUtilities;
 using UnityEditor;
@@ -16,10 +17,12 @@ using Object = UnityEngine.Object;
 namespace BlackWhiteLike.Editor.UI
 {
     /// <summary>
-    /// Собирает HUD шага 4 "Чудеса + Faith" (game-design.md §19.4) — ОДИН префаб
-    /// <c>Assets/Development/Prefabs/UI/LevelHudCanvas.prefab</c> (CLAUDE.md §7: канвас,
-    /// повторяющийся в сценах, существует одним префабом, сцены держат connected-инстансы), с
-    /// панелью из 4 кнопок чудес (Rain/Heal/Fireball/Lightning) и полосой Faith.
+    /// Собирает HUD ОДИН префаб <c>Assets/Development/Prefabs/UI/LevelHudCanvas.prefab</c>
+    /// (CLAUDE.md §7: канвас, повторяющийся в сценах, существует одним префабом, сцены держат
+    /// connected-инстансы), с панелью из 4 кнопок чудес (Rain/Heal/Fireball/Lightning), полосой
+    /// Faith (шаг 4, game-design.md §19.4), и шагом 5 "Worship + win" (game-design.md §19.5):
+    /// полосой Worship, индикатором Alignment, кнопкой паузы, всплывающими попапами прироста
+    /// Worship и тремя оверлеями (Level Complete / Level Stalled / Pause).
     /// Идемпотентен: <see cref="PrefabUtility.LoadPrefabContents"/>/<see cref="PrefabUtility.SaveAsPrefabAsset"/>
     /// (см. память агента "prefab-content-editing-for-idempotent-rebuild") — существующий префаб
     /// дособирается по имени child'ов, без дублей.
@@ -28,6 +31,7 @@ namespace BlackWhiteLike.Editor.UI
     {
         private const string PrefabsFolder = "Assets/Development/Prefabs/UI";
         private const string PrefabPath = PrefabsFolder + "/LevelHudCanvas.prefab";
+        private const string WorshipPopupPrefabPath = PrefabsFolder + "/WorshipPopup.prefab";
 
         private const string FontsFolder = "Assets/Development/Art/Fonts";
         private const string FontAssetPath = FontsFolder + "/Nunito-Regular SDF.asset";
@@ -101,7 +105,17 @@ namespace BlackWhiteLike.Editor.UI
             }
 
             EnsureFolder(PrefabsFolder);
-            var prefab = BuildOrUpdateCanvasPrefab(fontAsset);
+
+            // Шаг 5 — WorshipPopup собирается отдельным префабом ДО открытия LevelHudCanvas.prefab
+            // (LoadPrefabContents одного префаба не должен пересекаться по времени с другим).
+            var popupView = BuildOrUpdateWorshipPopupPrefab(fontAsset);
+            if (popupView == null)
+            {
+                Debug.LogError("[Editor] Build Level HUD прерван — префаб WorshipPopup не собран.");
+                return;
+            }
+
+            var prefab = BuildOrUpdateCanvasPrefab(fontAsset, popupView);
             if (prefab == null)
             {
                 Debug.LogError("[Editor] Build Level HUD прерван — префаб LevelHudCanvas не собран.");
@@ -225,7 +239,7 @@ namespace BlackWhiteLike.Editor.UI
         // Сборка префаба
         // ------------------------------------------------------------------------------------
 
-        private static GameObject BuildOrUpdateCanvasPrefab(TMP_FontAsset fontAsset)
+        private static GameObject BuildOrUpdateCanvasPrefab(TMP_FontAsset fontAsset, WorshipPopupView popupPrefabView)
         {
             bool existed = File.Exists(PrefabPath);
             GameObject root = existed
@@ -246,11 +260,40 @@ namespace BlackWhiteLike.Editor.UI
             if (root.GetComponent<GraphicRaycaster>() == null)
                 root.AddComponent<GraphicRaycaster>();
 
+            var levelHudView = root.GetComponent<LevelHudView>();
+            if (levelHudView == null) levelHudView = root.AddComponent<LevelHudView>();
+
             int totalWired = 0;
             int totalExpected = 0;
 
             BuildMiraclePanel(root.transform, fontAsset, ref totalWired, ref totalExpected);
             BuildFaithBar(root.transform, fontAsset, ref totalWired, ref totalExpected);
+
+            // Шаг 5 — Worship + win (game-design.md §19.5).
+            BuildWorshipBar(root.transform, fontAsset, out var worshipFill, out var worshipLabel);
+            BuildAlignmentIndicator(root.transform, fontAsset, out var alignmentTrack, out var alignmentKnob);
+            BuildPauseButton(root.transform, fontAsset, out var pauseButton);
+            var popupRoot = BuildPopupRoot(root.transform);
+
+            var hudSo = new SerializedObject(levelHudView);
+            int hudWired = 0;
+            hudWired += SetRef(hudSo, "_worshipFill", worshipFill, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_worshipLabel", worshipLabel, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_alignmentKnob", alignmentKnob, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_alignmentTrack", alignmentTrack, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_pauseButton", pauseButton, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_popupPrefab", popupPrefabView, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_popupRoot", popupRoot, "LevelHudView") ? 1 : 0;
+            hudSo.ApplyModifiedProperties();
+            LogWireResult("LevelHudView", hudWired, 7);
+            totalWired += hudWired;
+            totalExpected += 7;
+
+            // Оверлеи — сиблинги MiraclePanel/FaithBar под тем же канвасом (CLAUDE.md п.7: оверлей не
+            // потомок гасимого узла), выключены по умолчанию, последними сиблингами (поверх HUD).
+            BuildLevelCompleteOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
+            BuildLevelStalledOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
+            BuildPauseOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
 
             Debug.Log($"[Editor] LevelHudCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
 
@@ -473,6 +516,437 @@ namespace BlackWhiteLike.Editor.UI
             so.ApplyModifiedProperties();
             totalWired += wired;
 
+            if (wired == expected)
+                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected}.");
+            else
+                Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей.");
+        }
+
+        // ------------------------------------------------------------------------------------
+        // Шаг 5 — Worship + win (game-design.md §19.5)
+        // ------------------------------------------------------------------------------------
+
+        /// <summary>Верхний центр экрана, НАД MiraclePanel/FaithBar — полоса накопленного Worship.</summary>
+        private static void BuildWorshipBar(Transform canvasRoot, TMP_FontAsset fontAsset, out Image fillImage, out TextMeshProUGUI label)
+        {
+            var barGo = FindOrCreateUIChild(canvasRoot, "WorshipBar");
+            var barRt = (RectTransform)barGo.transform;
+            SetAnchor(barRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -24f), new Vector2(640f, 40f));
+
+            var backgroundImage = barGo.GetComponent<Image>();
+            if (backgroundImage == null) backgroundImage = barGo.AddComponent<Image>();
+            backgroundImage.raycastTarget = false;
+            backgroundImage.maskable = false;
+            backgroundImage.color = new Color(0.08f, 0.08f, 0.1f, 0.85f);
+
+            var fillGo = FindOrCreateUIChild(barGo.transform, "Fill");
+            var fillRt = (RectTransform)fillGo.transform;
+            SetAnchor(fillRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            fillImage = fillGo.GetComponent<Image>();
+            if (fillImage == null) fillImage = fillGo.AddComponent<Image>();
+            fillImage.raycastTarget = false;
+            fillImage.maskable = false;
+            fillImage.type = Image.Type.Filled;
+            fillImage.fillMethod = Image.FillMethod.Horizontal;
+            fillImage.fillOrigin = (int)Image.OriginHorizontal.Left;
+            fillImage.color = new Color(1f, 0.8f, 0.25f, 1f);
+
+            var labelGo = FindOrCreateUIChild(barGo.transform, "Label");
+            var labelRt = (RectTransform)labelGo.transform;
+            SetAnchor(labelRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            label = labelGo.GetComponent<TextMeshProUGUI>();
+            if (label == null) label = labelGo.AddComponent<TextMeshProUGUI>();
+            label.raycastTarget = false;
+            label.maskable = false;
+            label.font = fontAsset;
+            label.fontSize = 26f;
+            label.alignment = TextAlignmentOptions.Center;
+            if (string.IsNullOrEmpty(label.text)) label.text = "0 / 100";
+
+            // ThresholdMarker — визуальная метка порога у правого края бара, без прошивки в код
+            // (чисто декоративный элемент, порог читается из WorshipConfig рантаймом).
+            var markerGo = FindOrCreateUIChild(barGo.transform, "ThresholdMarker");
+            var markerRt = (RectTransform)markerGo.transform;
+            SetAnchor(markerRt, new Vector2(0.9f, 0.5f), new Vector2(0.9f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(4f, 48f));
+            var markerImage = markerGo.GetComponent<Image>();
+            if (markerImage == null) markerImage = markerGo.AddComponent<Image>();
+            markerImage.raycastTarget = false;
+            markerImage.maskable = false;
+            markerImage.color = new Color(1f, 1f, 1f, 0.7f);
+        }
+
+        /// <summary>Под WorshipBar — трек Evil/Good с ползунком текущего Alignment.</summary>
+        private static void BuildAlignmentIndicator(Transform canvasRoot, TMP_FontAsset fontAsset, out RectTransform trackRt, out RectTransform knobRt)
+        {
+            var containerGo = FindOrCreateUIChild(canvasRoot, "AlignmentIndicator");
+            var containerRt = (RectTransform)containerGo.transform;
+            SetAnchor(containerRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -72f), new Vector2(320f, 16f));
+
+            var trackGo = FindOrCreateUIChild(containerGo.transform, "Track");
+            trackRt = (RectTransform)trackGo.transform;
+            SetAnchor(trackRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var trackImage = trackGo.GetComponent<Image>();
+            if (trackImage == null) trackImage = trackGo.AddComponent<Image>();
+            trackImage.raycastTarget = false;
+            trackImage.maskable = false;
+            trackImage.color = new Color(0.5f, 0.5f, 0.5f, 1f);
+
+            var tickGo = FindOrCreateUIChild(trackGo.transform, "CenterTick");
+            var tickRt = (RectTransform)tickGo.transform;
+            SetAnchor(tickRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(2f, 24f));
+            var tickImage = tickGo.GetComponent<Image>();
+            if (tickImage == null) tickImage = tickGo.AddComponent<Image>();
+            tickImage.raycastTarget = false;
+            tickImage.maskable = false;
+            tickImage.color = new Color(1f, 1f, 1f, 0.9f);
+
+            var knobGo = FindOrCreateUIChild(trackGo.transform, "Knob");
+            knobRt = (RectTransform)knobGo.transform;
+            SetAnchor(knobRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(22f, 22f));
+            var knobImage = knobGo.GetComponent<Image>();
+            if (knobImage == null) knobImage = knobGo.AddComponent<Image>();
+            knobImage.raycastTarget = false;
+            knobImage.maskable = false;
+            knobImage.color = Color.white;
+
+            var evilGo = FindOrCreateUIChild(containerGo.transform, "EvilLabel");
+            var evilRt = (RectTransform)evilGo.transform;
+            SetAnchor(evilRt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-8f, 0f), new Vector2(60f, 24f));
+            var evilLabel = evilGo.GetComponent<TextMeshProUGUI>();
+            if (evilLabel == null) evilLabel = evilGo.AddComponent<TextMeshProUGUI>();
+            evilLabel.raycastTarget = false;
+            evilLabel.maskable = false;
+            evilLabel.font = fontAsset;
+            evilLabel.fontSize = 18f;
+            evilLabel.alignment = TextAlignmentOptions.MidlineRight;
+            if (string.IsNullOrEmpty(evilLabel.text)) evilLabel.text = "Evil";
+
+            var goodGo = FindOrCreateUIChild(containerGo.transform, "GoodLabel");
+            var goodRt = (RectTransform)goodGo.transform;
+            SetAnchor(goodRt, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(8f, 0f), new Vector2(60f, 24f));
+            var goodLabel = goodGo.GetComponent<TextMeshProUGUI>();
+            if (goodLabel == null) goodLabel = goodGo.AddComponent<TextMeshProUGUI>();
+            goodLabel.raycastTarget = false;
+            goodLabel.maskable = false;
+            goodLabel.font = fontAsset;
+            goodLabel.fontSize = 18f;
+            goodLabel.alignment = TextAlignmentOptions.MidlineLeft;
+            if (string.IsNullOrEmpty(goodLabel.text)) goodLabel.text = "Good";
+        }
+
+        /// <summary>Верхний правый угол — кнопка паузы с иконкой из ThirdParty-пака (фоллбэк — текст "II").</summary>
+        private static void BuildPauseButton(Transform canvasRoot, TMP_FontAsset fontAsset, out Button pauseButton)
+        {
+            var buttonGo = FindOrCreateUIChild(canvasRoot, "PauseButton");
+            var buttonRt = (RectTransform)buttonGo.transform;
+            SetAnchor(buttonRt, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
+                new Vector2(-24f, -24f), new Vector2(96f, 96f));
+
+            var backgroundImage = buttonGo.GetComponent<Image>();
+            if (backgroundImage == null) backgroundImage = buttonGo.AddComponent<Image>();
+            backgroundImage.raycastTarget = true; // цель тапа
+            backgroundImage.maskable = false;
+            backgroundImage.color = new Color(0.15f, 0.15f, 0.18f, 0.9f);
+
+            pauseButton = buttonGo.GetComponent<Button>();
+            if (pauseButton == null) pauseButton = buttonGo.AddComponent<Button>();
+            pauseButton.transition = Selectable.Transition.ColorTint;
+            pauseButton.targetGraphic = backgroundImage;
+            var colors = pauseButton.colors;
+            colors.selectedColor = colors.normalColor; // без залипания после тапа
+            pauseButton.colors = colors;
+            pauseButton.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            var iconGo = FindOrCreateUIChild(buttonGo.transform, "Icon");
+            var iconRt = (RectTransform)iconGo.transform;
+            SetAnchor(iconRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(64f, 64f));
+
+            var pauseSprite = EditorSpriteUtility.EnsureSpriteAtPath(EditorSpriteUtility.HudIconPaths.Pause);
+            var existingLabel = iconGo.GetComponent<TextMeshProUGUI>();
+            var existingImage = iconGo.GetComponent<Image>();
+
+            if (pauseSprite != null)
+            {
+                if (existingLabel != null)
+                {
+                    Object.DestroyImmediate(existingLabel); // миграция с текстового фоллбэка на иконку
+                    Debug.Log("[Editor] PauseButton/Icon: текстовый фоллбэк заменён на найденную иконку.");
+                }
+
+                var iconImage = existingImage != null ? existingImage : iconGo.AddComponent<Image>();
+                iconImage.raycastTarget = false;
+                iconImage.maskable = false;
+                iconImage.preserveAspect = true;
+                iconImage.sprite = pauseSprite;
+            }
+            else
+            {
+                if (existingImage != null) Object.DestroyImmediate(existingImage);
+
+                var iconLabel = existingLabel != null ? existingLabel : iconGo.AddComponent<TextMeshProUGUI>();
+                iconLabel.raycastTarget = false;
+                iconLabel.maskable = false;
+                iconLabel.font = fontAsset;
+                iconLabel.fontSize = 40f;
+                iconLabel.alignment = TextAlignmentOptions.Center;
+                if (string.IsNullOrEmpty(iconLabel.text)) iconLabel.text = "II";
+
+                Debug.LogWarning("[Editor] Иконка паузы не найдена по пути " + EditorSpriteUtility.HudIconPaths.Pause +
+                                  " — использован текстовый фоллбэк \"II\".");
+            }
+        }
+
+        /// <summary>Пустая точка спавна попапов прироста Worship — под WorshipBar.</summary>
+        private static RectTransform BuildPopupRoot(Transform canvasRoot)
+        {
+            var go = FindOrCreateUIChild(canvasRoot, "PopupRoot");
+            var rt = (RectTransform)go.transform;
+            SetAnchor(rt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -80f), new Vector2(1f, 1f));
+            return rt;
+        }
+
+        /// <summary>
+        /// Отдельный префаб всплывающего попапа "+N Worship" (Prefabs/UI/WorshipPopup.prefab) —
+        /// LevelHudView._popupPrefab ссылается на компонент АССЕТА (не на инстанс сцены), поэтому
+        /// возвращаемое значение — WorshipPopupView, загруженный обратно из AssetDatabase после
+        /// сохранения (аналогично паттерну LoadPrefabContents/SaveAsPrefabAsset).
+        /// </summary>
+        private static WorshipPopupView BuildOrUpdateWorshipPopupPrefab(TMP_FontAsset fontAsset)
+        {
+            bool existed = File.Exists(WorshipPopupPrefabPath);
+            GameObject root = existed
+                ? PrefabUtility.LoadPrefabContents(WorshipPopupPrefabPath)
+                : new GameObject("WorshipPopup", typeof(RectTransform));
+
+            var rootRt = (RectTransform)root.transform;
+            rootRt.sizeDelta = new Vector2(240f, 48f);
+
+            var canvasGroup = root.GetComponent<CanvasGroup>();
+            if (canvasGroup == null) canvasGroup = root.AddComponent<CanvasGroup>();
+
+            var labelGo = FindOrCreateUIChild(root.transform, "Label");
+            var labelRt = (RectTransform)labelGo.transform;
+            SetAnchor(labelRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var label = labelGo.GetComponent<TextMeshProUGUI>();
+            if (label == null) label = labelGo.AddComponent<TextMeshProUGUI>();
+            label.raycastTarget = false;
+            label.maskable = false;
+            label.font = fontAsset;
+            label.fontSize = 36f;
+            label.fontStyle = FontStyles.Bold;
+            label.alignment = TextAlignmentOptions.Center;
+            if (string.IsNullOrEmpty(label.text)) label.text = "+0";
+
+            var view = root.GetComponent<WorshipPopupView>();
+            if (view == null) view = root.AddComponent<WorshipPopupView>();
+
+            var so = new SerializedObject(view);
+            int wired = 0;
+            wired += SetRef(so, "_label", label, "WorshipPopupView") ? 1 : 0;
+            wired += SetRef(so, "_canvasGroup", canvasGroup, "WorshipPopupView") ? 1 : 0;
+            so.ApplyModifiedProperties();
+            LogWireResult("WorshipPopupView", wired, 2);
+
+            PrefabUtility.SaveAsPrefabAsset(root, WorshipPopupPrefabPath);
+            if (existed)
+                PrefabUtility.UnloadPrefabContents(root);
+            else
+                Object.DestroyImmediate(root);
+
+            var savedAsset = AssetDatabase.LoadAssetAtPath<GameObject>(WorshipPopupPrefabPath);
+            return savedAsset != null ? savedAsset.GetComponent<WorshipPopupView>() : null;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // Шаг 5 — Оверлеи (Level Complete / Level Stalled / Pause)
+        // ------------------------------------------------------------------------------------
+
+        private const float DefaultOverlayPanelWidth = 560f;
+        private const float DefaultOverlayPanelHeight = 360f;
+
+        /// <summary>
+        /// Общий каркас оверлея: полноэкранный Dim-блокер тапов + центральная Panel. Контейнер —
+        /// сиблинг MiraclePanel/FaithBar/WorshipBar под тем же канвасом (CLAUDE.md п.7 — оверлей не
+        /// потомок гасимого узла), выключен по умолчанию, ставится последним сиблингом (поверх HUD).
+        /// </summary>
+        private static Transform BuildOverlayContainer(Transform canvasRoot, string containerName, Vector2 panelSize)
+        {
+            var containerGo = FindOrCreateUIChild(canvasRoot, containerName);
+            var containerRt = (RectTransform)containerGo.transform;
+            SetAnchor(containerRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var dimGo = FindOrCreateUIChild(containerGo.transform, "Dim");
+            var dimRt = (RectTransform)dimGo.transform;
+            SetAnchor(dimRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var dimImage = dimGo.GetComponent<Image>();
+            if (dimImage == null) dimImage = dimGo.AddComponent<Image>();
+            dimImage.raycastTarget = true; // блокер тапов в мир, пока оверлей открыт
+            dimImage.maskable = false;
+            dimImage.color = new Color(0f, 0f, 0f, 0.6f);
+
+            var panelGo = FindOrCreateUIChild(containerGo.transform, "Panel");
+            var panelRt = (RectTransform)panelGo.transform;
+            SetAnchor(panelRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, panelSize);
+            var panelImage = panelGo.GetComponent<Image>();
+            if (panelImage == null) panelImage = panelGo.AddComponent<Image>();
+            panelImage.raycastTarget = true;
+            panelImage.maskable = false;
+            panelImage.color = new Color(0.1f, 0.1f, 0.13f, 0.95f);
+
+            if (containerGo.activeSelf)
+            {
+                containerGo.SetActive(false);
+                Debug.Log($"[Editor] {containerName}: активен по умолчанию -> выключен.");
+            }
+
+            if (containerGo.transform.GetSiblingIndex() != canvasRoot.childCount - 1)
+                containerGo.transform.SetAsLastSibling();
+
+            return panelGo.transform;
+        }
+
+        /// <summary>Заголовок/строка текста внутри панели оверлея, якорь верх-центр панели.</summary>
+        private static TextMeshProUGUI BuildOverlayLabel(Transform panel, string name, TMP_FontAsset fontAsset,
+            float fontSize, string defaultText, float anchoredY, Vector2 size, bool bold = false)
+        {
+            var go = FindOrCreateUIChild(panel, name);
+            var rt = (RectTransform)go.transform;
+            SetAnchor(rt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, anchoredY), size);
+            var label = go.GetComponent<TextMeshProUGUI>();
+            if (label == null) label = go.AddComponent<TextMeshProUGUI>();
+            label.raycastTarget = false;
+            label.maskable = false;
+            label.font = fontAsset;
+            label.fontSize = fontSize;
+            label.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
+            label.alignment = TextAlignmentOptions.Center;
+            if (string.IsNullOrEmpty(label.text)) label.text = defaultText;
+            return label;
+        }
+
+        /// <summary>Кнопка внутри панели оверлея, якорь низ-центр панели.</summary>
+        private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
+            string caption, float anchoredY, Vector2 size)
+        {
+            var go = FindOrCreateUIChild(panel, name);
+            var rt = (RectTransform)go.transform;
+            SetAnchor(rt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, anchoredY), size);
+
+            var bg = go.GetComponent<Image>();
+            if (bg == null) bg = go.AddComponent<Image>();
+            bg.raycastTarget = true;
+            bg.maskable = false;
+            bg.color = new Color(0.25f, 0.55f, 0.35f, 1f);
+
+            var button = go.GetComponent<Button>();
+            if (button == null) button = go.AddComponent<Button>();
+            button.transition = Selectable.Transition.ColorTint;
+            button.targetGraphic = bg;
+            var colors = button.colors;
+            colors.selectedColor = colors.normalColor;
+            button.colors = colors;
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            var textGo = FindOrCreateUIChild(go.transform, "Label");
+            var textRt = (RectTransform)textGo.transform;
+            SetAnchor(textRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var tmp = textGo.GetComponent<TextMeshProUGUI>();
+            if (tmp == null) tmp = textGo.AddComponent<TextMeshProUGUI>();
+            tmp.raycastTarget = false;
+            tmp.maskable = false;
+            tmp.font = fontAsset;
+            tmp.fontSize = 28f;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.text = caption; // статичная подпись кнопки — не пользовательские данные, перезаписываем всегда
+
+            return button;
+        }
+
+        private static void BuildLevelCompleteOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
+        {
+            var panel = BuildOverlayContainer(canvasRoot, "LevelCompleteOverlay", new Vector2(DefaultOverlayPanelWidth, DefaultOverlayPanelHeight));
+            var containerGo = panel.parent.gameObject;
+
+            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Level Complete", -24f, new Vector2(500f, 50f), bold: true);
+            var worshipLabel = BuildOverlayLabel(panel, "WorshipLabel", fontAsset, 24f, "Worship 0 / 100", -88f, new Vector2(480f, 32f));
+            var aweLabel = BuildOverlayLabel(panel, "AweLabel", fontAsset, 22f, "Awe 0", -124f, new Vector2(480f, 28f));
+            var fearLabel = BuildOverlayLabel(panel, "FearLabel", fontAsset, 22f, "Fear 0", -154f, new Vector2(480f, 28f));
+            var coinsLabel = BuildOverlayLabel(panel, "CoinsLabel", fontAsset, 22f, "+0 coins", -184f, new Vector2(480f, 28f));
+            var continueButton = BuildOverlayButton(panel, "ContinueButton", fontAsset, "Continue", 24f, new Vector2(280f, 72f));
+
+            var view = containerGo.GetComponent<LevelCompleteView>();
+            if (view == null) view = containerGo.AddComponent<LevelCompleteView>();
+
+            var so = new SerializedObject(view);
+            int wired = 0;
+            wired += SetRef(so, "_root", containerGo, "LevelCompleteView") ? 1 : 0;
+            wired += SetRef(so, "_worshipLabel", worshipLabel, "LevelCompleteView") ? 1 : 0;
+            wired += SetRef(so, "_aweLabel", aweLabel, "LevelCompleteView") ? 1 : 0;
+            wired += SetRef(so, "_fearLabel", fearLabel, "LevelCompleteView") ? 1 : 0;
+            wired += SetRef(so, "_coinsLabel", coinsLabel, "LevelCompleteView") ? 1 : 0;
+            wired += SetRef(so, "_continueButton", continueButton, "LevelCompleteView") ? 1 : 0;
+            so.ApplyModifiedProperties();
+            LogWireResult("LevelCompleteView", wired, 6);
+            totalWired += wired;
+            totalExpected += 6;
+        }
+
+        private static void BuildLevelStalledOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
+        {
+            var panel = BuildOverlayContainer(canvasRoot, "LevelStalledOverlay", new Vector2(DefaultOverlayPanelWidth, 260f));
+            var containerGo = panel.parent.gameObject;
+
+            BuildOverlayLabel(panel, "Title", fontAsset, 36f, "Вера иссякла", -24f, new Vector2(480f, 50f), bold: true);
+            BuildOverlayLabel(panel, "Subtitle", fontAsset, 22f, "Пополнить веру, чтобы продолжить", -84f, new Vector2(480f, 40f));
+            // Пополнение веры — заглушка rewarded-рекламы (ADS_STUB реализуется в рантайм-сервисе,
+            // вызываемом по клику RefillButton; сам Editor-скрипт не содержит бизнес-логики).
+            var refillButton = BuildOverlayButton(panel, "RefillButton", fontAsset, "Пополнить веру", 24f, new Vector2(320f, 72f));
+
+            var view = containerGo.GetComponent<LevelStalledView>();
+            if (view == null) view = containerGo.AddComponent<LevelStalledView>();
+
+            var so = new SerializedObject(view);
+            int wired = 0;
+            wired += SetRef(so, "_root", containerGo, "LevelStalledView") ? 1 : 0;
+            wired += SetRef(so, "_refillButton", refillButton, "LevelStalledView") ? 1 : 0;
+            so.ApplyModifiedProperties();
+            LogWireResult("LevelStalledView", wired, 2);
+            totalWired += wired;
+            totalExpected += 2;
+        }
+
+        private static void BuildPauseOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
+        {
+            var panel = BuildOverlayContainer(canvasRoot, "PauseOverlay", new Vector2(DefaultOverlayPanelWidth, DefaultOverlayPanelHeight));
+            var containerGo = panel.parent.gameObject;
+
+            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Пауза", -40f, new Vector2(300f, 60f), bold: true);
+            var resumeButton = BuildOverlayButton(panel, "ResumeButton", fontAsset, "Продолжить", 24f, new Vector2(280f, 72f));
+
+            var view = containerGo.GetComponent<PauseOverlayView>();
+            if (view == null) view = containerGo.AddComponent<PauseOverlayView>();
+
+            var so = new SerializedObject(view);
+            int wired = 0;
+            wired += SetRef(so, "_root", containerGo, "PauseOverlayView") ? 1 : 0;
+            wired += SetRef(so, "_resumeButton", resumeButton, "PauseOverlayView") ? 1 : 0;
+            so.ApplyModifiedProperties();
+            LogWireResult("PauseOverlayView", wired, 2);
+            totalWired += wired;
+            totalExpected += 2;
+        }
+
+        private static void LogWireResult(string ownerLabel, int wired, int expected)
+        {
             if (wired == expected)
                 Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected}.");
             else

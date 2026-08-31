@@ -34,6 +34,7 @@ namespace BlackWhiteLike.Controllers.Hand
         [SerializeField] private LayerMask _grabbableMask;
 
         private IInputProvider _inputProvider;
+        private IInputRouter _inputRouter;
         private IHandInteractionService _handInteractionService;
         private IEventBus _eventBus;
         private HandConfig _handConfig;
@@ -58,6 +59,7 @@ namespace BlackWhiteLike.Controllers.Hand
         [Inject]
         public void Construct(
             IInputProvider inputProvider,
+            IInputRouter inputRouter,
             IHandInteractionService handInteractionService,
             IEventBus eventBus,
             HandConfig handConfig,
@@ -65,6 +67,7 @@ namespace BlackWhiteLike.Controllers.Hand
             IHandModeService handModeService)
         {
             _inputProvider = inputProvider;
+            _inputRouter = inputRouter;
             _handInteractionService = handInteractionService;
             _eventBus = eventBus;
             _handConfig = handConfig;
@@ -128,7 +131,8 @@ namespace BlackWhiteLike.Controllers.Hand
             // Шаг 4: режим сменился на Miracle прямо во время удержания — рука в этом режиме не
             // хватает вовсе (game-design §3), объект не должен зависнуть в ней навсегда. Мягкая
             // постановка (Vector3.zero), не бросок — смена режима не жест игрока на бросок.
-            if (_grabbedObject != null && _handModeService.Mode == HandMode.Miracle)
+            // Шаг 5: тот же путь — контекст ввода ушёл из Gameplay (пауза/меню, см. IInputRouter).
+            if (_grabbedObject != null && (_handModeService.Mode == HandMode.Miracle || !_inputRouter.IsGameplay))
             {
                 ReleaseGrabbedObject(Vector3.zero, publishEvent: true);
                 return;
@@ -142,6 +146,7 @@ namespace BlackWhiteLike.Controllers.Hand
                 // продолжается и Up того же тика обрабатывается ниже.
                 if (!pointerDown) return;
                 if (_handModeService.Mode != HandMode.Grab) return; // §3: в режиме Miracle рука не хватает
+                if (!_inputRouter.IsGameplay) return; // шаг 5: вне Gameplay (пауза/меню) рука не хватает вовсе
 
                 TryGrab();
                 if (_grabbedObject == null) return; // не нашли что взять в этот тик

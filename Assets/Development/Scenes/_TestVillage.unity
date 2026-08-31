@@ -421,6 +421,18 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 989117996}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _initialState
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _levelHudView
+      value: 
+      objectReference: {fileID: 989117998}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _worshipConfig
+      value: 
+      objectReference: {fileID: 11400000, guid: 2aaec91ba5a6336488cb291a47a413a2, type: 2}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _villagerConfig
       value: 
       objectReference: {fileID: 11400000, guid: 967bc5bfc9354cc4da02bd5e484ebdce, type: 2}
@@ -429,13 +441,25 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 11400000, guid: be00fe6ebeb40be4fb565dd34931c9ef, type: 2}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _levelStalledView
+      value: 
+      objectReference: {fileID: 989118000}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _miraclePanelView
       value: 
       objectReference: {fileID: 989117997}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _pauseOverlayView
+      value: 
+      objectReference: {fileID: 989117999}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _godHandController
       value: 
       objectReference: {fileID: 1488793890}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _levelCompleteView
+      value: 
+      objectReference: {fileID: 989118001}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _miracleCatalogConfig
       value: 
@@ -1006,6 +1030,50 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 444fc2d06e93434469e0a2b244005739, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Hud.MiraclePanelView
+--- !u!114 &989117998 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 1675076136387570086, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 989117995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1def69b5c11b4554fb3092a2c6dd2fe3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Hud.LevelHudView
+--- !u!114 &989117999 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 3858687631233049571, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 989117995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 821eb924620006b48b5116012aafd38b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Overlay.PauseOverlayView
+--- !u!114 &989118000 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6564482153279685354, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 989117995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b22aa5d92bae6324c82a0c823943d320, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Overlay.LevelStalledView
+--- !u!114 &989118001 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6378743929549566912, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 989117995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c3def19d1f569a49bfeac3b24d59a0c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Overlay.LevelCompleteView
 --- !u!1 &1049410751
 GameObject:
   m_ObjectHideFlags: 0
@@ -1422,7 +1490,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.44
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalPosition.z
@@ -1430,23 +1498,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: 0.7071068
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalRotation.y
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalRotation.z
-      value: -0
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalEulerAnglesHint.y
@@ -1455,14 +1523,6 @@ PrefabInstance:
     - target: {fileID: 5410417468570604979, guid: d59150514442fe846ac637abdc64daf0, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 8738119881061858762, guid: d59150514442fe846ac637abdc64daf0, type: 3}
-      propertyPath: _siteIndex
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 8738119881061858762, guid: d59150514442fe846ac637abdc64daf0, type: 3}
-      propertyPath: _villagerMask.m_Bits
-      value: 512
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

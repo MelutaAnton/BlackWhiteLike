@@ -12,6 +12,10 @@ namespace BlackWhiteLike.Editor.Common
     /// </summary>
     public static class EditorSpriteUtility
     {
+        // Общая папка плоских синих иконок пака — единственный источник для MiracleIconPaths и
+        // HudIconPaths (шаг 5: раньше строка дублировалась бы при добавлении второго набора путей).
+        private const string BlueIconsFolder = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/UIicons/Flat/Blue/";
+
         /// <summary>
         /// Единственный источник путей к иконкам чудес (правка после ревью: строки дублировались в
         /// Editor/Configs/ConfigAssetCreatorEditor.cs и Editor/UI/LevelHudSetupEditor.cs — нарушение
@@ -19,12 +23,19 @@ namespace BlackWhiteLike.Editor.Common
         /// </summary>
         public static class MiracleIconPaths
         {
-            private const string BlueIconsFolder = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/UIicons/Flat/Blue/";
-
             public const string Rain = BlueIconsFolder + "129_A_drop.png";
             public const string Heal = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/Skill_icons/Heal_potion_nobg.png";
             public const string Fireball = BlueIconsFolder + "240_fire.png";
             public const string Lightning = BlueIconsFolder + "90_lightning.png";
+        }
+
+        /// <summary>
+        /// Шаг 5 (Worship + win) — иконки служебных кнопок HUD (не связанных с конкретным чудом).
+        /// Найден на диске: Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/UIicons/Flat/Blue/15_pause.png.
+        /// </summary>
+        public static class HudIconPaths
+        {
+            public const string Pause = BlueIconsFolder + "15_pause.png";
         }
 
         public static Sprite EnsureSpriteAtPath(string texturePath)

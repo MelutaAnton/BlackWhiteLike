@@ -21,6 +21,8 @@ Two defect classes have now appeared across steps and are worth checking first o
    not immediately unpacked, it is a blocker; in YAML, `m_SourcePrefab: {... guid: X}` whose GUID resolves
    under `Assets/ThirdParty` is a blocker.
 
+4. **DI graph defects that only surface at `Build()`.** Step 5: (a) seven `Register<IGameStateBinding>(r => ..., Singleton)` — VContainer's `CollectionInstanceProvider` rejects same-`ImplementationType` singletons ("Conflict implementation type"); (b) a cycle hidden behind the Func: `GameFlowService(IEnumerable<IGameStateBinding>)` → `LevelPlayingState(ILevelFlowService)` → `LevelFlowService(IGameFlowService)` — `TypeAnalyzer` cannot see through lambdas, so it dies at runtime as `Lazy<T>` re-entrancy. Also (c) `InputRouter` snapshotting `gameFlow.Current` in its ctor: `RegisterComponent` build-callbacks resolve it BEFORE `GameBootstrap.Start()`, and `Start()` publishes no event → latched to UI forever. **Check:** every `Register<T>(Func)` in `GameLifetimeScope` — are there ≥2 for the same interface? Walk ctor deps of every type resolved inside a Func back to the Func's owner. Any service that caches FSM state in its ctor is wrong — read `gameFlow.Current` lazily.
+
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 
 **How to apply:** for any new MonoBehaviour in a diff, grep every `[SerializeField]` name against the editor scripts that instantiate it, and grep every physics property the runtime *reads* (`isKinematic`, `useGravity`, `constraints`, `collisionDetectionMode`) against what the editor script *writes*. Report mismatches as blockers — both defect classes are invisible until playtest.

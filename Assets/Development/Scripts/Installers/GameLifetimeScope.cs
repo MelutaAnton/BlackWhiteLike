@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
@@ -7,6 +8,7 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Core.Input;
 using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Core.Pool;
+using BlackWhiteLike.Core.StateMachine;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
@@ -15,17 +17,23 @@ using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
+using BlackWhiteLike.Data.Configs.Worship;
+using BlackWhiteLike.Factories.Ui;
 using BlackWhiteLike.Factories.Village;
 using BlackWhiteLike.Factories.Vfx;
+using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Faith;
 using BlackWhiteLike.Services.Flow;
 using BlackWhiteLike.Services.Flow.States;
 using BlackWhiteLike.Services.Hand;
 using BlackWhiteLike.Services.Idle;
+using BlackWhiteLike.Services.Level;
 using BlackWhiteLike.Services.Meta;
 using BlackWhiteLike.Services.Miracles;
 using BlackWhiteLike.Services.Village;
+using BlackWhiteLike.Services.Worship;
 using BlackWhiteLike.Views.UI.Hud;
+using BlackWhiteLike.Views.UI.Overlay;
 using UnityEngine;
 using VContainer;
 using VContainer.Unity;
@@ -60,6 +68,14 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private MiraclePanelView _miraclePanelView;
         [SerializeField] private FaithBarView _faithBarView;
 
+        [Header("Шаг 5 — Worship + win")]
+        [SerializeField] private WorshipConfig _worshipConfig;
+        [SerializeField] private GameState _initialState = GameState.MainMenu;
+        [SerializeField] private LevelHudView _levelHudView;
+        [SerializeField] private LevelCompleteView _levelCompleteView;
+        [SerializeField] private LevelStalledView _levelStalledView;
+        [SerializeField] private PauseOverlayView _pauseOverlayView;
+
         protected override void Configure(IContainerBuilder builder)
         {
             // Core
@@ -68,7 +84,6 @@ namespace BlackWhiteLike.Installers
             // Services
             builder.Register<SystemTimeProvider>(Lifetime.Singleton).As<ITimeProvider>();
             builder.Register<PlayerPrefsProfileStorage>(Lifetime.Singleton).As<IProfileStorage>();
-            builder.Register<MainMenuState>(Lifetime.Singleton);
 
             // Input — ITickable, тикается VContainer'ом каждый кадр без MonoBehaviour.
             // RegisterEntryPoint делает AsImplementedInterfaces() сам по себе — доп. .As<>() после него
@@ -81,11 +96,14 @@ namespace BlackWhiteLike.Installers
             builder.Register<PointerInputProvider>(Lifetime.Singleton)
                 .As<IInputProvider, ITickable, IStartable, IDisposable>();
 
-            // GameFlowService — тоже ITickable (см. MainMenuState.Tick и IGameFlowService.Tick).
-            // ВАЖНО: порядок регистрации ITickable в VContainer = порядок тика. Ввод обязан тикаться
-            // раньше своих потребителей (FSM, шаг 2+ — камера/хват), поэтому регистрация — строго
-            // после PointerInputProvider. При добавлении новых tickable'ов порядок не нарушать.
+            // GameFlowService — тоже ITickable (см. IGameFlowService.Tick). ВАЖНО: порядок
+            // регистрации ITickable в VContainer = порядок тика. Ввод обязан тикаться раньше своих
+            // потребителей (FSM, шаг 2+ — камера/хват), поэтому регистрация — строго после
+            // PointerInputProvider. При добавлении новых tickable'ов порядок не нарушать.
             // RegisterEntryPoint даёт и IGameFlowService, и ITickable через AsImplementedInterfaces().
+            // Зависимость на IEnumerable<IGameStateBinding> резолвится после Build() — регистрация
+            // самих биндингов ниже, в RegisterLevelFlow, порядок вызовов Register между ними значения
+            // не имеет (см. remarks GameFlowService).
             builder.RegisterEntryPoint<GameFlowService>(Lifetime.Singleton);
 
             // Шаг 2 — Камера + рука.
@@ -96,6 +114,9 @@ namespace BlackWhiteLike.Installers
 
             // Шаг 4 — Чудеса + Faith.
             RegisterMiracleSystems(builder);
+
+            // Шаг 5 — Worship + win.
+            RegisterLevelFlow(builder);
 
             // Точка входа
             builder.RegisterEntryPoint<GameBootstrap>();
@@ -326,6 +347,131 @@ namespace BlackWhiteLike.Installers
             else
             {
                 Debug.LogWarning("[GameLifetimeScope] _faithBarView не прошит — бар Faith не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>
+        /// FSM-биндинги, Worship/Alignment/LevelFlow, InputRouter и HUD/оверлеи уровня (game-design
+        /// §9, §10, §13, шаг 5). Состояния регистрируются как именованные биндинги
+        /// (<see cref="IGameStateBinding"/>), собираемые <c>GameFlowService</c> в конструкторе
+        /// (см. remarks на нём) — не в его конструкторе напрямую. LevelSelect/TempleMeta/WelcomeBack
+        /// — заглушки <see cref="NullState"/> (экраны шагов 7-8), чтобы ChangeState/PushState на них
+        /// не роняли <c>StateMachine.TryGetState</c> в LogError.
+        /// </summary>
+        private void RegisterLevelFlow(IContainerBuilder builder)
+        {
+            builder.RegisterInstance(new BootstrapSettings(_initialState));
+
+            var worshipConfig = _worshipConfig;
+            if (worshipConfig == null)
+            {
+                Debug.LogWarning("[GameLifetimeScope] _worshipConfig не прошит (ожидаемо для сцен без Worship) — используется fallback WorshipConfig с дефолтами (пустые таблицы Awe/Fear).");
+                worshipConfig = ScriptableObject.CreateInstance<WorshipConfig>();
+            }
+
+            builder.RegisterInstance(worshipConfig);
+
+            builder.Register<UnityTimeScaleProvider>(Lifetime.Singleton).As<ITimeScaleProvider, IDisposable>();
+
+            // Состояния FSM — обычные Singleton; биндинг на GameState — отдельной записью
+            // IGameStateBinding ниже. Порядок регистрации между Register<TState> и
+            // Register<IGameStateBinding> значения не имеет — VContainer резолвит граф зависимостей
+            // после Build(), а не по мере вызовов Register.
+            builder.Register<MainMenuState>(Lifetime.Singleton);
+            builder.Register<LevelPlayingState>(Lifetime.Singleton);
+            builder.Register<LevelCompleteState>(Lifetime.Singleton);
+            builder.Register<PausedState>(Lifetime.Singleton);
+
+            // Первый Play Mode шага 5: несколько Register<IGameStateBinding>(r => ...) VContainer
+            // НЕ собирает в коллекцию — у Func-регистраций один и тот же ImplementationType, и
+            // CollectionInstanceProvider бросает «Conflict implementation type» на Build(). Поэтому
+            // коллекция регистрируется ОДНОЙ записью точного типа IEnumerable<IGameStateBinding>:
+            // Registry.TryGet проверяет точное совпадение типа раньше fallback'ов на коллекции
+            // (Registry.cs, TryGet), и GameFlowService получает готовый список.
+            // Заглушки LevelSelect/TempleMeta/WelcomeBack (NullState) — экраны шагов 7-8 ещё не
+            // существуют, но ключ должен быть зарегистрирован, чтобы ChangeState не падал.
+            builder.Register<IEnumerable<IGameStateBinding>>(
+                r => new IGameStateBinding[]
+                {
+                    new GameStateBinding(GameState.MainMenu, r.Resolve<MainMenuState>()),
+                    new GameStateBinding(GameState.LevelPlaying, r.Resolve<LevelPlayingState>()),
+                    new GameStateBinding(GameState.LevelComplete, r.Resolve<LevelCompleteState>()),
+                    new GameStateBinding(GameState.Paused, r.Resolve<PausedState>()),
+                    new GameStateBinding(GameState.LevelSelect, new NullState()),
+                    new GameStateBinding(GameState.TempleMeta, new NullState()),
+                    new GameStateBinding(GameState.WelcomeBack, new NullState()),
+                },
+                Lifetime.Singleton);
+
+            builder.Register<InputRouter>(Lifetime.Singleton).As<IInputRouter>();
+
+            // WorshipService/LevelFlowService — оба ITickable ПОСЛЕ FaithService (RegisterMiracleSystems
+            // отработал выше): реген Faith в этом кадре должен применяться раньше decay/win-check
+            // Worship и stall-check LevelFlow, тот же приём, что порядок VillagerStateService → FaithService.
+            builder.Register<WorshipService>(Lifetime.Singleton).As<IWorshipService, ITickable, IDisposable>();
+            builder.Register<AlignmentService>(Lifetime.Singleton).As<IAlignmentService, IDisposable>();
+            builder.Register<LevelFlowService>(Lifetime.Singleton).As<ILevelFlowService, ITickable, IDisposable>();
+
+            RegisterLevelHud(builder);
+            RegisterLevelOverlays(builder);
+        }
+
+        /// <summary>
+        /// HUD уровня — Worship-бар, Alignment, кнопка паузы, попапы (game-design §10, шаг 5). Тот
+        /// же условный паттерн, что MiraclePanelView/FaithBarView шага 4: без прошитого view
+        /// презентер не регистрируется, чтобы не упасть на резолве отсутствующего view.
+        /// </summary>
+        private void RegisterLevelHud(IContainerBuilder builder)
+        {
+            if (_levelHudView != null)
+            {
+                // Один инстанс, две роли (ILevelHudView + IWorshipPopupHost) — одна регистрация с
+                // двумя .As<>(), а не два RegisterComponent на тот же _levelHudView (аудит п.7):
+                // раньше форс-инъекция срабатывала дважды на одном компоненте без вреда, но
+                // заводила два отдельных Registration на один и тот же объект — не по одному ключу.
+                builder.RegisterComponent(_levelHudView).As<ILevelHudView, IWorshipPopupHost>();
+                builder.RegisterEntryPoint<LevelHudPresenter>();
+
+                builder.Register<WorshipPopupFactory>(Lifetime.Singleton).As<IWorshipPopupFactory>();
+                builder.RegisterEntryPoint<WorshipPopupPresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _levelHudView не прошит — HUD уровня (Worship/Alignment/пауза/попапы) не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>Оверлеи Level Complete / Level Stalled / Pause (game-design §9, §10, шаг 5) — тот же условный паттерн.</summary>
+        private void RegisterLevelOverlays(IContainerBuilder builder)
+        {
+            if (_levelCompleteView != null)
+            {
+                builder.RegisterComponent<ILevelCompleteView>(_levelCompleteView);
+                builder.RegisterEntryPoint<LevelCompletePresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _levelCompleteView не прошит — экран итогов уровня не будет работать в этой сцене.");
+            }
+
+            if (_levelStalledView != null)
+            {
+                builder.RegisterComponent<ILevelStalledView>(_levelStalledView);
+                builder.RegisterEntryPoint<LevelStalledPresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _levelStalledView не прошит — soft-fail оверлей не будет работать в этой сцене.");
+            }
+
+            if (_pauseOverlayView != null)
+            {
+                builder.RegisterComponent<IPauseOverlayView>(_pauseOverlayView);
+                builder.RegisterEntryPoint<PauseOverlayPresenter>();
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _pauseOverlayView не прошит — оверлей паузы не будет работать в этой сцене.");
             }
         }
     }

@@ -528,7 +528,24 @@ namespace BlackWhiteLike.Editor.Setup
             SetRef(so, "_isometricCameraConfig", cameraConfig);
             SetRef(so, "_godHandController", godHand);
             SetRef(so, "_cameraRig", cameraRig);
+            // Шаг 5 — без этого InputRouter не пускает ввод в мир (пускает только в LevelPlaying),
+            // и рука в этой тестовой сцене (HUD здесь нет — некому иначе прошить состояние) перестаёт работать.
+            SetEnumProp(so, "_initialState", (int)GameState.LevelPlaying);
             so.ApplyModifiedProperties();
+        }
+
+        private static void SetEnumProp(SerializedObject so, string propertyName, int enumIndex)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на GameLifetimeScope — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return;
+            }
+
+            prop.enumValueIndex = enumIndex;
+            Debug.Log($"[Editor] GameLifetimeScope.{propertyName} прошито.");
         }
 
         private static void SetRef(SerializedObject so, string propertyName, Object value)

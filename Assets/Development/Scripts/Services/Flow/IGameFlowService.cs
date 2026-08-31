@@ -10,6 +10,9 @@ namespace BlackWhiteLike.Services.Flow
     {
         GameState Current { get; }
 
+        /// <summary>true, если <see cref="Current"/> == GameState.Paused (game-design §9, шаг 5).</summary>
+        bool IsPaused { get; }
+
         /// <summary>Стартовое состояние FSM. Событие смены НЕ публикуется — до старта "from" не существует.</summary>
         void Start(GameState initial);
 

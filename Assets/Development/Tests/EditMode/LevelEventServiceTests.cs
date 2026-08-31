@@ -9,7 +9,7 @@ using BlackWhiteLike.Services.Village;
 
 namespace BlackWhiteLike.Tests
 {
-    /// <summary>Тесты <see cref="LevelEventService"/> (game-design §5, §6, §19, шаг 3).</summary>
+    /// <summary>Тесты <see cref="LevelEventService"/> (game-design §5, §6, §19, шаг 3, шаг 5).</summary>
     public class LevelEventServiceTests
     {
         /// <summary>
@@ -80,12 +80,26 @@ namespace BlackWhiteLike.Tests
             service.Tick(1f); // trigger
             eventBus.PublishedEvents.Clear();
 
-            service.ResolveNeed(NeedType.Hunger, 3, byPlayer: true);
+            service.ResolveNeed(NeedType.Hunger, 3, byPlayer: true, causeMiracle: MiracleType.Rain);
 
             var evt = eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Single();
             Assert.AreEqual(NeedType.Hunger, evt.Type);
             Assert.AreEqual(3, evt.SiteIndex);
             Assert.IsTrue(evt.ByPlayer);
+        }
+
+        [Test]
+        public void ResolveNeed_PublishesCauseMiracle()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 1f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out var eventBus, entry);
+            service.Tick(1f);
+            eventBus.PublishedEvents.Clear();
+
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
+
+            var evt = eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Single();
+            Assert.AreEqual(MiracleType.Rain, evt.CauseMiracle);
         }
 
         [Test]
@@ -96,7 +110,7 @@ namespace BlackWhiteLike.Tests
             service.Tick(0f);
             eventBus.PublishedEvents.Clear();
 
-            service.ResolveNeed(NeedType.Fire, 0, byPlayer: false);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: false, causeMiracle: default);
 
             var evt = eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Single();
             Assert.IsFalse(evt.ByPlayer);
@@ -109,7 +123,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(out var eventBus, entry);
             // Ещё не сработало (elapsed < triggerTime) — активной нужды нет.
 
-            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
 
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<NeedResolvedEvent>());
         }
@@ -138,7 +152,7 @@ namespace BlackWhiteLike.Tests
             var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 1f, targetSiteIndex = 0, duration = 2f };
             var service = CreateService(out var eventBus, entry);
             service.Tick(1f); // trigger
-            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
             eventBus.PublishedEvents.Clear();
 
             service.Tick(5f); // сильно больше duration
@@ -211,7 +225,7 @@ namespace BlackWhiteLike.Tests
             service.Tick(2.1f); // истекает (суммарно 3.1с после триггера > duration)
             eventBus.PublishedEvents.Clear();
 
-            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
 
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<NeedResolvedEvent>());
         }
@@ -223,7 +237,7 @@ namespace BlackWhiteLike.Tests
         {
             var service = CreateService(out var eventBus); // пустой таймлайн
 
-            service.TriggerNeed(NeedType.Fire, 5, duration: 10f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 5, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
 
             var evt = eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Single();
             Assert.AreEqual(NeedType.Fire, evt.Type);
@@ -232,13 +246,24 @@ namespace BlackWhiteLike.Tests
         }
 
         [Test]
+        public void TriggerNeed_PublishesCauseMiracle()
+        {
+            var service = CreateService(out var eventBus);
+
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
+
+            var evt = eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Single();
+            Assert.AreEqual(MiracleType.Fireball, evt.CauseMiracle);
+        }
+
+        [Test]
         public void TriggerNeed_WhileAlreadyActiveOnSameSite_DoesNotPublishSecondEvent()
         {
             var service = CreateService(out var eventBus);
-            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
             eventBus.PublishedEvents.Clear();
 
-            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true); // "дом уже горит" — штатный no-op
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball); // "дом уже горит" — штатный no-op
 
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<NeedTriggeredEvent>());
         }
@@ -247,10 +272,10 @@ namespace BlackWhiteLike.Tests
         public void TriggerNeed_DifferentSiteIndex_TriggersIndependently()
         {
             var service = CreateService(out var eventBus);
-            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
             eventBus.PublishedEvents.Clear();
 
-            service.TriggerNeed(NeedType.Fire, 1, duration: 10f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 1, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
 
             Assert.AreEqual(1, eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Count());
         }
@@ -259,7 +284,7 @@ namespace BlackWhiteLike.Tests
         public void TriggerNeed_ExpiresAfterDuration_WithByPlayerTrue()
         {
             var service = CreateService(out var eventBus);
-            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true, causeMiracle: MiracleType.Fireball);
             eventBus.PublishedEvents.Clear();
 
             service.Tick(5.1f);
@@ -274,10 +299,10 @@ namespace BlackWhiteLike.Tests
         public void ResolveNeed_OnRuntimeTriggeredEntry_PublishesNeedResolvedEvent()
         {
             var service = CreateService(out var eventBus);
-            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
             eventBus.PublishedEvents.Clear();
 
-            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
 
             var evt = eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Single();
             Assert.AreEqual(NeedType.Fire, evt.Type);
@@ -289,11 +314,11 @@ namespace BlackWhiteLike.Tests
         public void TriggerNeed_AfterPreviousRuntimeEntryExpired_TriggersAgain()
         {
             var service = CreateService(out var eventBus);
-            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true, causeMiracle: MiracleType.Fireball);
             service.Tick(5.1f); // истекает
             eventBus.PublishedEvents.Clear();
 
-            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 5f, byPlayer: true, causeMiracle: MiracleType.Fireball);
 
             Assert.AreEqual(1, eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Count());
         }
@@ -315,11 +340,69 @@ namespace BlackWhiteLike.Tests
                    {
                        // Другой (type, siteIndex) — не штатный no-op "уже активна", а реальное
                        // добавление в _entries во время текущего Tick.
-                       service.TriggerNeed(NeedType.Hunger, 99, duration: 5f, byPlayer: true);
+                       service.TriggerNeed(NeedType.Hunger, 99, duration: 5f, byPlayer: true, causeMiracle: MiracleType.Fireball);
                    }))
             {
                 Assert.DoesNotThrow(() => service.Tick(1f));
             }
+        }
+
+        // --- Шаг 5: HasActiveNeeds/HasPendingNeeds (используется LevelFlowService для soft-fail) ---
+
+        [Test]
+        public void HasPendingNeeds_TrueBeforeTriggerTime()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 5f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out _, entry);
+
+            Assert.IsTrue(service.HasPendingNeeds);
+            Assert.IsFalse(service.HasActiveNeeds);
+        }
+
+        [Test]
+        public void HasActiveNeeds_TrueAfterTrigger_FalseAfterResolve()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 1f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out _, entry);
+
+            service.Tick(1f);
+            Assert.IsTrue(service.HasActiveNeeds);
+            Assert.IsFalse(service.HasPendingNeeds);
+
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
+            Assert.IsFalse(service.HasActiveNeeds);
+        }
+
+        [Test]
+        public void HasActiveNeeds_TrueAfterRuntimeTrigger()
+        {
+            var service = CreateService(out _);
+
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
+
+            Assert.IsTrue(service.HasActiveNeeds);
+        }
+
+        [Test]
+        public void HasPendingAndHasActiveNeeds_EmptyTimeline_BothFalse()
+        {
+            var service = CreateService(out _);
+
+            Assert.IsFalse(service.HasPendingNeeds);
+            Assert.IsFalse(service.HasActiveNeeds);
+        }
+
+        [Test]
+        public void HasActiveNeeds_FalseAfterExpire()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 1f, targetSiteIndex = 0, duration = 2f };
+            var service = CreateService(out _, entry);
+
+            service.Tick(1f); // trigger
+            Assert.IsTrue(service.HasActiveNeeds);
+
+            service.Tick(2.1f); // истекает
+            Assert.IsFalse(service.HasActiveNeeds);
         }
     }
 }

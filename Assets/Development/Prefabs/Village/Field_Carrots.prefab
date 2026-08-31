@@ -30,9 +30,9 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1696019947971384806}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: -0, z: -0, w: 1}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.9597422, y: 1.9597422, z: 1.9597422}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2355459574567205361}
@@ -179,14 +179,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1af9fba1f37a8c6438cfe1766e3ea3ca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Controllers.Village.NeedSiteController
-  _siteIndex: 0
+  _siteIndex: 2
   _needType: 2
   _normalVisual: {fileID: 5861818831309154665}
   _activeVisual: {fileID: 6565136946605627408}
   _expiredVisual: {fileID: 2471581327019970297}
   _villagerMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 512
 --- !u!1 &2471581327019970297
 GameObject:
   m_ObjectHideFlags: 0
@@ -214,7 +214,7 @@ Transform:
   m_GameObject: {fileID: 2471581327019970297}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.6378604, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -0.74}
   m_LocalScale: {x: 0.6, y: 0.6, z: 0.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -304,7 +304,7 @@ Transform:
   m_GameObject: {fileID: 5861818831309154665}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.6378604, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -0.74}
   m_LocalScale: {x: 0.6, y: 0.6, z: 0.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -394,7 +394,7 @@ Transform:
   m_GameObject: {fileID: 6565136946605627408}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.6378604, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: -0.74}
   m_LocalScale: {x: 0.6, y: 0.6, z: 0.6}
   m_ConstrainProportionsScale: 0
   m_Children: []

@@ -203,6 +203,13 @@ builder.RegisterComponent<IHUDView>(_hudView);
 
 `RegisterInstance` подходит только для plain C# объектов и ScriptableObject, которым инъекция не нужна (конфиги, данные).
 
+### Коллекции и циклы через Func-регистрации (КРИТИЧНО, ловится только в Play Mode)
+
+Оба дефекта не видны ни компилятору, ни unit-тестам сервисов — контейнер падает на `Build()` при входе в Play Mode (шаг 5, оба сразу):
+
+- **Несколько `Register<IFoo>(r => new Foo(...), Lifetime.Singleton)` НЕ собираются в `IEnumerable<IFoo>`**: у всех Func-регистраций один `ImplementationType` (= сам интерфейс), и `CollectionInstanceProvider` бросает «Conflict implementation type». Коллекцию регистрировать **одной** записью точного типа: `builder.Register<IEnumerable<IFoo>>(r => new IFoo[] { ... }, Lifetime.Singleton)` — `Registry.TryGet` проверяет точный тип раньше fallback'ов на коллекции.
+- **Цикл через Func/коллекцию не ловится валидацией VContainer** (`TypeAnalyzer` не видит сквозь лямбду) и проявляется как `InvalidOperationException: ValueFactory attempted to access the Value property of this instance` (re-entrancy `Lazy<T>` синглтона). Образец: `GameFlowService(IEnumerable<IGameStateBinding>)` → биндинг резолвит `LevelPlayingState(ILevelFlowService)` → `LevelFlowService(IGameFlowService)` → снова `GameFlowService`. Правило: **состояния FSM и сервисы, которые они тянут, не зависят от `IGameFlowService`**; переходы по событиям (`LevelCompletedEvent` → `LevelComplete`, §9) делает сам `GameFlowService` подпиской на шину — таблица переходов принадлежит Flow-слою.
+
 ### Объекты из пула не получают инъекцию автоматически
 
 После `pool.Get()` нужно вручную:

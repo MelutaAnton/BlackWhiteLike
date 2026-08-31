@@ -15,12 +15,12 @@ MonoBehaviour:
   _type: 2
   _baseFaithCost: 30
   _holdCostPerSecond: 15
+  _holdGraceSeconds: 0.15
   _baseRadius: 1.5
   _maxRadius: 3.5
   _holdSecondsToMaxRadius: 1.5
   _effectPower: 8
   _alignmentShift: -10
-  _worshipYield: 15
   _castVfx: 1
   _icon: {fileID: 21300000, guid: b6ebb98de1e739d4da0dd3a92b3e68b4, type: 3}
   _upgradeLevelPowerBonus: 

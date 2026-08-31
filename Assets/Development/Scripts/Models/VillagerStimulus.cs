@@ -16,6 +16,14 @@ namespace BlackWhiteLike.Models
         HardLanded,
 
         /// <summary>Взрыв чуда Fireball разбрасывает жителя (game-design §4, шаг 4) — переход в Tossed, та же ветка, что Grabbed.</summary>
-        Blasted
+        Blasted,
+
+        /// <summary>
+        /// Нет внешнего стимула — переход случился по таймеру FSM (game-design §5, шаг 5, аудит
+        /// ВАЖНО 5): <c>VillagerStateService.Tick</c> сам переводит Panic/Worship/Stunned/Tossed в
+        /// Idle по истечении длительности, без <c>ReportStimulus</c>. Единственное значение,
+        /// подставляемое сервисом, а не источником стимула.
+        /// </summary>
+        None
     }
 }

@@ -25,5 +25,12 @@ namespace BlackWhiteLike.Services.Faith
 
         /// <summary>Пассивная генерация: RegenPerWorshipper × число жителей в Worship × deltaTime, кламп по Capacity.</summary>
         void Tick(float deltaTime);
+
+        /// <summary>
+        /// Мгновенно заполняет Faith до Capacity (game-design §9, "Soft-fail", шаг 5) — вызывается
+        /// rewarded-заглушкой "Пополнить веру" (см. <c>LevelStalledPresenter</c>, // ADS_STUB).
+        /// Публикует FaithChangedEvent при реальном изменении.
+        /// </summary>
+        void RefillToCapacity();
     }
 }

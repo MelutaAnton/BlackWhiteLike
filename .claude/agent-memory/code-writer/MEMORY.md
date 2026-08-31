@@ -1,1 +1,2 @@
 - [Шаг 4: Чудеса + Faith](project_step4_miracles_faith.md) — что уже реализовано (сервисы/конфиги/UI), чего ещё нет (Heal/Lightning/Worship), как расширять новым чудом/нуждой
+- [Шаг 5: Worship + win](project_step5_worship_win.md) — WorshipService/AlignmentService/LevelFlowService, FSM через IGameStateBinding, InputRouter, HUD/оверлеи уровня

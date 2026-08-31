@@ -13,6 +13,7 @@ using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
+using BlackWhiteLike.Data.Configs.Worship;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Editor.Configs;
 using BlackWhiteLike.Editor.Prefabs;
@@ -20,6 +21,7 @@ using BlackWhiteLike.Editor.UI;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Views.UI.Hud;
+using BlackWhiteLike.Views.UI.Overlay;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -69,6 +71,9 @@ namespace BlackWhiteLike.Editor.Setup
         private const string RainVfxPrefabPath = "Assets/Development/Prefabs/VFX/Vfx_RainCast.prefab";
         private const string HudPrefabPath = "Assets/Development/Prefabs/UI/LevelHudCanvas.prefab";
         private const string MiraclePreviewRingMaterialPath = "Assets/Development/Art/Materials/MiraclePreviewRing.mat";
+
+        // Шаг 5 — Worship + win (game-design.md §19.5).
+        private const string WorshipConfigPath = "Assets/Development/Data/Configs/Worship/WorshipConfig.asset";
 
         /// <summary>
         /// Позиции структур на сцене. Имя ← ThirdParty-источник ← масштаб ← NeedType — теперь
@@ -165,6 +170,7 @@ namespace BlackWhiteLike.Editor.Setup
             var miracleCatalogConfig = AssetDatabase.LoadAssetAtPath<MiracleCatalogConfig>(MiracleCatalogConfigPath);
             var faithConfig = AssetDatabase.LoadAssetAtPath<FaithConfig>(FaithConfigPath);
             var vfxConfig = AssetDatabase.LoadAssetAtPath<VfxConfig>(VfxConfigPath);
+            var worshipConfig = AssetDatabase.LoadAssetAtPath<WorshipConfig>(WorshipConfigPath);
             WarnIfMissing(handConfig, HandConfigPath);
             WarnIfMissing(cameraConfig, CameraConfigPath);
             WarnIfMissing(villagerConfig, VillagerConfigPath);
@@ -174,6 +180,7 @@ namespace BlackWhiteLike.Editor.Setup
             WarnIfMissing(miracleCatalogConfig, MiracleCatalogConfigPath);
             WarnIfMissing(faithConfig, FaithConfigPath);
             WarnIfMissing(vfxConfig, VfxConfigPath);
+            WarnIfMissing(worshipConfig, WorshipConfigPath);
 
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Test Village Scene");
@@ -212,8 +219,17 @@ namespace BlackWhiteLike.Editor.Setup
             var miraclePanelView = Object.FindAnyObjectByType<MiraclePanelView>(FindObjectsInactive.Include);
             var faithBarView = Object.FindAnyObjectByType<FaithBarView>(FindObjectsInactive.Include);
 
+            // Шаг 5 — LevelHudView живёт на корне того же канваса, что и MiraclePanelView; оверлеи —
+            // выключенные дети этого же корня (GetComponentInChildren(true) — иначе неактивные не найдутся).
+            var levelHudView = Object.FindAnyObjectByType<LevelHudView>(FindObjectsInactive.Include);
+            var hudRootTransform = levelHudView != null ? levelHudView.transform : null;
+            var levelCompleteView = hudRootTransform != null ? hudRootTransform.GetComponentInChildren<LevelCompleteView>(true) : null;
+            var levelStalledView = hudRootTransform != null ? hudRootTransform.GetComponentInChildren<LevelStalledView>(true) : null;
+            var pauseOverlayView = hudRootTransform != null ? hudRootTransform.GetComponentInChildren<PauseOverlayView>(true) : null;
+
             WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
-                miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView);
+                miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView,
+                worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView);
 
             // NeedSite-объекты — MonoBehaviour без RegisterComponent, нужны в autoInjectGameObjects
             // (см. память агента "vcontainer-autoinjectgameobjects"). [Miracles] сюда НЕ входит:
@@ -338,12 +354,14 @@ namespace BlackWhiteLike.Editor.Setup
         // ещё нет на диске — повторный прогон не плодит лишних логов от уже собранных шагов.
         // ------------------------------------------------------------------------------------
 
+        /// <summary>Конфиги шагов 4 и 5 — общий вызов ConfigAssetCreatorEditor.CreateAll() создаёт только недостающее (идемпотентно).</summary>
         private static void EnsureStep4Configs()
         {
-            if (File.Exists(MiracleCatalogConfigPath) && File.Exists(FaithConfigPath) && File.Exists(VfxConfigPath))
+            if (File.Exists(MiracleCatalogConfigPath) && File.Exists(FaithConfigPath) && File.Exists(VfxConfigPath) &&
+                File.Exists(WorshipConfigPath))
                 return;
 
-            Debug.Log("[Editor] Конфиги шага 4 (Miracles/Faith/Vfx) не найдены — вызываю ConfigAssetCreatorEditor.CreateAll().");
+            Debug.Log("[Editor] Конфиги шагов 4/5 (Miracles/Faith/Vfx/Worship) не найдены — вызываю ConfigAssetCreatorEditor.CreateAll().");
             ConfigAssetCreatorEditor.CreateAll();
         }
 
@@ -864,7 +882,9 @@ namespace BlackWhiteLike.Editor.Setup
             GodHandController godHand, CameraRig cameraRig,
             MiracleCatalogConfig miracleCatalogConfig, FaithConfig faithConfig, VfxConfig vfxConfig,
             MiracleTargetingController miracleTargeting, MiracleImpactController miracleImpact, MiracleVfxController miracleVfx,
-            MiraclePanelView miraclePanelView, FaithBarView faithBarView)
+            MiraclePanelView miraclePanelView, FaithBarView faithBarView,
+            WorshipConfig worshipConfig, LevelHudView levelHudView, LevelCompleteView levelCompleteView,
+            LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView)
         {
             if (scope == null)
             {
@@ -872,7 +892,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 15;
+            const int expected = 21;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -893,6 +913,13 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetRef(so, "_miracleVfxController", miracleVfx, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_miraclePanelView", miraclePanelView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_faithBarView", faithBarView, ownerLabel) ? 1 : 0;
+            // Шаг 5 — Worship + win (game-design.md §19.5).
+            wired += SetRef(so, "_worshipConfig", worshipConfig, ownerLabel) ? 1 : 0;
+            wired += SetEnumProp(so, "_initialState", (int)GameState.LevelPlaying, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_levelHudView", levelHudView, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_levelCompleteView", levelCompleteView, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_levelStalledView", levelStalledView, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_pauseOverlayView", pauseOverlayView, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)
@@ -900,6 +927,21 @@ namespace BlackWhiteLike.Editor.Setup
             else
                 Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей — " +
                                 "сцена соберётся, но часть систем не заработает в Play Mode.");
+        }
+
+        /// <summary>Прошивает enum-поле по индексу значения. В отличие от SetRef — не бывает "не найдено значение", только "поле не найдено".</summary>
+        private static bool SetEnumProp(SerializedObject so, string propertyName, int enumIndex, string ownerLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return false;
+            }
+
+            prop.enumValueIndex = enumIndex;
+            return true;
         }
 
         /// <summary>Прошивает object-reference поле. Не присваивает null — оставляет как было (см. .claude/rules/editor-files.md).</summary>

@@ -174,5 +174,32 @@ namespace BlackWhiteLike.Tests
             Assert.AreEqual(50f, service.Current, 0.001f);
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<FaithChangedEvent>());
         }
+
+        // --- Шаг 5: RefillToCapacity (rewarded-заглушка soft-fail, // ADS_STUB) ---
+
+        [Test]
+        public void RefillToCapacity_SetsCurrentToCapacity_AndPublishes()
+        {
+            var eventBus = new FakeEventBus();
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 0f), new FakeVillagerStateService());
+
+            service.RefillToCapacity();
+
+            Assert.AreEqual(100f, service.Current, 0.001f);
+            var evt = eventBus.PublishedEvents.OfType<FaithChangedEvent>().Single();
+            Assert.AreEqual(0f, evt.OldValue, 0.001f);
+            Assert.AreEqual(100f, evt.NewValue, 0.001f);
+        }
+
+        [Test]
+        public void RefillToCapacity_AlreadyFull_DoesNotPublish()
+        {
+            var eventBus = new FakeEventBus();
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 100f), new FakeVillagerStateService());
+
+            service.RefillToCapacity();
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<FaithChangedEvent>());
+        }
     }
 }

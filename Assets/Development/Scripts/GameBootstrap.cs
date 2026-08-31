@@ -1,5 +1,4 @@
 using UnityEngine;
-using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Flow;
 using VContainer.Unity;
 
@@ -12,23 +11,20 @@ namespace BlackWhiteLike
     public sealed class GameBootstrap : IStartable
     {
         private readonly IGameFlowService _gameFlowService;
+        private readonly BootstrapSettings _settings;
 
-        public GameBootstrap(IGameFlowService gameFlowService)
+        public GameBootstrap(IGameFlowService gameFlowService, BootstrapSettings settings)
         {
             _gameFlowService = gameFlowService;
+            _settings = settings;
         }
 
         public void Start()
         {
-            _gameFlowService.Start(GameState.MainMenu);
-            Debug.Log("[Bootstrap] Started, state = MainMenu");
-
-            // TODO шаг 2: убрать smoke-тест push-pop — временная проверка, что push-pop FSM
-            // работает end-to-end через IGameFlowService уже с первого шага (game-design §15).
-            _gameFlowService.PushState(GameState.Paused);
-            Debug.Log($"[Bootstrap] Smoke-test push-pop: pushed Paused, Current = {_gameFlowService.Current}");
-            _gameFlowService.PopState();
-            Debug.Log($"[Bootstrap] Smoke-test push-pop: popped, Current = {_gameFlowService.Current}");
+            // Шаг 5: стартовое состояние берётся из Composition Root (BootstrapSettings), а не
+            // захардкожено GameState.MainMenu — сцена уровня стартует сразу в LevelPlaying.
+            _gameFlowService.Start(_settings.InitialState);
+            Debug.Log($"[Bootstrap] Started, state = {_settings.InitialState}");
         }
     }
 }

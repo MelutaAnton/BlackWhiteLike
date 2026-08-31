@@ -3,6 +3,7 @@
     "rootNamespace": "BlackWhiteLike.Tests",
     "references": [
         "BlackWhiteLike",
+        "VContainer",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

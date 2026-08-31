@@ -8,6 +8,7 @@ using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
+using BlackWhiteLike.Data.Configs.Worship;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Models;
 using UnityEditor;
@@ -56,6 +57,9 @@ namespace BlackWhiteLike.Editor.Configs
         private const string MiracleFireballPath = ConfigsRoot + "/Miracles/Miracle_Fireball.asset";
         private const string MiracleCatalogPath = ConfigsRoot + "/Miracles/MiracleCatalog.asset";
 
+        // Шаг 5 — Worship + win (game-design.md §19.5).
+        private const string WorshipConfigPath = ConfigsRoot + "/Worship/WorshipConfig.asset";
+
         // Иконки — единственный источник путей: BlackWhiteLike.Editor.Common.EditorSpriteUtility.MiracleIconPaths
         // (правка после ревью: строки дублировались здесь и в Editor/UI/LevelHudSetupEditor.cs).
         private const string RainIconPath = EditorSpriteUtility.MiracleIconPaths.Rain;
@@ -82,6 +86,8 @@ namespace BlackWhiteLike.Editor.Configs
             new ConfigAssetDescriptor(typeof(FaithConfig), ConfigsRoot + "/Faith/FaithConfig.asset"),
             // _entries прошивает Editor/Prefabs/MiracleVfxPrefabSetupEditor после сборки VFX-префабов.
             new ConfigAssetDescriptor(typeof(VfxConfig), ConfigsRoot + "/Vfx/VfxConfig.asset"),
+            // Шаг 5 — Worship + win (game-design.md §19.5).
+            new ConfigAssetDescriptor(typeof(WorshipConfig), WorshipConfigPath, InitWorshipConfig),
         };
 
         /// <summary>Дождь (game-design.md §19.4): исцеляет Fire/Hunger, без удержания-накопления вреда.</summary>
@@ -95,7 +101,8 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
             so.FindProperty("_effectPower").floatValue = 0f;
             so.FindProperty("_alignmentShift").floatValue = 10f;
-            so.FindProperty("_worshipYield").intValue = 10;
+            // Шаг 5 (ревью): поле _worshipYield удалено из MiracleConfig — Worship больше не даётся
+            // за факт применения чуда, начисляется WorshipService по Awe/Fear (см. WorshipConfig).
             so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.RainCast;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(RainIconPath);
 
@@ -119,7 +126,7 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
             so.FindProperty("_effectPower").floatValue = 8f;
             so.FindProperty("_alignmentShift").floatValue = -10f;
-            so.FindProperty("_worshipYield").intValue = 15;
+            // Шаг 5 (ревью): поле _worshipYield удалено из MiracleConfig — см. комментарий в InitRainMiracle.
             so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.FireballExplosion;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(FireballIconPath);
 
@@ -144,6 +151,50 @@ namespace BlackWhiteLike.Editor.Configs
 
             if (rain == null || fireball == null)
                 Debug.LogWarning("[Editor] MiracleCatalog: одна из ссылок (Miracle_Rain/Miracle_Fireball) не найдена при создании.");
+        }
+
+        /// <summary>
+        /// Шаг 5 — Worship + win (game-design.md §19.5). Массивы вложенных [Serializable]-элементов
+        /// (NeedAweEntry/TerrorFearEntry) прошиваются через arraySize + FindPropertyRelative на каждом
+        /// элементе — сериализация SerializedObject не поддерживает прямое присваивание C#-массива.
+        /// </summary>
+        private static void InitWorshipConfig(SerializedObject so)
+        {
+            var aweByNeed = so.FindProperty("_aweByNeed");
+            var aweEntries = new (NeedType Type, int Awe)[]
+            {
+                (NeedType.Fire, 20),
+                (NeedType.Disease, 20),
+                (NeedType.Hunger, 15),
+            };
+            aweByNeed.arraySize = aweEntries.Length;
+            for (int i = 0; i < aweEntries.Length; i++)
+            {
+                var element = aweByNeed.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("_type").enumValueIndex = (int)aweEntries[i].Type;
+                element.FindPropertyRelative("_awe").intValue = aweEntries[i].Awe;
+            }
+
+            var fearByAct = so.FindProperty("_fearByAct");
+            var fearEntries = new (TerrorAct Act, int Fear)[]
+            {
+                (TerrorAct.FireballOnStructure, 25),
+                (TerrorAct.LightningStrike, 20),
+                (TerrorAct.VillagerHardLanding, 8),
+                (TerrorAct.ObjectHitStructure, 10),
+                // Playtest шага 5 (решение владельца): взрыв чуда — отдельная ставка, не «как рука».
+                (TerrorAct.VillagerBlasted, 6),
+            };
+            fearByAct.arraySize = fearEntries.Length;
+            for (int i = 0; i < fearEntries.Length; i++)
+            {
+                var element = fearByAct.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("_act").enumValueIndex = (int)fearEntries[i].Act;
+                element.FindPropertyRelative("_fear").intValue = fearEntries[i].Fear;
+            }
+
+            so.FindProperty("_worshipDecayPerSecond").floatValue = 0f;
+            so.FindProperty("_handTerrorAlignmentShift").floatValue = -3f;
         }
 
         [MenuItem("BlackWhiteLike/Configs/Create Empty SO Set")]

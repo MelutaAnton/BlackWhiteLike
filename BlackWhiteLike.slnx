@@ -1,9 +1,9 @@
 ﻿<Solution>
   <Project Path="CFXRRuntime.csproj" />
   <Project Path="BlackWhiteLike.csproj" />
+  <Project Path="BlackWhiteLike.Tests.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
-  <Project Path="BlackWhiteLike.Tests.csproj" />
   <Project Path="CFXRDemo.csproj" />
   <Project Path="BlackWhiteLike.Editor.csproj" />
   <Project Path="Assembly-CSharp-firstpass.csproj" />

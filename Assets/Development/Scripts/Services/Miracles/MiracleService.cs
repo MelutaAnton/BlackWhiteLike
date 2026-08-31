@@ -21,6 +21,7 @@ namespace BlackWhiteLike.Services.Miracles
         private MiracleConfig _config;
         private Vector3 _point;
         private float _holdTime;
+        private float _pumpedTime;
         private float _radius;
 
         public MiracleService(IEventBus eventBus, IFaithService faithService, MiracleCatalogConfig catalog)
@@ -50,6 +51,7 @@ namespace BlackWhiteLike.Services.Miracles
             _config = config;
             _point = point;
             _holdTime = 0f;
+            _pumpedTime = 0f;
             _radius = config.BaseRadius;
 
             return true;
@@ -61,15 +63,23 @@ namespace BlackWhiteLike.Services.Miracles
 
             _point = point;
 
-            var holdCost = _config.HoldCostPerSecond * deltaTime;
+            // Время сессии копится всегда — не зависит от того, хватило ли Faith на накачку.
+            _holdTime += deltaTime;
+
+            // Накачиваемое время — часть holdTime сверх льготного окна (MiracleConfig.HoldGraceSeconds):
+            // первые HoldGraceSeconds удержания — «ещё тап», прирост накачиваемого времени нулевой.
+            var pumpableTime = Mathf.Max(0f, _holdTime - _config.HoldGraceSeconds);
+            var pumpDelta = Mathf.Max(0f, pumpableTime - _pumpedTime);
+
+            var holdCost = _config.HoldCostPerSecond * pumpDelta;
             if (_faithService.TrySpend(holdCost))
             {
-                _holdTime += deltaTime;
-                var t = Mathf.Clamp01(_holdTime / _config.HoldSecondsToMaxRadius);
+                _pumpedTime = pumpableTime;
+                var t = Mathf.Clamp01(_pumpedTime / _config.HoldSecondsToMaxRadius);
                 _radius = Mathf.Lerp(_config.BaseRadius, _config.MaxRadius, t);
             }
-            // Иначе — Faith не хватило на этот тик накачки: радиус замирает на текущем значении,
-            // сессия остаётся легальной (BaseFaithCost уже оплачен при BeginCast).
+            // Иначе — Faith не хватило на этот тик накачки: накачиваемое время и радиус замирают
+            // на текущих значениях, сессия остаётся легальной (BaseFaithCost уже оплачен при BeginCast).
         }
 
         public void ReleaseCast()
@@ -94,6 +104,7 @@ namespace BlackWhiteLike.Services.Miracles
             _isCasting = false;
             _config = null;
             _holdTime = 0f;
+            _pumpedTime = 0f;
             _radius = 0f;
         }
     }

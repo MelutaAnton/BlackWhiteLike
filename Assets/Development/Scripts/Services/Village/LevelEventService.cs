@@ -82,7 +82,9 @@ namespace BlackWhiteLike.Services.Village
                         // фантомно, потому что таймер истечения стартовал бы от нуля, а не от
                         // фактического момента срабатывания. _elapsed - triggerTime — реальный лаг.
                         state.TimeSinceTriggered = _elapsed - state.Entry.triggerTime;
-                        _eventBus.Publish(new NeedTriggeredEvent(state.Entry.type, state.Entry.targetSiteIndex, state.ByPlayer));
+                        // ByPlayer записи скриптованного таймлайна всегда false — CauseMiracle не
+                        // валиден для неё (см. Events.Village.cs), передаём default.
+                        _eventBus.Publish(new NeedTriggeredEvent(state.Entry.type, state.Entry.targetSiteIndex, state.ByPlayer, default));
                         break;
 
                     case EntryStatus.Active:
@@ -112,7 +114,7 @@ namespace BlackWhiteLike.Services.Village
                 state.ByPlayer && (state.Status == EntryStatus.Resolved || state.Status == EntryStatus.Expired));
         }
 
-        public void ResolveNeed(NeedType type, int siteIndex, bool byPlayer)
+        public void ResolveNeed(NeedType type, int siteIndex, bool byPlayer, MiracleType causeMiracle)
         {
             foreach (var state in _entries)
             {
@@ -120,7 +122,7 @@ namespace BlackWhiteLike.Services.Village
                 if (state.Entry.type != type || state.Entry.targetSiteIndex != siteIndex) continue;
 
                 state.Status = EntryStatus.Resolved;
-                _eventBus.Publish(new NeedResolvedEvent(type, siteIndex, byPlayer));
+                _eventBus.Publish(new NeedResolvedEvent(type, siteIndex, byPlayer, causeMiracle));
                 return; // одновременно активна максимум одна запись на (type, siteIndex) — таймлайн скриптован вручную
             }
         }
@@ -131,7 +133,7 @@ namespace BlackWhiteLike.Services.Village
         /// (см. ResolveNeed): повторный вызов, пока запись ещё Active, — штатный no-op ("дом уже
         /// горит"), не ошибка и не повод для LogWarning.
         /// </summary>
-        public void TriggerNeed(NeedType type, int siteIndex, float duration, bool byPlayer)
+        public void TriggerNeed(NeedType type, int siteIndex, float duration, bool byPlayer, MiracleType causeMiracle)
         {
             foreach (var state in _entries)
             {
@@ -155,10 +157,36 @@ namespace BlackWhiteLike.Services.Village
             };
             _entries.Add(newState);
 
-            _eventBus.Publish(new NeedTriggeredEvent(type, siteIndex, byPlayer));
+            _eventBus.Publish(new NeedTriggeredEvent(type, siteIndex, byPlayer, causeMiracle));
         }
 
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time.</summary>
         public void Tick() => Tick(UnityEngine.Time.deltaTime);
+
+        public bool HasActiveNeeds
+        {
+            get
+            {
+                foreach (var state in _entries)
+                {
+                    if (state.Status == EntryStatus.Active) return true;
+                }
+
+                return false;
+            }
+        }
+
+        public bool HasPendingNeeds
+        {
+            get
+            {
+                foreach (var state in _entries)
+                {
+                    if (state.Status == EntryStatus.Pending) return true;
+                }
+
+                return false;
+            }
+        }
     }
 }

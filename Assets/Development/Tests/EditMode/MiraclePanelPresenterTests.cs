@@ -67,6 +67,10 @@ namespace BlackWhiteLike.Tests
             public void Tick(float deltaTime)
             {
             }
+
+            public void RefillToCapacity()
+            {
+            }
         }
 
         private static MiracleConfig CreateMiracleConfig(MiracleType type, float baseFaithCost = 20f)

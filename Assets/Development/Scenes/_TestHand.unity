@@ -365,6 +365,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 11400000, guid: 1c123b29efcd074409ce0cb9f9097b27, type: 2}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _initialState
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _godHandController
       value: 
       objectReference: {fileID: 1172548792}

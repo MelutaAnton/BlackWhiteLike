@@ -80,7 +80,7 @@ namespace BlackWhiteLike.Services.Village
                 return;
             }
 
-            ApplyTransition(id, record, target);
+            ApplyTransition(id, record, target, stimulus);
         }
 
         public void Tick(float deltaTime)
@@ -100,7 +100,8 @@ namespace BlackWhiteLike.Services.Village
                 record.Timer -= deltaTime;
                 if (record.Timer <= 0f)
                 {
-                    ApplyTransition(kvp.Key, record, VillagerState.Idle);
+                    // Переход по таймеру, не по внешнему стимулу — Cause = None (game-design §5, шаг 5).
+                    ApplyTransition(kvp.Key, record, VillagerState.Idle, VillagerStimulus.None);
                 }
             }
         }
@@ -136,12 +137,12 @@ namespace BlackWhiteLike.Services.Village
             }
         }
 
-        private void ApplyTransition(VillagerId id, Record record, VillagerState target)
+        private void ApplyTransition(VillagerId id, Record record, VillagerState target, VillagerStimulus cause)
         {
             var from = record.State;
             record.State = target;
             record.Timer = DurationFor(target);
-            _eventBus.Publish(new VillagerStateChangedEvent(id, from, target));
+            _eventBus.Publish(new VillagerStateChangedEvent(id, from, target, cause));
         }
 
         private float DurationFor(VillagerState state)
