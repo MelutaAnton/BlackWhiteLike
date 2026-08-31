@@ -15,3 +15,5 @@ MonoBehaviour:
   _miracles:
   - {fileID: 11400000, guid: 96e9a022f2da8494e98193ce525dc841, type: 2}
   - {fileID: 11400000, guid: b966724f030ed0e4f800721e129fdbfa, type: 2}
+  - {fileID: 11400000, guid: 79dfbce0946a2c14aa8ea5a048897b1b, type: 2}
+  - {fileID: 11400000, guid: a2e39282930f057449df6867602568be, type: 2}

@@ -25,6 +25,11 @@ namespace BlackWhiteLike.Services.Worship
     /// и травма жителя. Причина входа в Tossed определяет ставку: <c>VillagerStimulus.Grabbed</c> →
     /// <see cref="TerrorAct.VillagerHardLanding"/>, <c>VillagerStimulus.Blasted</c> →
     /// <see cref="TerrorAct.VillagerBlasted"/>.
+    /// Решение владельца (2026-09-01, шаг 6): удар молнии — отдельный путь, минующий Tossed (FSM
+    /// ведёт Idle/Panic/Worship напрямую в Stunned, см. <c>VillagerStateService.TryResolveTarget</c>,
+    /// <see cref="VillagerStimulus.LightningStruck"/>) — ставка <see cref="TerrorAct.VillagerStruckByLightning"/>,
+    /// та же структура прецедента (отдельно от <see cref="TerrorAct.LightningStrike"/> — поджог дома
+    /// молнией — отдельный акт, двойного счёта нет).
     /// </remarks>
     public sealed class WorshipService : IWorshipService, ITickable, IDisposable
     {
@@ -93,6 +98,16 @@ namespace BlackWhiteLike.Services.Worship
             if (evt.To == VillagerState.Tossed)
             {
                 _tossedCauseByVillager[evt.Id] = evt.Cause;
+                return;
+            }
+
+            // Удар молнии (шаг 6, решение владельца 2026-09-01) — Idle/Panic/Worship -> Stunned
+            // напрямую, минуя Tossed (VillagerStateService.TryResolveTarget, LightningStruck).
+            // Self-loop Stunned -> Stunned (повторный удар) сюда не попадает — VillagerStateService
+            // не публикует событие для target == current, то есть Fear не фармится повторным ударом.
+            if (evt.To == VillagerState.Stunned && evt.Cause == VillagerStimulus.LightningStruck)
+            {
+                ApplyFear(_config.GetFear(TerrorAct.VillagerStruckByLightning));
                 return;
             }
 

@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d788e5071f422994cb3a6a06a6755f68, type: 3}
+  m_Name: AlignmentVisual
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Data.Configs.Alignment.AlignmentVisualConfig
+  _stages:
+  - _scoreThreshold: 75
+    _handMaterials: []
+    _templeMaterials: []
+    _decalPrefabsToSpawn: []
+    _vfxToActivate: 
+  - _scoreThreshold: 25
+    _handMaterials:
+    - {fileID: 2100000, guid: 6b634f288de8040498c72e199905e056, type: 2}
+    _templeMaterials:
+    - {fileID: 2100000, guid: 6d719b79ee376124e9deaadc9e680416, type: 2}
+    - {fileID: 2100000, guid: a1f2da9d04c9a2843a85e39b34a0334e, type: 2}
+    _decalPrefabsToSpawn: []
+    _vfxToActivate: 
+  - _scoreThreshold: -25
+    _handMaterials:
+    - {fileID: 2100000, guid: 2aa55cf7c739ec24388805730471dfc6, type: 2}
+    _templeMaterials:
+    - {fileID: 2100000, guid: d7be95d96306f24418ec0fdc4c016bef, type: 2}
+    - {fileID: 2100000, guid: 1d84b7b77804fd74991551b09e7e07f2, type: 2}
+    _decalPrefabsToSpawn: []
+    _vfxToActivate: 
+  - _scoreThreshold: -75
+    _handMaterials:
+    - {fileID: 2100000, guid: 3990308c47c25504495168350fd15486, type: 2}
+    _templeMaterials:
+    - {fileID: 2100000, guid: 7462bf1251658c34fa02b2dfd30953e0, type: 2}
+    - {fileID: 2100000, guid: 5dd6c8803903f194b86d36a4f7943a71, type: 2}
+    _decalPrefabsToSpawn: []
+    _vfxToActivate: 
+  - _scoreThreshold: -100
+    _handMaterials: []
+    _templeMaterials: []
+    _decalPrefabsToSpawn: []
+    _vfxToActivate: 
+  _uiPalette:
+    _saintTint: {r: 1, g: 1, b: 1, a: 1}
+    _kindTint: {r: 1, g: 1, b: 1, a: 1}
+    _neutralTint: {r: 1, g: 1, b: 1, a: 1}
+    _cruelTint: {r: 1, g: 1, b: 1, a: 1}
+    _demonTint: {r: 1, g: 1, b: 1, a: 1}

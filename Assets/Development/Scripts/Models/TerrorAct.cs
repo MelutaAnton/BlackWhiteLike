@@ -19,6 +19,15 @@ namespace BlackWhiteLike.Models
         /// <see cref="VillagerHardLanding"/> (бросок рукой) — решение владельца 2026-08-29: у взрыва
         /// своя ставка Fear, поджог дома (FireballOnStructure) — отдельный акт, двойного счёта нет.
         /// </summary>
-        VillagerBlasted
+        VillagerBlasted,
+
+        /// <summary>
+        /// Житель поражён ударом молнии (Idle/Panic/Worship -> Stunned, причина —
+        /// <see cref="VillagerStimulus.LightningStruck"/>, game-design §4, шаг 6). Отдельная ставка
+        /// от <see cref="LightningStrike"/> (поджог дома) — та же структура прецедента, что
+        /// VillagerBlasted/FireballOnStructure: два разных акта, двойного счёта нет. Решение
+        /// владельца 2026-09-01.
+        /// </summary>
+        VillagerStruckByLightning
     }
 }

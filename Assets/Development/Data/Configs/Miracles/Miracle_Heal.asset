@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ee0b44b6266fa864c847c8d2ef0ab236, type: 3}
+  m_Name: Miracle_Heal
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Data.Configs.Miracles.MiracleConfig
+  _type: 1
+  _baseFaithCost: 20
+  _holdCostPerSecond: 10
+  _holdGraceSeconds: 0.15
+  _baseRadius: 2
+  _maxRadius: 5
+  _holdSecondsToMaxRadius: 1.5
+  _effectPower: 0
+  _alignmentShift: 10
+  _castVfx: 2
+  _icon: {fileID: 21300000, guid: 58a6c4f0df0412f4fafa94ec77746f9f, type: 3}
+  _upgradeLevelPowerBonus: 
+  _resolvesNeeds: 01000000
+  _createsNeed: 0
+  _createdNeed: 0
+  _createdNeedDuration: 15
+  _blastsVillagers: 0
+  _strikesVillagers: 0

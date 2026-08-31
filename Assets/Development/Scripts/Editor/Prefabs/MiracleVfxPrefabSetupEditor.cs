@@ -30,9 +30,18 @@ namespace BlackWhiteLike.Editor.Prefabs
         private const string PrefabsFolder = "Assets/Development/Prefabs/VFX";
         private const string FireballPrefabPath = PrefabsFolder + "/Vfx_FireballExplosion.prefab";
         private const string RainPrefabPath = PrefabsFolder + "/Vfx_RainCast.prefab";
+        // Шаг 6 — Heal + Lightning (game-design.md §4).
+        private const string HealCastPrefabPath = PrefabsFolder + "/Vfx_HealCast.prefab";
+        private const string LightningStrikePrefabPath = PrefabsFolder + "/Vfx_LightningStrike.prefab";
 
         private const string CfxrExplosionSourcePath =
             "Assets/ThirdParty/VFX/JMO Assets/Cartoon FX Remaster/CFXR Prefabs/Explosions/CFXR4 Explosion Orange (HDR) + Smoke.prefab";
+
+        // Шаг 6 — Hovl Studio RPG VFX Bundle (только чтение, визуал — правило CLAUDE.md "Из ThirdParty ... только визуал").
+        private const string HealCastSourcePath =
+            "Assets/ThirdParty/VFX/Hovl Studio/RPG VFX Bundle v6.0.3/RPG VFX Bundle/Random effect prefabs/Buff heal.prefab";
+        private const string LightningStrikeSourcePath =
+            "Assets/ThirdParty/VFX/Hovl Studio/RPG VFX Bundle v6.0.3/AOE Magic spells Vol.1/Prefabs/Lightning strike.prefab";
 
         private const string MaterialsFolder = "Assets/Development/Art/Materials";
         private const string RainDropMaterialPath = MaterialsFolder + "/Vfx_RainDrop.mat";
@@ -47,8 +56,12 @@ namespace BlackWhiteLike.Editor.Prefabs
 
             var fireballPrefab = SetupFireballExplosionPrefab();
             var rainPrefab = SetupRainCastPrefab();
+            // Шаг 6 — Heal + Lightning: обёртки над ThirdParty Hovl-эффектами, тот же приём, что и
+            // Vfx_FireballExplosion (CFXR) — InstantiateUnpacked + VfxInstanceController.
+            var healPrefab = SetupWrappedThirdPartyVfxPrefab("Vfx_HealCast", HealCastPrefabPath, HealCastSourcePath, "Effect");
+            var lightningPrefab = SetupWrappedThirdPartyVfxPrefab("Vfx_LightningStrike", LightningStrikePrefabPath, LightningStrikeSourcePath, "Effect");
 
-            WireVfxConfig(fireballPrefab, rainPrefab);
+            WireVfxConfig(fireballPrefab, rainPrefab, healPrefab, lightningPrefab);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -345,6 +358,161 @@ namespace BlackWhiteLike.Editor.Prefabs
         }
 
         // ------------------------------------------------------------------------------------
+        // Шаг 6 — Vfx_HealCast / Vfx_LightningStrike — обёртки над ThirdParty Hovl-эффектами
+        // ------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Общий приём для простого ThirdParty-эффекта без доп. настройки (в отличие от
+        /// Vfx_FireballExplosion — там ThirdParty-компонент CFXR_Effect требует правки clearBehavior).
+        /// Hovl-эффекты оборачиваются так же: <see cref="EditorPrefabUtility.InstantiateUnpacked"/> +
+        /// <see cref="VfxInstanceController"/>, известные Hovl-скрипты обезвреживаются
+        /// <see cref="DisableKnownHovlBehaviours"/> (см. её doc — почему).
+        /// </summary>
+        private static GameObject SetupWrappedThirdPartyVfxPrefab(string prefabName, string prefabPath, string sourcePath, string childName)
+        {
+            bool existed = File.Exists(prefabPath);
+            GameObject root = existed
+                ? PrefabUtility.LoadPrefabContents(prefabPath)
+                : new GameObject(prefabName);
+
+            var controller = root.GetComponent<VfxInstanceController>();
+            if (controller == null)
+            {
+                controller = root.AddComponent<VfxInstanceController>();
+                Debug.Log($"[Editor] VfxInstanceController добавлен на {prefabName}.");
+            }
+
+            var childTransform = root.transform.Find(childName);
+            GameObject effectGo;
+            if (childTransform == null)
+            {
+                var source = AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath);
+                if (source == null)
+                {
+                    Debug.LogError($"[Editor] ThirdParty-префаб не найден: {sourcePath} — {prefabName} собран без вложенного эффекта.");
+                    FinishPrefabEdit(root, prefabPath, existed);
+                    return AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                }
+
+                var instance = EditorPrefabUtility.InstantiateUnpacked(source, root.transform);
+                instance.name = childName;
+                effectGo = instance;
+                Debug.Log($"[Editor] Вложенный визуал ({sourcePath}) создан под {prefabName} (распакован).");
+            }
+            else
+            {
+                effectGo = childTransform.gameObject;
+
+                // Миграция — на случай, если ассет когда-то был собран без InstantiateUnpacked.
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(effectGo))
+                {
+                    var effectSource = PrefabUtility.GetCorrespondingObjectFromSource(effectGo);
+                    var effectSourcePath = effectSource != null ? AssetDatabase.GetAssetPath(effectSource) : null;
+                    if (EditorPrefabUtility.IsThirdPartyPath(effectSourcePath))
+                    {
+                        PrefabUtility.UnpackPrefabInstance(effectGo, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                        Debug.Log($"[Editor] {prefabName}: \"{childName}\" был ThirdParty prefab-инстансом ({effectSourcePath}) — распакован (Unpack Completely).");
+                    }
+                }
+            }
+
+            DisableKnownHovlBehaviours(effectGo, prefabName);
+            DisableLoopingAndPlayOnAwake(effectGo, prefabName);
+
+            var particleSystem = effectGo.GetComponentInChildren<ParticleSystem>(true);
+            var controllerSo = new SerializedObject(controller);
+            const int expected = 2;
+            int wired = 0;
+            wired += SetRef(controllerSo, "_particleSystem", particleSystem, "VfxInstanceController(" + prefabName + ")") ? 1 : 0;
+            wired += StampMaxLifetime(controllerSo, particleSystem, "VfxInstanceController(" + prefabName + ")") ? 1 : 0;
+            controllerSo.ApplyModifiedProperties();
+
+            if (wired == expected)
+                Debug.Log($"[Editor] VfxInstanceController({prefabName}): прошито {wired} из {expected}.");
+            else
+                Debug.LogError($"[Editor] VfxInstanceController({prefabName}): прошито только {wired} из {expected}.");
+
+            EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, prefabName + ".prefab");
+
+            FinishPrefabEdit(root, prefabPath, existed);
+            return AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        }
+
+        /// <summary>
+        /// Hovl-паки (в отличие от CFXR) не имеют единого clearBehavior-подобного поля — вместо этого
+        /// несут вспомогательные MonoBehaviour'ы (найдено на "Lightning strike.prefab"): <c>HS_EffectSound</c>
+        /// (Hovl namespace, InvokeRepeating зацикленный звук — нежелателен на пуловом объекте без
+        /// контроля нашей аудио-системы) и <c>HS_ParticleCollisionInstance</c> (спавнит доп. эффекты по
+        /// столкновению частиц через собственный статический пул/GameObject.Find — избыточная логика для
+        /// нашего сценария, где VfxInstanceController уже управляет жизненным циклом). Оба ищутся по имени
+        /// типа (asmdef Hovl-скриптов не подключён к BlackWhiteLike.Editor — тот же приём, что
+        /// FindComponentByTypeName для CFXR_Effect) и отключаются (enabled=false), не удаляются —
+        /// удаление ломало бы ссылки внутри самого ThirdParty-префаба (EffectsOnCollision и т.п.).
+        /// </summary>
+        private static void DisableKnownHovlBehaviours(GameObject go, string ownerLabel)
+        {
+            string[] problematicTypeNames = { "HS_EffectSound", "HS_ParticleCollisionInstance" };
+            var allComponents = go.GetComponentsInChildren<Component>(true);
+            int disabledCount = 0;
+
+            foreach (var component in allComponents)
+            {
+                if (component == null) continue;
+                var typeName = component.GetType().Name;
+
+                bool isProblematic = false;
+                foreach (var candidate in problematicTypeNames)
+                {
+                    if (typeName == candidate) { isProblematic = true; break; }
+                }
+                if (!isProblematic) continue;
+
+                if (component is Behaviour behaviour && behaviour.enabled)
+                {
+                    behaviour.enabled = false;
+                    disabledCount++;
+                    Debug.Log($"[Editor] {ownerLabel}: компонент {typeName} (ThirdParty Hovl-скрипт) отключён (enabled=false) — " +
+                              "пуловый VFX не должен самостоятельно управлять доп.эффектами/звуком.");
+                }
+            }
+
+            if (disabledCount == 0)
+                Debug.Log($"[Editor] {ownerLabel}: известных Hovl-скриптов (HS_EffectSound/HS_ParticleCollisionInstance) не найдено или уже отключены.");
+        }
+
+        /// <summary>
+        /// БЛОКЕР (ревью шага 6): исходные Hovl-системы ("Buff heal" — 8/8 ParticleSystem
+        /// loop:1, "Lightning strike" — 12/12) все с playOnAwake:1 — зацикленная система никогда не
+        /// удовлетворяет <c>VfxInstanceController.IsAlive(withChildren:true)==false</c>, и пуловый
+        /// объект висит до <c>_maxLifetime</c> со спамом warning на каждый каст. Рукописные сборщики
+        /// в этом файле (ConfigureRainDrops/ConfigureSplash) ставят <c>main.loop = false</c> явно —
+        /// generic-путь обёртки ThirdParty-эффекта эту строку потерял. Идемпотентен: уже выключенные
+        /// системы — no-op, лог только при реальном изменении.
+        /// </summary>
+        private static void DisableLoopingAndPlayOnAwake(GameObject go, string ownerLabel)
+        {
+            var systems = go.GetComponentsInChildren<ParticleSystem>(true);
+            int fixedCount = 0;
+
+            foreach (var system in systems)
+            {
+                var main = system.main;
+                bool needsFix = main.loop || main.playOnAwake;
+                if (!needsFix) continue;
+
+                main.loop = false;
+                main.playOnAwake = false;
+                fixedCount++;
+            }
+
+            if (fixedCount > 0)
+                Debug.Log($"[Editor] {ownerLabel}: {fixedCount} из {systems.Length} ParticleSystem — loop/playOnAwake сброшены " +
+                          "(зацикленный ThirdParty-эффект никогда не завершился бы в пуле).");
+            else
+                Debug.Log($"[Editor] {ownerLabel}: все {systems.Length} ParticleSystem уже без loop/playOnAwake.");
+        }
+
+        // ------------------------------------------------------------------------------------
         // Общее
         // ------------------------------------------------------------------------------------
 
@@ -446,7 +614,7 @@ namespace BlackWhiteLike.Editor.Prefabs
         // Прошивка VfxConfig._entries
         // ------------------------------------------------------------------------------------
 
-        private static void WireVfxConfig(GameObject fireballPrefab, GameObject rainPrefab)
+        private static void WireVfxConfig(GameObject fireballPrefab, GameObject rainPrefab, GameObject healPrefab, GameObject lightningPrefab)
         {
             var vfxConfig = AssetDatabase.LoadAssetAtPath<VfxConfig>(VfxConfigPath);
             if (vfxConfig == null)
@@ -468,11 +636,13 @@ namespace BlackWhiteLike.Editor.Prefabs
 
             UpsertEntry(entries, VfxEffectType.RainCast, rainPrefab, poolSize: 4);
             UpsertEntry(entries, VfxEffectType.FireballExplosion, fireballPrefab, poolSize: 4);
+            UpsertEntry(entries, VfxEffectType.HealCast, healPrefab, poolSize: 4);
+            UpsertEntry(entries, VfxEffectType.LightningStrike, lightningPrefab, poolSize: 4);
 
             so.ApplyModifiedProperties();
             EditorUtility.SetDirty(vfxConfig);
 
-            Debug.Log($"[Editor] VfxConfig._entries: {entries.arraySize} запись(ей) (RainCast, FireballExplosion).");
+            Debug.Log($"[Editor] VfxConfig._entries: {entries.arraySize} запись(ей) (RainCast, FireballExplosion, HealCast, LightningStrike).");
         }
 
         /// <summary>

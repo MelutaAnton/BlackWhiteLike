@@ -470,5 +470,85 @@ namespace BlackWhiteLike.Tests
 
             Assert.AreEqual(0, service.CountInState(VillagerState.Worship));
         }
+
+        // --- Шаг 6: LightningStruck (удар молнии чуда Lightning, game-design §4) ---
+
+        [Test]
+        public void ReportStimulus_LightningStruck_FromIdle_TransitionsToStunned_AndPublishesEvent()
+        {
+            var service = CreateService(out var eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck);
+
+            Assert.AreEqual(VillagerState.Stunned, service.GetState(id));
+            var evt = eventBus.PublishedEvents.OfType<VillagerStateChangedEvent>().Single();
+            Assert.AreEqual(VillagerState.Idle, evt.From);
+            Assert.AreEqual(VillagerState.Stunned, evt.To);
+            Assert.AreEqual(VillagerStimulus.LightningStruck, evt.Cause);
+        }
+
+        [Test]
+        public void ReportStimulus_LightningStruck_FromPanic_TransitionsToStunned()
+        {
+            var service = CreateService(out _);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.FireNearby); // -> Panic
+
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck);
+
+            Assert.AreEqual(VillagerState.Stunned, service.GetState(id));
+        }
+
+        [Test]
+        public void ReportStimulus_LightningStruck_FromWorship_TransitionsToStunned()
+        {
+            var service = CreateService(out _);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.NeedResolvedNearby); // -> Worship
+
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck);
+
+            Assert.AreEqual(VillagerState.Stunned, service.GetState(id));
+        }
+
+        [Test]
+        public void ReportStimulus_LightningStruck_WhileTossed_IsIgnored()
+        {
+            var service = CreateService(out var eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.Grabbed); // -> Tossed
+            eventBus.PublishedEvents.Clear();
+
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck);
+
+            Assert.AreEqual(VillagerState.Tossed, service.GetState(id));
+            Assert.IsEmpty(eventBus.PublishedEvents);
+        }
+
+        [Test]
+        public void ReportStimulus_LightningStruck_WhileAlreadyStunned_IsSelfLoop_WithoutEvent_AndExtendsTimer()
+        {
+            var service = CreateService(out var eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck); // -> Stunned, таймер = StunDuration (дефолт 2с)
+            eventBus.PublishedEvents.Clear();
+
+            service.Tick(1.5f); // ещё не истёк
+            service.ReportStimulus(id, VillagerStimulus.LightningStruck); // self-loop — продлевает таймер заново до 2с
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<VillagerStateChangedEvent>());
+
+            service.Tick(1.5f); // суммарно с момента продления — 1.5с, дефолт 2с ещё не истёк
+            Assert.AreEqual(VillagerState.Stunned, service.GetState(id));
+
+            service.Tick(0.6f); // перекрывает продлённый таймер
+            Assert.AreEqual(VillagerState.Idle, service.GetState(id));
+        }
     }
 }

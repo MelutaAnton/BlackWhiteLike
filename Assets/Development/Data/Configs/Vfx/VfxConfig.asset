@@ -19,3 +19,9 @@ MonoBehaviour:
   - _type: 1
     _prefab: {fileID: 7613589916325818699, guid: 2e4e2db78926b0040820bf5878a637bd, type: 3}
     _poolSize: 4
+  - _type: 2
+    _prefab: {fileID: 5979428219034569784, guid: 6e973602760305e4fbbe86800bc7b4fa, type: 3}
+    _poolSize: 4
+  - _type: 3
+    _prefab: {fileID: 6680558529852018018, guid: 1a63d74205ea17d4dae2969088757660, type: 3}
+    _poolSize: 4

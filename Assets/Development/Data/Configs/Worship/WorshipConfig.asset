@@ -30,5 +30,7 @@ MonoBehaviour:
     _fear: 10
   - _act: 4
     _fear: 6
+  - _act: 5
+    _fear: 8
   _worshipDecayPerSecond: 0
   _handTerrorAlignmentShift: -3

@@ -2,6 +2,7 @@ using System;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Villagers;
+using BlackWhiteLike.Factories.Village;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Village;
 using UnityEngine;
@@ -17,7 +18,9 @@ namespace BlackWhiteLike.Controllers.Village
     /// <c>NeedTriggeredEvent</c>/<c>NeedResolvedEvent</c>/<c>NeedExpiredEvent</c> от
     /// <c>LevelEventService</c>. Шаг 4: разрешение/создание нужды попаданием чуда — подписка на
     /// <c>MiracleCastEvent</c>, маппинг "чудо → нужда" читается из <c>MiracleConfig</c> (данные, не
-    /// код, game-design §14.2) — сама точка не хранит правило, только применяет его к себе.
+    /// код, game-design §14.2) — сама точка не хранит правило, только применяет его к себе. Шаг 6:
+    /// истечение Disease без разрешения выбивает жителей рядом до конца уровня (через
+    /// <see cref="IVillagerFactory.Despawn"/>) — решение владельца 2026-09-01.
     /// </summary>
     public sealed class NeedSiteController : MonoBehaviour
     {
@@ -47,6 +50,7 @@ namespace BlackWhiteLike.Controllers.Village
         private VillagerConfig _villagerConfig;
         private ILevelEventService _levelEventService;
         private MiracleCatalogConfig _miracleCatalog;
+        private IVillagerFactory _villagerFactory;
         private bool _initialized;
 
         // Шаг 4: true между Triggered и Resolved/Expired — читается обработчиком MiracleCastEvent,
@@ -67,13 +71,15 @@ namespace BlackWhiteLike.Controllers.Village
             IVillagerStateService stateService,
             VillagerConfig villagerConfig,
             ILevelEventService levelEventService,
-            MiracleCatalogConfig miracleCatalog)
+            MiracleCatalogConfig miracleCatalog,
+            IVillagerFactory villagerFactory)
         {
             _eventBus = eventBus;
             _stateService = stateService;
             _villagerConfig = villagerConfig;
             _levelEventService = levelEventService;
             _miracleCatalog = miracleCatalog;
+            _villagerFactory = villagerFactory;
 
             // Триггеры требуют Rigidbody (CLAUDE.md, "Известные нюансы Unity Physics") — без него
             // OnTriggerEnter молчит, если ни у одного участника нет Rigidbody. Kinematic + без
@@ -183,6 +189,33 @@ namespace BlackWhiteLike.Controllers.Village
             if (!MatchesThisSite(evt.SiteIndex, evt.Type, nameof(NeedExpiredEvent))) return;
             _isNeedActive = false;
             SetVisualState(VisualState.Expired);
+
+            // Таблица §5 (решение владельца 2026-09-01, шаг 6): непогашенная Disease выбивает
+            // жителей рядом до конца уровня — ветка по NeedType, а не маппинг чуда (Heal лишь
+            // разрешает Disease через ResolvesNeeds, к этому правилу отношения не имеет).
+            if (_needType == NeedType.Disease)
+            {
+                DespawnVillagersNearby();
+            }
+        }
+
+        /// <summary>
+        /// Шаг 6: истекшая Disease — жители в PanicRadius выбывают до конца уровня (game-design §5,
+        /// решение владельца 2026-09-01). Летящих/схваченных (Tossed) не трогаем — тот же аргумент,
+        /// что LightningStruck из Tossed: житель уже занят физическим событием.
+        /// </summary>
+        private void DespawnVillagersNearby()
+        {
+            var colliders = Physics.OverlapSphere(transform.position, _villagerConfig.PanicRadius, _villagerMask);
+            foreach (var col in colliders)
+            {
+                var villager = col.GetComponentInParent<VillagerController>();
+                if (villager == null) continue;
+
+                if (_stateService.GetState(villager.VillagerId) == VillagerState.Tossed) continue;
+
+                _villagerFactory.Despawn(villager);
+            }
         }
 
         /// <summary>

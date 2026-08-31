@@ -11,6 +11,12 @@ namespace BlackWhiteLike.Models
         RainCast,
 
         /// <summary>Взрыв чуда Fireball (game-design §4 — "разбрасывает жителей взрывом").</summary>
-        FireballExplosion
+        FireballExplosion,
+
+        /// <summary>Каст чуда Heal — исцеляющий эффект (game-design §4, шаг 6).</summary>
+        HealCast,
+
+        /// <summary>Удар чуда Lightning (game-design §4, шаг 6).</summary>
+        LightningStrike
     }
 }

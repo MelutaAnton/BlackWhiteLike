@@ -216,6 +216,19 @@ namespace BlackWhiteLike.Services.Village
                     target = VillagerState.Stunned;
                     return true;
 
+                case VillagerStimulus.LightningStruck:
+                    // Летящего молния не выдёргивает — та же философия, что FireNearby/ExplosionNearby
+                    // (Tossed — уже физическое событие, приоритетнее). Из Stunned — self-loop
+                    // (target == current): продление таймера оглушения без повторного начисления
+                    // Fear (WorshipService начисляет Fear только на реальный переход в Stunned).
+                    if (current == VillagerState.Tossed)
+                    {
+                        target = current;
+                        return false;
+                    }
+                    target = VillagerState.Stunned;
+                    return true;
+
                 default:
                     target = current;
                     return false;

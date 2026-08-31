@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using BlackWhiteLike.Data.Configs.Alignment;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
@@ -55,6 +56,9 @@ namespace BlackWhiteLike.Editor.Configs
 
         private const string MiracleRainPath = ConfigsRoot + "/Miracles/Miracle_Rain.asset";
         private const string MiracleFireballPath = ConfigsRoot + "/Miracles/Miracle_Fireball.asset";
+        // Шаг 6 — Heal + Lightning (game-design.md §4).
+        private const string MiracleHealPath = ConfigsRoot + "/Miracles/Miracle_Heal.asset";
+        private const string MiracleLightningPath = ConfigsRoot + "/Miracles/Miracle_Lightning.asset";
         private const string MiracleCatalogPath = ConfigsRoot + "/Miracles/MiracleCatalog.asset";
 
         // Шаг 5 — Worship + win (game-design.md §19.5).
@@ -64,6 +68,30 @@ namespace BlackWhiteLike.Editor.Configs
         // (правка после ревью: строки дублировались здесь и в Editor/UI/LevelHudSetupEditor.cs).
         private const string RainIconPath = EditorSpriteUtility.MiracleIconPaths.Rain;
         private const string FireballIconPath = EditorSpriteUtility.MiracleIconPaths.Fireball;
+        private const string HealIconPath = EditorSpriteUtility.MiracleIconPaths.Heal;
+        private const string LightningIconPath = EditorSpriteUtility.MiracleIconPaths.Lightning;
+
+        // Шаг 6 — Alignment-визуал (game-design.md §7, §10). Пути материалов ДУБЛИРУЮТ константы
+        // Editor/Setup/AlignmentVisualSetupEditor.cs (тот же приём, что и у путей VFX-префабов
+        // между MiracleVfxPrefabSetupEditor/TestVillageSceneSetupEditor — избегаем циклической
+        // зависимости неймспейсов Editor.Configs <-> Editor.Setup). Материалы обязаны существовать
+        // на диске ДО вызова этого дескриптора — их создаёт AlignmentVisualSetupEditor.EnsureMaterials(),
+        // вызываемый ДО ConfigAssetCreatorEditor.CreateAll() в SetupAlignmentVisual().
+        private const string AlignmentVisualConfigPath = ConfigsRoot + "/Alignment/AlignmentVisual.asset";
+        private const string HandMaterialsFolder = "Assets/Development/Art/Materials/Hand";
+        private const string TempleMaterialsFolder = "Assets/Development/Art/Materials/Temple";
+        private const string HandNeutralMaterialPath = HandMaterialsFolder + "/Hand_Neutral.mat";
+        private const string HandKindMaterialPath = HandMaterialsFolder + "/Hand_Kind.mat";
+        private const string HandCruelMaterialPath = HandMaterialsFolder + "/Hand_Cruel.mat";
+        private const string TempleNeutralMaterialPath = TempleMaterialsFolder + "/Temple_Neutral.mat";
+        private const string TempleKindMaterialPath = TempleMaterialsFolder + "/Temple_Kind.mat";
+        private const string TempleCruelMaterialPath = TempleMaterialsFolder + "/Temple_Cruel.mat";
+        // Ревью шага 6 (ВАЖНО 2): Temple — два MeshRenderer, второй получает "_B"-набор материалов
+        // (те же пути, что в Editor/Setup/AlignmentVisualSetupEditor.cs — тот же приём дублирования
+        // констант между двумя файлами, что и у остальных путей материалов выше).
+        private const string TempleNeutralBMaterialPath = TempleMaterialsFolder + "/Temple_Neutral_B.mat";
+        private const string TempleKindBMaterialPath = TempleMaterialsFolder + "/Temple_Kind_B.mat";
+        private const string TempleCruelBMaterialPath = TempleMaterialsFolder + "/Temple_Cruel_B.mat";
 
         /// <summary>
         /// Единственное место, где перечислены создаваемые SO. Новый конфиг = новая строка.
@@ -82,12 +110,19 @@ namespace BlackWhiteLike.Editor.Configs
             // Порядок важен: сначала оба MiracleConfig, потом каталог (ссылается на них по пути).
             new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleRainPath, InitRainMiracle),
             new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleFireballPath, InitFireballMiracle),
+            // Шаг 6 — Heal + Lightning (game-design.md §4). Порядок перед каталогом — обязателен
+            // (InitMiracleCatalog грузит все 4 по путям).
+            new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleHealPath, InitHealMiracle),
+            new ConfigAssetDescriptor(typeof(MiracleConfig), MiracleLightningPath, InitLightningMiracle),
             new ConfigAssetDescriptor(typeof(MiracleCatalogConfig), MiracleCatalogPath, InitMiracleCatalog),
             new ConfigAssetDescriptor(typeof(FaithConfig), ConfigsRoot + "/Faith/FaithConfig.asset"),
             // _entries прошивает Editor/Prefabs/MiracleVfxPrefabSetupEditor после сборки VFX-префабов.
             new ConfigAssetDescriptor(typeof(VfxConfig), ConfigsRoot + "/Vfx/VfxConfig.asset"),
             // Шаг 5 — Worship + win (game-design.md §19.5).
             new ConfigAssetDescriptor(typeof(WorshipConfig), WorshipConfigPath, InitWorshipConfig),
+            // Шаг 6 — Alignment-визуал (game-design.md §7, §10). Материалы (_handMaterials/_templeMaterials)
+            // обязаны существовать на диске к моменту создания — см. class-doc про AlignmentVisualSetupEditor.
+            new ConfigAssetDescriptor(typeof(AlignmentVisualConfig), AlignmentVisualConfigPath, InitAlignmentVisualConfig),
         };
 
         /// <summary>Дождь (game-design.md §19.4): исцеляет Fire/Hunger, без удержания-накопления вреда.</summary>
@@ -138,19 +173,227 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_blastsVillagers").boolValue = true;
         }
 
-        /// <summary>Каталог — ссылки грузятся по пути: оба MiracleConfig уже созданы предыдущими строками Descriptors.</summary>
+        /// <summary>Исцеление (game-design.md §4, шаг 6): разрешает Disease, без урона/разброса — зеркалит стоимость/радиусы Rain.</summary>
+        private static void InitHealMiracle(SerializedObject so)
+        {
+            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Heal;
+            so.FindProperty("_baseFaithCost").floatValue = 20f; // зеркало Miracle_Rain
+            so.FindProperty("_holdCostPerSecond").floatValue = 10f;
+            so.FindProperty("_baseRadius").floatValue = 2f;
+            so.FindProperty("_maxRadius").floatValue = 5f;
+            so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
+            so.FindProperty("_effectPower").floatValue = 0f;
+            so.FindProperty("_alignmentShift").floatValue = 10f; // положительный, как у Rain — доброе чудо
+            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.HealCast;
+            so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(HealIconPath);
+
+            var resolvesNeeds = so.FindProperty("_resolvesNeeds");
+            resolvesNeeds.arraySize = 1;
+            resolvesNeeds.GetArrayElementAtIndex(0).enumValueIndex = (int)NeedType.Disease;
+
+            so.FindProperty("_createsNeed").boolValue = false;
+            so.FindProperty("_blastsVillagers").boolValue = false;
+
+            SetBoolIfPresent(so, "_strikesVillagers", false, "Miracle_Heal");
+        }
+
+        /// <summary>Молния (game-design.md §4, шаг 6): точечный удар, поджигает дом (как Fireball) — стоимость/сила зеркалят Fireball.</summary>
+        private static void InitLightningMiracle(SerializedObject so)
+        {
+            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Lightning;
+            so.FindProperty("_baseFaithCost").floatValue = 30f; // как у Fireball
+            so.FindProperty("_holdCostPerSecond").floatValue = 15f; // как у Fireball
+            so.FindProperty("_baseRadius").floatValue = 1.5f;
+            so.FindProperty("_maxRadius").floatValue = 3f; // точечный удар (game-design §4) — меньше Fireball
+            so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
+            so.FindProperty("_effectPower").floatValue = 8f; // как у Fireball
+            so.FindProperty("_alignmentShift").floatValue = -10f;
+            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.LightningStrike;
+            so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(LightningIconPath);
+
+            so.FindProperty("_resolvesNeeds").arraySize = 0;
+
+            // Решение владельца 2026-09-01: молния поджигает здание, как Fireball.
+            so.FindProperty("_createsNeed").boolValue = true;
+            so.FindProperty("_createdNeed").enumValueIndex = (int)NeedType.Fire;
+            so.FindProperty("_createdNeedDuration").floatValue = 15f; // как у Fireball
+            so.FindProperty("_blastsVillagers").boolValue = false;
+
+            SetBoolIfPresent(so, "_strikesVillagers", true, "Miracle_Lightning");
+        }
+
+        /// <summary>
+        /// Прошивает bool-поле, если оно уже присутствует в классе на момент вызова; иначе
+        /// предупреждает вместо NullReferenceException — контракт задачи вводит новое поле
+        /// MiracleConfig._strikesVillagers параллельно с этим скриптом (code-writer).
+        /// </summary>
+        private static void SetBoolIfPresent(SerializedObject so, string propertyName, bool value, string ownerLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — проверьте, что code-writer добавил это поле в MiracleConfig.");
+                return;
+            }
+
+            prop.boolValue = value;
+        }
+
+        /// <summary>Каталог — ссылки грузятся по пути: все MiracleConfig уже созданы предыдущими строками Descriptors.</summary>
         private static void InitMiracleCatalog(SerializedObject so)
         {
             var rain = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleRainPath);
+            var heal = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleHealPath);
             var fireball = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleFireballPath);
+            var lightning = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleLightningPath);
+            var all = new[] { rain, heal, fireball, lightning };
 
             var miracles = so.FindProperty("_miracles");
-            miracles.arraySize = 2;
-            miracles.GetArrayElementAtIndex(0).objectReferenceValue = rain;
-            miracles.GetArrayElementAtIndex(1).objectReferenceValue = fireball;
+            miracles.arraySize = all.Length;
+            for (int i = 0; i < all.Length; i++)
+                miracles.GetArrayElementAtIndex(i).objectReferenceValue = all[i];
 
-            if (rain == null || fireball == null)
-                Debug.LogWarning("[Editor] MiracleCatalog: одна из ссылок (Miracle_Rain/Miracle_Fireball) не найдена при создании.");
+            bool anyMissing = false;
+            foreach (var m in all)
+                if (m == null) anyMissing = true;
+
+            if (anyMissing)
+                Debug.LogWarning("[Editor] MiracleCatalog: одна или несколько ссылок (Rain/Heal/Fireball/Lightning) не найдены при создании.");
+        }
+
+        /// <summary>
+        /// Миграция каталога, уже существовавшего до шага 6 (Initializer выше выполняется ТОЛЬКО
+        /// при создании ассета — см. class-doc) — дописывает Heal/Lightning, не трогая и не дублируя
+        /// уже присутствующие Rain/Fireball записи.
+        /// </summary>
+        private static void MigrateMiracleCatalogEntries()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<MiracleCatalogConfig>(MiracleCatalogPath);
+            if (catalog == null) return; // ещё не создан — InitMiracleCatalog при создании соберёт полный список.
+
+            var rain = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleRainPath);
+            var heal = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleHealPath);
+            var fireball = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleFireballPath);
+            var lightning = AssetDatabase.LoadAssetAtPath<MiracleConfig>(MiracleLightningPath);
+
+            var so = new SerializedObject(catalog);
+            var miracles = so.FindProperty("_miracles");
+
+            var existing = new System.Collections.Generic.HashSet<UnityEngine.Object>();
+            for (int i = 0; i < miracles.arraySize; i++)
+            {
+                var v = miracles.GetArrayElementAtIndex(i).objectReferenceValue;
+                if (v != null) existing.Add(v);
+            }
+
+            int added = 0;
+            foreach (var candidate in new MiracleConfig[] { rain, heal, fireball, lightning })
+            {
+                if (candidate == null || existing.Contains(candidate)) continue;
+
+                int idx = miracles.arraySize;
+                miracles.InsertArrayElementAtIndex(idx);
+                miracles.GetArrayElementAtIndex(idx).objectReferenceValue = candidate;
+                existing.Add(candidate);
+                added++;
+            }
+
+            if (added == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(catalog);
+            Debug.Log($"[Editor] MiracleCatalog._miracles: добавлено {added} новых запис(ей), всего {miracles.arraySize}.");
+        }
+
+        /// <summary>
+        /// Миграция WorshipConfig, уже существовавшего до шага 6 (InitWorshipConfig выполняется
+        /// ТОЛЬКО при создании ассета) — дописывает запись Fear для VillagerStruckByLightning,
+        /// не трогая существующие записи (образец — добавление VillagerBlasted на шаге 5).
+        /// </summary>
+        private static void MigrateWorshipTerrorFearEntries()
+        {
+            var worship = AssetDatabase.LoadAssetAtPath<WorshipConfig>(WorshipConfigPath);
+            if (worship == null) return; // ещё не создан — InitWorshipConfig при создании соберёт полный список.
+
+            var so = new SerializedObject(worship);
+            var fearByAct = so.FindProperty("_fearByAct");
+
+            for (int i = 0; i < fearByAct.arraySize; i++)
+            {
+                var element = fearByAct.GetArrayElementAtIndex(i);
+                if (element.FindPropertyRelative("_act").enumValueIndex == (int)TerrorAct.VillagerStruckByLightning)
+                    return; // уже есть — не дублируем.
+            }
+
+            int idx = fearByAct.arraySize;
+            fearByAct.InsertArrayElementAtIndex(idx);
+            var newElement = fearByAct.GetArrayElementAtIndex(idx);
+            newElement.FindPropertyRelative("_act").enumValueIndex = (int)TerrorAct.VillagerStruckByLightning;
+            newElement.FindPropertyRelative("_fear").intValue = 8;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(worship);
+            Debug.Log("[Editor] WorshipConfig._fearByAct: добавлена запись VillagerStruckByLightning (Fear=8).");
+        }
+
+        /// <summary>
+        /// Шаг 6 — Alignment-визуал (game-design.md §7, §10). Материалы читаются по фиксированным
+        /// путям (см. константы выше) — обязаны существовать на диске к моменту создания ассета
+        /// (создаются AlignmentVisualSetupEditor.EnsureMaterials() ДО ConfigAssetCreatorEditor.CreateAll()
+        /// в SetupAlignmentVisual()). Контракт задачи: массив _stages отсортирован по _scoreThreshold
+        /// УБЫВАЮЩЕ, Saint/Demon — пустые заготовки (решение владельца — визуал этих стейджей появится позже).
+        /// </summary>
+        private static void InitAlignmentVisualConfig(SerializedObject so)
+        {
+            var handNeutral = AssetDatabase.LoadAssetAtPath<Material>(HandNeutralMaterialPath);
+            var handKind = AssetDatabase.LoadAssetAtPath<Material>(HandKindMaterialPath);
+            var handCruel = AssetDatabase.LoadAssetAtPath<Material>(HandCruelMaterialPath);
+            var templeNeutral = AssetDatabase.LoadAssetAtPath<Material>(TempleNeutralMaterialPath);
+            var templeNeutralB = AssetDatabase.LoadAssetAtPath<Material>(TempleNeutralBMaterialPath);
+            var templeKind = AssetDatabase.LoadAssetAtPath<Material>(TempleKindMaterialPath);
+            var templeKindB = AssetDatabase.LoadAssetAtPath<Material>(TempleKindBMaterialPath);
+            var templeCruel = AssetDatabase.LoadAssetAtPath<Material>(TempleCruelMaterialPath);
+            var templeCruelB = AssetDatabase.LoadAssetAtPath<Material>(TempleCruelBMaterialPath);
+
+            // Temple — параллельный массив к _templeRenderers (два MeshRenderer, ревью шага 6, п.2):
+            // [0] = основной материал, [1] = "_B". Рука — по одному материалу, как было.
+            var stageDefs = new (float Threshold, Material[] Hand, Material[] Temple)[]
+            {
+                (75f, new Material[0], new Material[0]),                                  // Saint — пустая заготовка
+                (25f, new[] { handKind }, new[] { templeKind, templeKindB }),               // Kind
+                (-25f, new[] { handNeutral }, new[] { templeNeutral, templeNeutralB }),      // Neutral
+                (-75f, new[] { handCruel }, new[] { templeCruel, templeCruelB }),            // Cruel
+                (-100f, new Material[0], new Material[0]),                                 // Demon — пустая заготовка
+            };
+
+            var stagesProp = so.FindProperty("_stages");
+            stagesProp.arraySize = stageDefs.Length;
+            for (int i = 0; i < stageDefs.Length; i++)
+            {
+                var element = stagesProp.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("_scoreThreshold").floatValue = stageDefs[i].Threshold;
+
+                var handProp = element.FindPropertyRelative("_handMaterials");
+                handProp.arraySize = stageDefs[i].Hand.Length;
+                for (int j = 0; j < stageDefs[i].Hand.Length; j++)
+                    handProp.GetArrayElementAtIndex(j).objectReferenceValue = stageDefs[i].Hand[j];
+
+                var templeProp = element.FindPropertyRelative("_templeMaterials");
+                templeProp.arraySize = stageDefs[i].Temple.Length;
+                for (int j = 0; j < stageDefs[i].Temple.Length; j++)
+                    templeProp.GetArrayElementAtIndex(j).objectReferenceValue = stageDefs[i].Temple[j];
+
+                element.FindPropertyRelative("_decalPrefabsToSpawn").arraySize = 0;
+                element.FindPropertyRelative("_vfxToActivate").arraySize = 0;
+            }
+
+            if (handNeutral == null || handKind == null || handCruel == null ||
+                templeNeutral == null || templeKind == null || templeCruel == null ||
+                templeNeutralB == null || templeKindB == null || templeCruelB == null)
+            {
+                Debug.LogWarning("[Editor] AlignmentVisualConfig: один или несколько материалов не найдены при создании — " +
+                                  "сначала вызовите \"BlackWhiteLike/Setup/Setup Alignment Visual\" (создаёт материалы ДО конфига).");
+            }
         }
 
         /// <summary>
@@ -184,6 +427,10 @@ namespace BlackWhiteLike.Editor.Configs
                 (TerrorAct.ObjectHitStructure, 10),
                 // Playtest шага 5 (решение владельца): взрыв чуда — отдельная ставка, не «как рука».
                 (TerrorAct.VillagerBlasted, 6),
+                // Шаг 6 (ревью, ВАЖНО 5): та же ставка, что MigrateWorshipTerrorFearEntries дописывает
+                // существующим ассетам — единственный канонический источник, запись не должна жить
+                // только в миграции (CLAUDE.md — "дублирование строковых ключей"/единственный источник).
+                (TerrorAct.VillagerStruckByLightning, 8),
             };
             fearByAct.arraySize = fearEntries.Length;
             for (int i = 0; i < fearEntries.Length; i++)
@@ -195,6 +442,99 @@ namespace BlackWhiteLike.Editor.Configs
 
             so.FindProperty("_worshipDecayPerSecond").floatValue = 0f;
             so.FindProperty("_handTerrorAlignmentShift").floatValue = -3f;
+        }
+
+        /// <summary>
+        /// Миграция AlignmentVisual.asset, уже существовавшего до появления материалов храма/этого
+        /// инициализатора (Initializer выше выполняется ТОЛЬКО при создании ассета, см. class-doc) —
+        /// ревью шага 6, ВАЖНО 3. Дозаполняет ПУСТЫЕ массивы материалов по стейджам, сопоставляя по
+        /// <c>_scoreThreshold</c> (тот же порог, что задаёт <see cref="InitAlignmentVisualConfig"/>);
+        /// уже заполненные массивы не трогает (правки владельца дороже дефолта — тот же принцип, что
+        /// у остальных Create/Migrate в этом файле). Вызывается и из <see cref="CreateAll"/>, и из
+        /// <c>AlignmentVisualSetupEditor</c> после <c>EnsureMaterials</c>/<c>EnsureTempleMaterials</c> —
+        /// поэтому <c>internal</c>, а не <c>private</c>.
+        /// </summary>
+        internal static void MigrateAlignmentVisualStages()
+        {
+            var config = AssetDatabase.LoadAssetAtPath<AlignmentVisualConfig>(AlignmentVisualConfigPath);
+            if (config == null) return; // ещё не создан — InitAlignmentVisualConfig при создании соберёт полный набор.
+
+            var handNeutral = AssetDatabase.LoadAssetAtPath<Material>(HandNeutralMaterialPath);
+            var handKind = AssetDatabase.LoadAssetAtPath<Material>(HandKindMaterialPath);
+            var handCruel = AssetDatabase.LoadAssetAtPath<Material>(HandCruelMaterialPath);
+            var templeNeutral = AssetDatabase.LoadAssetAtPath<Material>(TempleNeutralMaterialPath);
+            var templeNeutralB = AssetDatabase.LoadAssetAtPath<Material>(TempleNeutralBMaterialPath);
+            var templeKind = AssetDatabase.LoadAssetAtPath<Material>(TempleKindMaterialPath);
+            var templeKindB = AssetDatabase.LoadAssetAtPath<Material>(TempleKindBMaterialPath);
+            var templeCruel = AssetDatabase.LoadAssetAtPath<Material>(TempleCruelMaterialPath);
+            var templeCruelB = AssetDatabase.LoadAssetAtPath<Material>(TempleCruelBMaterialPath);
+
+            // Канонический набор порогов/материалов — тот же, что InitAlignmentVisualConfig. Saint/Demon
+            // сюда не входят: их массивы — намеренно пустые заготовки, а не "не заполненные" данные.
+            var stageDefs = new (float Threshold, Material[] Hand, Material[] Temple)[]
+            {
+                (25f, new[] { handKind }, new[] { templeKind, templeKindB }),
+                (-25f, new[] { handNeutral }, new[] { templeNeutral, templeNeutralB }),
+                (-75f, new[] { handCruel }, new[] { templeCruel, templeCruelB }),
+            };
+
+            var so = new SerializedObject(config);
+            var stagesProp = so.FindProperty("_stages");
+            int patched = 0;
+
+            for (int i = 0; i < stagesProp.arraySize; i++)
+            {
+                var element = stagesProp.GetArrayElementAtIndex(i);
+                var threshold = element.FindPropertyRelative("_scoreThreshold").floatValue;
+
+                foreach (var def in stageDefs)
+                {
+                    if (!Mathf.Approximately(threshold, def.Threshold)) continue;
+
+                    patched += PatchMaterialArrayIfEmpty(element.FindPropertyRelative("_handMaterials"), def.Hand, $"стейдж {threshold} (hand)");
+                    patched += PatchMaterialArrayIfEmpty(element.FindPropertyRelative("_templeMaterials"), def.Temple, $"стейдж {threshold} (temple)");
+                    break;
+                }
+            }
+
+            if (patched == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(config);
+            Debug.Log($"[Editor] AlignmentVisual.asset: дозаполнено {patched} пустых массив(ов) материалов.");
+        }
+
+        /// <summary>
+        /// Заполняет массив материалов, только если на диске он пуст (нет элементов либо все
+        /// элементы null) — уже заполненный массив не трогается ни при каком раскладе. Источник
+        /// с отсутствующим (null) материалом пропускается целиком с warning — частично заполненный
+        /// массив хуже, чем оставленный пустым до следующего прогона.
+        /// </summary>
+        private static int PatchMaterialArrayIfEmpty(SerializedProperty arrayProp, Material[] materials, string label)
+        {
+            bool isEmpty = true;
+            for (int i = 0; i < arrayProp.arraySize; i++)
+            {
+                if (arrayProp.GetArrayElementAtIndex(i).objectReferenceValue != null) { isEmpty = false; break; }
+            }
+
+            if (!isEmpty) return 0;
+            if (materials == null || materials.Length == 0) return 0;
+
+            foreach (var material in materials)
+            {
+                if (material == null)
+                {
+                    Debug.LogWarning($"[Editor] AlignmentVisual.asset: для {label} не все материалы найдены на диске — миграция пропущена, прогоните \"Setup Alignment Visual\" ещё раз.");
+                    return 0;
+                }
+            }
+
+            arrayProp.arraySize = materials.Length;
+            for (int i = 0; i < materials.Length; i++)
+                arrayProp.GetArrayElementAtIndex(i).objectReferenceValue = materials[i];
+
+            return 1;
         }
 
         [MenuItem("BlackWhiteLike/Configs/Create Empty SO Set")]
@@ -216,6 +556,13 @@ namespace BlackWhiteLike.Editor.Configs
                     if (wasResynced) resynced++;
                 }
             }
+
+            // Шаг 6 — миграции уже существующих ассетов (Initializer выше срабатывает только при
+            // создании, см. class-doc): Heal/Lightning в каталог, Fear-запись молнии в WorshipConfig,
+            // пустые ссылки материалов AlignmentVisual (ревью шага 6, ВАЖНО 3).
+            MigrateMiracleCatalogEntries();
+            MigrateWorshipTerrorFearEntries();
+            MigrateAlignmentVisualStages();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

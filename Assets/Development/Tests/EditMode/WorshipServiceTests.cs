@@ -206,6 +206,79 @@ namespace BlackWhiteLike.Tests
             Assert.AreEqual(0, service.FearTotal);
         }
 
+        // --- Fear (удар молнии — game-design §4, шаг 6, решение владельца 2026-09-01) ---
+
+        [Test]
+        public void VillagerStruckByLightning_IdleToStunned_AddsFear()
+        {
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerStruckByLightning, 6) });
+            var eventBus = new EventBus();
+            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            // Lightning ведёт напрямую в Stunned, минуя Tossed (VillagerStateService.TryResolveTarget).
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Stunned, VillagerStimulus.LightningStruck));
+
+            Assert.AreEqual(6, service.Current);
+            Assert.AreEqual(6, service.FearTotal);
+        }
+
+        [Test]
+        public void VillagerStruckByLightning_SelfLoop_DoesNotDoubleCount()
+        {
+            // VillagerStateService не публикует событие для target == current (self-loop) — но даже
+            // если бы оно пришло, WorshipService не должен ничего сделать не по контракту; этот тест
+            // фиксирует, что повторный удар (реалистично — тот же From/To Stunned->Stunned не
+            // публикуется вовсе) не приходит как отдельная транзакция начисления.
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerStruckByLightning, 6) });
+            var eventBus = new EventBus();
+            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Stunned, VillagerStimulus.LightningStruck));
+            Assert.AreEqual(6, service.Current);
+        }
+
+        [Test]
+        public void VillagerHardLanding_Grabbed_StillUsesHardLandingRate_RegressionAfterLightning()
+        {
+            // Регрессия: ветка LightningStruck добавлена ПЕРЕД проверкой From == Tossed — убеждаемся,
+            // что обычный путь Grabbed -> Tossed -> Stunned по-прежнему считается VillagerHardLanding.
+            var config = CreateConfig(fearEntries: new[]
+            {
+                (TerrorAct.VillagerHardLanding, 8),
+                (TerrorAct.VillagerStruckByLightning, 6)
+            });
+            var eventBus = new EventBus();
+            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Tossed, VillagerState.Stunned, VillagerStimulus.HardLanded));
+
+            Assert.AreEqual(8, service.Current);
+            Assert.AreEqual(8, service.FearTotal);
+        }
+
+        [Test]
+        public void VillagerBlasted_StillUsesBlastedRate_RegressionAfterLightning()
+        {
+            var config = CreateConfig(fearEntries: new[]
+            {
+                (TerrorAct.VillagerBlasted, 5),
+                (TerrorAct.VillagerStruckByLightning, 6)
+            });
+            var eventBus = new EventBus();
+            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Blasted));
+            eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Tossed, VillagerState.Stunned, VillagerStimulus.HardLanded));
+
+            Assert.AreEqual(5, service.Current);
+            Assert.AreEqual(5, service.FearTotal);
+        }
+
         // --- Кламп по Target и раздельные Totals ---
 
         [Test]

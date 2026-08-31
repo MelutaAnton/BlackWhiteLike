@@ -6,3 +6,5 @@
 - [CFXR clearBehavior + TMP/UGUI asmdefs](cfxr_clearbehavior_and_tmp_ugui_asmdefs.md) — ClearBehavior enum/field for pooled ThirdParty VFX, and exact asmdef reference names for TMPro/UGUI/InputSystem UI in Editor scripts
 - [Overlay container pattern](overlay_container_pattern.md) — Dim+Panel HUD overlay built as canvas siblings, idempotent SetActive/SetAsLastSibling, label/button helpers
 - [Nested serializable array wiring](nested_serializable_array_wiring.md) — FindPropertyRelative pattern for SO arrays of [Serializable] structs (WorshipConfig)
+- [Hovl VFX wrapper pattern](hovl_vfx_wrapper_pattern.md) — wrapping Hovl Studio VFX prefabs, HS_EffectSound/HS_ParticleCollisionInstance to disable
+- [Alignment visual material pattern](alignment_visual_material_pattern.md) — tinted CopyAsset materials + nested-array-of-arrays SerializedProperty wiring for AlignmentVisualConfig stages

@@ -38,6 +38,7 @@ namespace BlackWhiteLike.Editor.Prefabs
         private const string HouseFolder =
             "Assets/ThirdParty/3D Environment/POLYGON - Fantasy Kingdom Pack/PolygonFantasyKingdom/Prefabs/Buildings/Presets/";
         private const string FarmPlantsFolder = "Assets/ThirdParty/3D Environment/POLYGON - Farm Pack/Prefabs/Plants/";
+        private const string TempleSourcePath = HouseFolder + "SM_Bld_Preset_Church_01_A_Optimized.prefab";
 
         // Решение владельца (вариант "а"): Visual_Active у NeedType.Fire — не маркер-сфера, а
         // зацикленный VFX-огонь. Источник — "(Wide)"-вариант, а не базовый "CFXR4 Burning Fire":
@@ -69,6 +70,9 @@ namespace BlackWhiteLike.Editor.Prefabs
             ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Disease),
             ("House_03", HouseFolder + "SM_Bld_Preset_House_03_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), null),
             ("Field_Carrots", FarmPlantsFolder + "SM_Prop_Carrot_01_Group.prefab", Vector3.one, NeedType.Hunger),
+            // Шаг 6 — Alignment-визуал (game-design.md §7, §10): храм без NeedSiteController (нужды
+            // ему не назначаются) — масштаб как у домов (владелец: "масштаб как у домов").
+            ("Temple", TempleSourcePath, new Vector3(HouseScale, HouseScale, HouseScale), null),
         };
 
         public static string GetPrefabPath(string structureName) => PrefabsFolder + "/" + structureName + ".prefab";

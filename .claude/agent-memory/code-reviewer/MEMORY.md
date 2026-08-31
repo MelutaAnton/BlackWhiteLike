@@ -6,5 +6,6 @@
 - [Step 3 accepted deviations](project_step3_accepted_deviations.md) — `Vector3` creature spawn and self-sufficient `Construct()` are settled; report only the nullable-loss and mixed-path drift.
 - [Step 4 accepted deviations](project_step4_accepted_deviations.md) — сессия каста без Command, `Blasted`→`Tossed`, `ByPlayer`, `IsPointerOverUi` — решено, только drift risk.
 - [Step 5 accepted deviations](project_step5_accepted_deviations.md) — WorshipConfig-only значения, CauseMiracle, пауза, IGameStateBinding, InputRouter — решено, только drift risk.
+- [Step 6 accepted deviations](project_step6_accepted_deviations.md) — Lightning→Stunned, Disease-despawn, alignment-визуал — решено, только drift risk.
 - [Recurring defect classes](project_recurring_defects.md) — editor script vs runtime physics disagreement, and new `[SerializeField]` left unwired by the editor script that places the component.
 - [Static *Rules-классы — не нарушение DI](false-positive-static-rules-tables.md) — почему `VillagerMovementRules`/`VillagerPoseRules` без интерфейса это норма

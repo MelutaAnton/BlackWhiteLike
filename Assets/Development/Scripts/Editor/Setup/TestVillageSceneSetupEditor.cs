@@ -91,6 +91,8 @@ namespace BlackWhiteLike.Editor.Setup
             ("House_02", new Vector3(0f, 0f, -6f)),
             ("House_03", new Vector3(6f, 0f, -6f)),
             ("Field_Carrots", new Vector3(0f, 0f, 6f)),
+            // Шаг 6 — позиция свободна от домов/поля (владелец: (8, 0, 4)).
+            ("Temple", new Vector3(8f, 0f, 4f)),
         };
 
         // Позиции спавна жителей (были статичной расстановкой до ревью шага 3) — теперь заполняют
@@ -230,6 +232,13 @@ namespace BlackWhiteLike.Editor.Setup
             WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
                 miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView,
                 worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView);
+
+            // Шаг 6 — Alignment-визуал (game-design.md §7, §10): материалы/конфиг/[AlignmentVisual] +
+            // прошивка _handRenderers/_templeRenderers и ссылок на GameLifetimeScope. Вызывается
+            // ПОСЛЕ размещения структур (Temple уже в сцене) и WireScope (scope уже существует).
+            // Core-метод, а не MenuItem-обёртка (ревью шага 6, п.6) — эта сцена уже ведёт свою
+            // внешнюю Undo-группу (undoGroup выше), вложенная группа рвала бы её пополам.
+            AlignmentVisualSetupEditor.SetupAlignmentVisualCore();
 
             // NeedSite-объекты — MonoBehaviour без RegisterComponent, нужны в autoInjectGameObjects
             // (см. память агента "vcontainer-autoinjectgameobjects"). [Miracles] сюда НЕ входит:

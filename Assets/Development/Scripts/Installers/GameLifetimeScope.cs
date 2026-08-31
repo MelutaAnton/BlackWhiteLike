@@ -3,12 +3,14 @@ using System;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
 using BlackWhiteLike.Controllers.Miracles;
+using BlackWhiteLike.Controllers.Temple;
 using BlackWhiteLike.Controllers.Vfx;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Core.Input;
 using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Core.Pool;
 using BlackWhiteLike.Core.StateMachine;
+using BlackWhiteLike.Data.Configs.Alignment;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
@@ -76,6 +78,10 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private LevelStalledView _levelStalledView;
         [SerializeField] private PauseOverlayView _pauseOverlayView;
 
+        [Header("Шаг 6 — Heal/Lightning + Alignment-визуал")]
+        [SerializeField] private AlignmentVisualConfig _alignmentVisualConfig;
+        [SerializeField] private AlignmentVisualController _alignmentVisualController;
+
         protected override void Configure(IContainerBuilder builder)
         {
             // Core
@@ -117,6 +123,9 @@ namespace BlackWhiteLike.Installers
 
             // Шаг 5 — Worship + win.
             RegisterLevelFlow(builder);
+
+            // Шаг 6 — Alignment-визуал (Heal/Lightning — данные, новых сервисов не требуют).
+            RegisterAlignmentVisual(builder);
 
             // Точка входа
             builder.RegisterEntryPoint<GameBootstrap>();
@@ -472,6 +481,24 @@ namespace BlackWhiteLike.Installers
             else
             {
                 Debug.LogWarning("[GameLifetimeScope] _pauseOverlayView не прошит — оверлей паузы не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>
+        /// Alignment-визуал руки/храма (game-design §7, §11.1, шаг 6). Условная регистрация по
+        /// прошитости ОБОИХ полей (тот же паттерн, что MiraclePanelView/FaithBarView) — контроллеру
+        /// нужен конфиг, регистрировать один без другого смысла не имеет.
+        /// </summary>
+        private void RegisterAlignmentVisual(IContainerBuilder builder)
+        {
+            if (_alignmentVisualConfig != null && _alignmentVisualController != null)
+            {
+                builder.RegisterInstance(_alignmentVisualConfig);
+                builder.RegisterComponent(_alignmentVisualController);
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] _alignmentVisualConfig и/или _alignmentVisualController не прошиты — alignment-визуал руки/храма не будет работать в этой сцене.");
             }
         }
     }

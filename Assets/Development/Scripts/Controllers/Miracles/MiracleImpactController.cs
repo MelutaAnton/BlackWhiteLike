@@ -12,7 +12,8 @@ namespace BlackWhiteLike.Controllers.Miracles
 {
     /// <summary>
     /// Физическое воздействие чуда на жителей (game-design §4 — "Fireball разбрасывает жителей
-    /// взрывом"). Unity API only: подписывается на <see cref="MiracleCastEvent"/> и делает
+    /// взрывом", шаг 6 — "Lightning мгновенно поражает жителей в радиусе"). Unity API only:
+    /// подписывается на <see cref="MiracleCastEvent"/> и делает
     /// <see cref="Physics.OverlapSphere(Vector3, float, int)"/> — единственная связь чуда со сценой
     /// это событие, сам <c>MiracleService</c> не держит ссылок на объекты.
     /// </summary>
@@ -75,29 +76,50 @@ namespace BlackWhiteLike.Controllers.Miracles
         private void OnMiracleCast(MiracleCastEvent evt)
         {
             if (!_catalog.TryGet(evt.Type, out var config)) return;
-            if (!config.BlastsVillagers) return;
+            if (!config.BlastsVillagers && !config.StrikesVillagers) return;
 
-            // OverlapSphere не NonAlloc — вызывается на каст, не каждый кадр (тот же аргумент, что
-            // в NeedSiteController.ReportStimulusToNearbyVillagers), лишняя аллокация не проблема.
-            var blastColliders = Physics.OverlapSphere(evt.Point, evt.Radius, _villagerMask);
-            foreach (var col in blastColliders)
+            // OverlapSphere не NonAlloc — вызывается на каст, не каждый кадр (тот же аргумент, что в
+            // NeedSiteController.ReportStimulusToNearbyVillagers), лишняя аллокация не проблема. Обе
+            // ветки (Blast/Strike) бьют по одному и тому же radius — ревью шага 6: раньше считали
+            // сферу дважды одними и теми же аргументами; выше уже гарантирован хотя бы один из флагов.
+            var impactColliders = Physics.OverlapSphere(evt.Point, evt.Radius, _villagerMask);
+
+            if (config.BlastsVillagers)
             {
-                var villager = col.GetComponentInParent<VillagerController>();
-                if (villager == null) continue;
+                foreach (var col in impactColliders)
+                {
+                    var villager = col.GetComponentInParent<VillagerController>();
+                    if (villager == null) continue;
 
-                villager.ApplyBlast(evt.Point, evt.Power);
+                    villager.ApplyBlast(evt.Point, evt.Power);
+                }
             }
 
-            // Паника у соседей взрыва — шире радиуса самого блaста (PanicRadius уже используется
-            // NeedSiteController для того же смысла "насколько далеко распространяется испуг").
+            if (config.StrikesVillagers)
+            {
+                // Шаг 6 (решение владельца 2026-09-01): удар молнии — мгновенный Stunned, без
+                // физического отброса (в отличие от BlastsVillagers/ApplyBlast выше). Стимул
+                // LightningStruck сам решает через VillagerStateService.TryResolveTarget, из каких
+                // состояний переход легален (Idle/Panic/Worship -> Stunned, Tossed — игнор).
+                foreach (var col in impactColliders)
+                {
+                    var villager = col.GetComponentInParent<VillagerController>();
+                    if (villager == null) continue;
+
+                    _stateService.ReportStimulus(villager.VillagerId, VillagerStimulus.LightningStruck);
+                }
+            }
+
+            // Паника у соседей взрыва/удара — шире радиуса самого попадания (PanicRadius уже
+            // используется NeedSiteController для того же смысла "насколько далеко распространяется
+            // испуг"). Выполняется для обоих видов воздействия — уже поражённые (Tossed/Stunned)
+            // взрыв/удар игнорирует по таблице переходов VillagerStateService (self-loop без события).
             var panicColliders = Physics.OverlapSphere(evt.Point, _villagerConfig.PanicRadius, _villagerMask);
             foreach (var col in panicColliders)
             {
                 var villager = col.GetComponentInParent<VillagerController>();
                 if (villager == null) continue;
 
-                // Уже разбросанные (Blasted -> Tossed) взрыв игнорирует по таблице переходов
-                // VillagerStateService — повторный вызов здесь безопасен (self-loop без события).
                 _stateService.ReportStimulus(villager.VillagerId, VillagerStimulus.ExplosionNearby);
             }
         }

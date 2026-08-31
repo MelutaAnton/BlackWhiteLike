@@ -63,6 +63,9 @@ namespace BlackWhiteLike.Data.Configs.Miracles
         [Tooltip("Разбрасывает ли попадание этого чуда жителей взрывом (Fireball, game-design §4).")]
         [SerializeField] private bool _blastsVillagers;
 
+        [Tooltip("Мгновенно поражает жителей в радиусе каста (Lightning, game-design §4) — стимул LightningStruck, без физического отброса.")]
+        [SerializeField] private bool _strikesVillagers;
+
         public MiracleType Type => _type;
         public float BaseFaithCost => _baseFaithCost;
         public float HoldCostPerSecond => _holdCostPerSecond;
@@ -80,6 +83,7 @@ namespace BlackWhiteLike.Data.Configs.Miracles
         public NeedType CreatedNeed => _createdNeed;
         public float CreatedNeedDuration => _createdNeedDuration;
         public bool BlastsVillagers => _blastsVillagers;
+        public bool StrikesVillagers => _strikesVillagers;
 
         /// <summary>Разрешает ли попадание этого чуда нужду <paramref name="type"/> (см. ResolvesNeeds).</summary>
         public bool ResolvesNeed(NeedType type)
