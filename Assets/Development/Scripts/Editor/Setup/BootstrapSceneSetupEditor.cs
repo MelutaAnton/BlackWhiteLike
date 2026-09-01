@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
 using UnityEditor;
@@ -10,11 +11,20 @@ using UnityEngine.SceneManagement;
 namespace BlackWhiteLike.Editor.Setup
 {
     /// <summary>
-    /// Собирает boot-сцену проекта (шаг 1 "Каркас", game-design.md §19.1):
-    /// объект [Systems] с GameLifetimeScope (Composition Root), Main Camera с AudioListener,
-    /// [Systems] сохраняется как переиспользуемый префаб.
-    /// Идемпотентен: повторный запуск дособирает недостающее в уже существующую сцену,
-    /// ничего не дублирует.
+    /// Собирает boot-сцену проекта (шаг 1 "Каркас", game-design.md §19.1): Main Camera с
+    /// AudioListener и персистентный Composition Root верхнего уровня [RootScope] (RootLifetimeScope,
+    /// держит LevelCatalogConfig — мета-прогресс кампании).
+    /// Шаг 7 (ревью, ВАЖНО 2) — Bootstrap чисто служебная сцена и сценовый scope ([Systems] с
+    /// GameLifetimeScope) ей больше не нужен: порядок Awake двух корневых объектов ([Systems] и
+    /// [RootScope]) не определён, и если [Systems] отрабатывает первым, RootLifetimeScope.Instance
+    /// ещё null — недетерминированные фоллбэк-регистрации. Сам переход из Bootstrap в MainMenu
+    /// делает BootstrapFlowEntryPoint из [RootScope]. Префаб [Systems]/SystemsRoot.prefab при этом
+    /// по-прежнему обеспечивается этим скриптом (см. <see cref="EnsureSystemsPrefabAsset"/>) — его
+    /// инстансы нужны сценам MainMenu/Village_Base (см. TestHandSceneSetupEditor.EnsureSystemsInstance),
+    /// просто больше не размещаются в самой Bootstrap-сцене.
+    /// Идемпотентен: повторный запуск дособирает недостающее в уже существующую сцену, ничего не
+    /// дублирует; при открытии сцены, собранной старой версией скрипта (со сценовым [Systems]),
+    /// мигрирует — удаляет его (см. <see cref="MigrateRemoveSceneSystemsScope"/>).
     /// </summary>
     public static class BootstrapSceneSetupEditor
     {
@@ -23,6 +33,8 @@ namespace BlackWhiteLike.Editor.Setup
         private const string PrefabsFolder = "Assets/Development/Prefabs/Systems";
         private const string PrefabPath = PrefabsFolder + "/SystemsRoot.prefab";
         private const string SystemsRootName = "[Systems]";
+        private const string RootScopeName = "[RootScope]";
+        private const string LevelCatalogPath = "Assets/Development/Data/Configs/Levels/LevelCatalog.asset";
 
         [MenuItem("BlackWhiteLike/Setup/Build Bootstrap Scene")]
         public static void BuildBootstrapScene()
@@ -74,13 +86,17 @@ namespace BlackWhiteLike.Editor.Setup
             Undo.SetCurrentGroupName("Build Bootstrap Scene");
             int undoGroup = Undo.GetCurrentGroup();
 
-            var systemsRoot = EnsureSystemsRoot();
+            // Шаг 7 (ревью, ВАЖНО 2) — Bootstrap больше не держит сценовый [Systems]: если сцена
+            // собрана старой версией скрипта — мигрируем (удаляем), затем гарантируем только
+            // AudioListener/камеру и сам файл префаба (нужен другим сценам, в Bootstrap не ставится).
+            MigrateRemoveSceneSystemsScope();
             EnsureCameraAndAudioListener();
-            // Шаг 5 — явный дефолт состояния FSM для холодного старта (перед сохранением как
-            // префаба — на новом [Systems] это станет дефолтным значением поля самого префаба;
-            // сцены, где нужен другой стартовый стейт, переопределяют его в своей WireScope).
-            WireInitialState(systemsRoot.GetComponent<GameLifetimeScope>(), GameState.MainMenu);
-            EnsureSystemsPrefab(systemsRoot);
+            EnsureSystemsPrefabAsset();
+
+            // Шаг 7 — [RootScope] (RootLifetimeScope) — персистентный Composition Root верхнего
+            // уровня, отдельный от per-level [Systems]/GameLifetimeScope.
+            var rootScope = EnsureRootScope();
+            WireRootScope(rootScope.GetComponent<RootLifetimeScope>());
 
             Undo.CollapseUndoOperations(undoGroup);
 
@@ -99,52 +115,30 @@ namespace BlackWhiteLike.Editor.Setup
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            EnsureBootstrapSceneFirstInBuildSettings();
+            // Шаг 7 — единственный источник порядка Build Settings (Bootstrap/MainMenu/Village_Base),
+            // общий для всех трёх сборщиков сцен кампании (см. BuildSettingsEditor).
+            BuildSettingsEditor.EnsureCampaignScenesInBuildSettings();
 
-            Debug.Log("[Editor] Bootstrap-сцена собрана: [Systems] (GameLifetimeScope) + Main Camera (AudioListener), " +
-                      "префаб " + PrefabPath + ".");
+            Debug.Log("[Editor] Bootstrap-сцена собрана: Main Camera (AudioListener), [RootScope] (RootLifetimeScope) + " +
+                      "LevelCatalog; сценового [Systems]/GameLifetimeScope в Bootstrap больше нет (ревью шага 7), " +
+                      "префаб для других сцен обеспечен по пути " + PrefabPath + ".");
         }
 
         /// <summary>
-        /// Гарантирует, что Bootstrap.unity зарегистрирована в Build Settings первой сценой
-        /// (иначе холодный старт билда невозможен — билд стартует не с той сцены).
-        /// Остальные сцены не удаляются и не выключаются, порядок между ними сохраняется.
+        /// Шаг 7 — гарантирует наличие объекта [RootScope] с компонентом RootLifetimeScope
+        /// (Composition Root верхнего уровня, персистентный, отдельный от per-level [Systems]).
+        /// Тот же паттерн поиска по компоненту (включая выключенные объекты), что и у остальных
+        /// Ensure*-методов этого файла — GameObject.Find не видит неактивные объекты.
         /// </summary>
-        private static void EnsureBootstrapSceneFirstInBuildSettings()
+        private static GameObject EnsureRootScope()
         {
-            var scenes = EditorBuildSettings.scenes.ToList();
-            int existingIndex = scenes.FindIndex(s => s.path == ScenePath);
-
-            if (existingIndex == 0 && scenes[0].enabled)
-            {
-                // Уже первая и включена — ничего делать не нужно.
-                return;
-            }
-
-            if (existingIndex >= 0)
-                scenes.RemoveAt(existingIndex);
-
-            scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
-            EditorBuildSettings.scenes = scenes.ToArray();
-
-            Debug.Log("[Editor] Bootstrap.unity добавлена/перемещена в Build Settings на первую позицию.");
-        }
-
-        /// <summary>
-        /// Гарантирует наличие объекта [Systems] с компонентом GameLifetimeScope.
-        /// Ищем Composition Root по компоненту (включая выключенные объекты), а не по имени —
-        /// GameObject.Find не видит неактивные объекты, и второй GameLifetimeScope означает
-        /// двойную регистрацию зависимостей и два GameBootstrap.
-        /// </summary>
-        private static GameObject EnsureSystemsRoot()
-        {
-            var scopes = Object.FindObjectsByType<GameLifetimeScope>(
+            var scopes = Object.FindObjectsByType<RootLifetimeScope>(
                 FindObjectsInactive.Include, FindObjectsSortMode.None);
 
             if (scopes.Length > 1)
             {
                 var paths = scopes.Select(s => GetHierarchyPath(s.gameObject));
-                Debug.LogWarning("[Editor] В сцене найдено несколько GameLifetimeScope: " +
+                Debug.LogWarning("[Editor] В сцене найдено несколько RootLifetimeScope: " +
                                   string.Join(", ", paths) + ". Используется первый, остальные не тронуты.");
             }
 
@@ -155,23 +149,115 @@ namespace BlackWhiteLike.Editor.Setup
             }
             else
             {
-                go = new GameObject(SystemsRootName);
-                Undo.RegisterCreatedObjectUndo(go, "Create [Systems]");
-                Undo.AddComponent<GameLifetimeScope>(go);
-                Debug.Log("[Editor] Создан объект [Systems] с компонентом GameLifetimeScope.");
+                go = new GameObject(RootScopeName);
+                Undo.RegisterCreatedObjectUndo(go, "Create [RootScope]");
+                Undo.AddComponent<RootLifetimeScope>(go);
+                Debug.Log("[Editor] Создан объект [RootScope] с компонентом RootLifetimeScope.");
                 return go;
             }
 
-            // Имя префаба (SystemsRoot) отличается от имени сценного объекта ([Systems]) —
-            // свежий инстанс, перетащенный вручную, унаследует имя префаба.
-            if (go.name != SystemsRootName)
+            if (go.name != RootScopeName)
             {
-                Undo.RecordObject(go, "Rename Systems Root");
-                Debug.Log($"[Editor] Composition Root переименован из \"{go.name}\" в \"{SystemsRootName}\".");
-                go.name = SystemsRootName;
+                Undo.RecordObject(go, "Rename Root Scope");
+                Debug.Log($"[Editor] RootLifetimeScope-объект переименован из \"{go.name}\" в \"{RootScopeName}\".");
+                go.name = RootScopeName;
             }
 
             return go;
+        }
+
+        /// <summary>
+        /// Шаг 7 — прошивает RootLifetimeScope._levelCatalog ссылкой на LevelCatalog.asset. Не
+        /// присваивает null, если каталог ещё не создан (см. .claude/rules/editor-files.md).
+        /// </summary>
+        private static void WireRootScope(RootLifetimeScope scope)
+        {
+            if (scope == null)
+            {
+                Debug.LogWarning("[Editor] RootLifetimeScope не найден на [RootScope] — прошивка ссылок пропущена.");
+                return;
+            }
+
+            var so = new SerializedObject(scope);
+            var prop = so.FindProperty("_levelCatalog");
+            if (prop == null)
+            {
+                Debug.LogWarning("[Editor] Поле \"_levelCatalog\" не найдено на RootLifetimeScope — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return;
+            }
+
+            if (prop.objectReferenceValue != null)
+            {
+                Debug.Log("[Editor] RootLifetimeScope._levelCatalog уже прошит — не перезаписываем.");
+                return;
+            }
+
+            var catalog = AssetDatabase.LoadAssetAtPath<LevelCatalogConfig>(LevelCatalogPath);
+            if (catalog == null)
+            {
+                Debug.LogWarning("[Editor] LevelCatalog.asset не найден по пути " + LevelCatalogPath +
+                                  " — сначала прогоните \"BlackWhiteLike/Configs/Create Empty SO Set\".");
+                return;
+            }
+
+            prop.objectReferenceValue = catalog;
+            so.ApplyModifiedProperties();
+            Debug.Log("[Editor] RootLifetimeScope._levelCatalog прошит ссылкой на LevelCatalog.asset.");
+        }
+
+        /// <summary>
+        /// Шаг 7 (ревью, ВАЖНО 2) — миграция сцен, собранных старой версией скрипта: Bootstrap
+        /// больше не держит сценовый [Systems]/GameLifetimeScope (гонка Awake с [RootScope], см.
+        /// class-doc) — любой найденный в сцене GameLifetimeScope удаляется. Поиск по компоненту
+        /// (включая выключенные объекты), а не по имени — GameObject.Find не видит неактивные объекты.
+        /// </summary>
+        private static void MigrateRemoveSceneSystemsScope()
+        {
+            var scopes = Object.FindObjectsByType<GameLifetimeScope>(
+                FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            foreach (var scope in scopes)
+            {
+                var go = scope.gameObject;
+                Debug.Log("[Editor] Bootstrap: удалён сценовый [Systems] (\"" + GetHierarchyPath(go) +
+                          "\") — Bootstrap больше не держит сценовый Composition Root (ревью шага 7, гонка Awake с [RootScope]).");
+                Undo.DestroyObjectImmediate(go);
+            }
+        }
+
+        /// <summary>
+        /// Шаг 7 (ревью, ВАЖНО 2) — гарантирует наличие файла префаба [Systems]/SystemsRoot.prefab
+        /// (нужен другим сценам — MainMenu/Village_Base инстанцируют его через
+        /// <c>TestHandSceneSetupEditor.EnsureSystemsInstance</c>), но БЕЗ размещения инстанса в
+        /// самой Bootstrap-сцене: временный объект создаётся, сохраняется как ассет и сразу
+        /// уничтожается — Undo на нём не регистрируется (не остаётся в сцене, нечего отменять).
+        /// Существующий файл не пересоздаётся (настройки, подкрученные владельцем, дороже дефолтов).
+        /// </summary>
+        private static void EnsureSystemsPrefabAsset()
+        {
+            if (File.Exists(PrefabPath))
+            {
+                Debug.Log("[Editor] Префаб " + PrefabPath + " уже существует — пересоздание не требуется.");
+                return;
+            }
+
+            var temp = new GameObject(SystemsRootName);
+            try
+            {
+                var scope = temp.AddComponent<GameLifetimeScope>();
+                // Шаг 5 — явный дефолт состояния FSM для холодного старта: на новом [Systems] это
+                // становится дефолтным значением поля самого префаба; сцены, где нужен другой
+                // стартовый стейт, переопределяют его в своей WireScope.
+                WireInitialState(scope, GameState.MainMenu);
+
+                PrefabUtility.SaveAsPrefabAsset(temp, PrefabPath);
+                Debug.Log("[Editor] Сохранён префаб: " + PrefabPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(temp);
+            }
         }
 
         private static string GetHierarchyPath(GameObject go)
@@ -231,37 +317,6 @@ namespace BlackWhiteLike.Editor.Setup
                 Debug.LogWarning($"[Editor] В сцене найдено {existingListeners.Length} AudioListener — " +
                                   "ожидается ровно один. Лишние не удалены автоматически, проверьте вручную.");
             }
-        }
-
-        /// <summary>
-        /// Сохраняет [Systems] как переиспользуемый префаб. Если префаб уже существует —
-        /// связывает с ним сценный инстанс вместо пересоздания (миграционная идемпотентность).
-        /// </summary>
-        private static void EnsureSystemsPrefab(GameObject systemsRoot)
-        {
-            if (File.Exists(PrefabPath))
-            {
-                var existingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
-                if (existingPrefab == null)
-                {
-                    Debug.LogWarning("[Editor] Файл префаба найден, но не загрузился как GameObject: " + PrefabPath);
-                    return;
-                }
-
-                bool alreadyConnected =
-                    PrefabUtility.GetPrefabInstanceStatus(systemsRoot) == PrefabInstanceStatus.Connected &&
-                    PrefabUtility.GetCorrespondingObjectFromSource(systemsRoot) == existingPrefab;
-
-                if (!alreadyConnected)
-                {
-                    PrefabUtility.SaveAsPrefabAssetAndConnect(systemsRoot, PrefabPath, InteractionMode.AutomatedAction);
-                    Debug.Log("[Editor] Сценный [Systems] связан с существующим префабом " + PrefabPath + ".");
-                }
-                return;
-            }
-
-            PrefabUtility.SaveAsPrefabAssetAndConnect(systemsRoot, PrefabPath, InteractionMode.AutomatedAction);
-            Debug.Log("[Editor] Сохранён префаб: " + PrefabPath);
         }
 
         /// <summary>Шаг 5 — явная прошивка стартового GameState (SerializeField enum) на Composition Root.</summary>

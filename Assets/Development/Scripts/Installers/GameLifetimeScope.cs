@@ -35,6 +35,8 @@ using BlackWhiteLike.Services.Miracles;
 using BlackWhiteLike.Services.Village;
 using BlackWhiteLike.Services.Worship;
 using BlackWhiteLike.Views.UI.Hud;
+using BlackWhiteLike.Views.UI.LevelSelect;
+using BlackWhiteLike.Views.UI.MainMenu;
 using BlackWhiteLike.Views.UI.Overlay;
 using UnityEngine;
 using VContainer;
@@ -82,8 +84,19 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private AlignmentVisualConfig _alignmentVisualConfig;
         [SerializeField] private AlignmentVisualController _alignmentVisualController;
 
+        [Header("Шаг 7 — Кампания (LevelSelect, прогресс)")]
+        [SerializeField] private MainMenuView _mainMenuView;
+        [SerializeField] private LevelSelectView _levelSelectView;
+
         protected override void Configure(IContainerBuilder builder)
         {
+            // Шаг 7: root-scope (Bootstrap, DontDestroyOnLoad) — может отсутствовать (тестовые
+            // сцены/сцена запущена напрямую в редакторе). Вычисляется один раз здесь и передаётся
+            // в подметоды, которым он нужен (RegisterVillageSystems — выбор LevelConfig,
+            // RegisterCampaignFlow — root-сервисы кампании). См. remarks RootLifetimeScope —
+            // почему это static Instance, а не канонический parentReference VContainer.
+            var root = RootLifetimeScope.Instance;
+
             // Core
             builder.Register<EventBus>(Lifetime.Singleton).As<IEventBus>();
 
@@ -112,11 +125,20 @@ namespace BlackWhiteLike.Installers
             // не имеет (см. remarks GameFlowService).
             builder.RegisterEntryPoint<GameFlowService>(Lifetime.Singleton);
 
+            // Точка входа GameBootstrap — шаг 7 (пересмотр решения шага 1): регистрируется здесь,
+            // СРАЗУ после GameFlowService, а не последней записью Configure. Порядок IStartable.Start()
+            // = порядок RegisterEntryPoint (тот же принцип, что у ITickable выше) — MainMenuPresenter/
+            // LevelSelectPresenter (RegisterCampaignFlow, шаг 7) читают IGameFlowService.Current уже в
+            // своём Start(), и GameBootstrap.Start() обязан выставить стартовое состояние ДО них,
+            // иначе Current отражал бы ещё не начатую FSM. До шага 7 порядок не имел значения — ни
+            // один presenter не читал Current в Start(), только подписывался на события.
+            builder.RegisterEntryPoint<GameBootstrap>();
+
             // Шаг 2 — Камера + рука.
             RegisterHandAndCamera(builder);
 
             // Шаг 3 — Жители + события.
-            RegisterVillageSystems(builder);
+            RegisterVillageSystems(builder, root);
 
             // Шаг 4 — Чудеса + Faith.
             RegisterMiracleSystems(builder);
@@ -127,8 +149,8 @@ namespace BlackWhiteLike.Installers
             // Шаг 6 — Alignment-визуал (Heal/Lightning — данные, новых сервисов не требуют).
             RegisterAlignmentVisual(builder);
 
-            // Точка входа
-            builder.RegisterEntryPoint<GameBootstrap>();
+            // Шаг 7 — Кампания: LevelSelect, прогресс, root↔scene.
+            RegisterCampaignFlow(builder, root);
         }
 
         /// <summary>
@@ -203,7 +225,11 @@ namespace BlackWhiteLike.Installers
         /// ITickable явным списком интерфейсов (тот же паттерн, что PointerInputProvider), а не через
         /// RegisterEntryPoint — порядок их тика не завязан на порядок Input/GameFlowService.
         /// </summary>
-        private void RegisterVillageSystems(IContainerBuilder builder)
+        /// <param name="root">
+        /// Шаг 7: root-scope, если сцена запущена через Bootstrap (иначе null). Используется только
+        /// для выбора активного <see cref="LevelConfig"/> — см. комментарий ниже.
+        /// </param>
+        private void RegisterVillageSystems(IContainerBuilder builder, RootLifetimeScope root)
         {
             var villagerConfig = _villagerConfig;
             if (villagerConfig == null)
@@ -215,6 +241,21 @@ namespace BlackWhiteLike.Installers
             builder.RegisterInstance(villagerConfig);
 
             var levelConfig = _levelConfig;
+
+            // Шаг 7 (кампания): если уровень был выбран через экран LevelSelect (root доступен и
+            // игрок реально кликнул карточку) — используем его; серилизованный _levelConfig
+            // остаётся фоллбэком для тестовых сцен без root (см. remarks RootLifetimeScope).
+            // Гейт по _initialState (playtest-дефект шага 7): root-selection переживает возврат в
+            // меню, и БЕЗ гейта мета-сцена MainMenu после первого пройденного уровня получала
+            // боевой LevelConfig с настоящим Layout — VillagerSpawnService спавнил жителей прямо
+            // в меню (8 × LogError от фабрики: _villagerConfig там не прошит). Selection — источник
+            // конфига только для игровой сцены (_initialState == LevelPlaying).
+            if (_initialState == GameState.LevelPlaying
+                && root != null && root.LevelSelection.TryGetSelected(out var selectedLevel))
+            {
+                levelConfig = selectedLevel;
+            }
+
             if (levelConfig == null)
             {
                 Debug.LogWarning("[GameLifetimeScope] _levelConfig не прошит (ожидаемо для сцен без уровня) — используется fallback LevelConfig с дефолтами (пустой таймлайн).");
@@ -387,6 +428,7 @@ namespace BlackWhiteLike.Installers
             // Register<IGameStateBinding> значения не имеет — VContainer резолвит граф зависимостей
             // после Build(), а не по мере вызовов Register.
             builder.Register<MainMenuState>(Lifetime.Singleton);
+            builder.Register<LevelSelectState>(Lifetime.Singleton);
             builder.Register<LevelPlayingState>(Lifetime.Singleton);
             builder.Register<LevelCompleteState>(Lifetime.Singleton);
             builder.Register<PausedState>(Lifetime.Singleton);
@@ -397,16 +439,18 @@ namespace BlackWhiteLike.Installers
             // коллекция регистрируется ОДНОЙ записью точного типа IEnumerable<IGameStateBinding>:
             // Registry.TryGet проверяет точное совпадение типа раньше fallback'ов на коллекции
             // (Registry.cs, TryGet), и GameFlowService получает готовый список.
-            // Заглушки LevelSelect/TempleMeta/WelcomeBack (NullState) — экраны шагов 7-8 ещё не
-            // существуют, но ключ должен быть зарегистрирован, чтобы ChangeState не падал.
+            // Заглушки TempleMeta/WelcomeBack (NullState) — экраны шага 8 ещё не существуют, но
+            // ключ должен быть зарегистрирован, чтобы ChangeState не падал. LevelSelect с шага 7 —
+            // полноценный LevelSelectState (панель переключает LevelSelectPresenter/MainMenuPresenter
+            // по GameStateChangedEvent).
             builder.Register<IEnumerable<IGameStateBinding>>(
                 r => new IGameStateBinding[]
                 {
                     new GameStateBinding(GameState.MainMenu, r.Resolve<MainMenuState>()),
+                    new GameStateBinding(GameState.LevelSelect, r.Resolve<LevelSelectState>()),
                     new GameStateBinding(GameState.LevelPlaying, r.Resolve<LevelPlayingState>()),
                     new GameStateBinding(GameState.LevelComplete, r.Resolve<LevelCompleteState>()),
                     new GameStateBinding(GameState.Paused, r.Resolve<PausedState>()),
-                    new GameStateBinding(GameState.LevelSelect, new NullState()),
                     new GameStateBinding(GameState.TempleMeta, new NullState()),
                     new GameStateBinding(GameState.WelcomeBack, new NullState()),
                 },
@@ -499,6 +543,83 @@ namespace BlackWhiteLike.Installers
             else
             {
                 Debug.LogWarning("[GameLifetimeScope] _alignmentVisualConfig и/или _alignmentVisualController не прошиты — alignment-визуал руки/храма не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>
+        /// LevelSelect, прогресс кампании, root↔scene (game-design §7, шаг 7).
+        /// </summary>
+        /// <remarks>
+        /// Root-сервисы (<see cref="ILevelSelectionService"/>/<see cref="ILevelProgressService"/>/
+        /// <see cref="ISceneLoaderService"/>/<see cref="LevelCatalogConfig"/>) резолвятся из
+        /// <see cref="RootLifetimeScope.Instance"/>, если сцена запущена через Bootstrap. Иначе —
+        /// тот же fallback-паттерн, что у остальных конфигов проекта (LogWarning + локальный
+        /// singleton уровня сцены), чтобы тестовые сцены без Bootstrap
+        /// (_TestVillage/_TestHand/Village_Base напрямую) продолжали работать как раньше — их
+        /// прогресс/выбор просто не переживают выгрузку сцены.
+        /// <para>
+        /// <see cref="LevelCompletionRecorder"/> (мост LevelCompletedEvent → прогресс)
+        /// регистрируется ТОЛЬКО когда root реально доступен — фоллбэк-прогресс живёт и умирает
+        /// вместе со сценой, отмечать в нём уровень пройденным бессмысленно (он не пережил бы даже
+        /// собственный Continue).
+        /// </para>
+        /// </remarks>
+        private void RegisterCampaignFlow(IContainerBuilder builder, RootLifetimeScope root)
+        {
+            LevelCatalogConfig levelCatalog;
+
+            if (root != null)
+            {
+                levelCatalog = root.LevelCatalog;
+                builder.RegisterInstance(root.LevelSelection);
+                builder.RegisterInstance(root.LevelProgress);
+                builder.RegisterInstance(root.SceneLoader);
+
+                // Мост LevelCompletedEvent -> прогресс нужен только игровой сцене (симметрично
+                // гейту root-selection выше): в мета-сцене LevelCompletedEvent не публикуется,
+                // держать там подписчика незачем.
+                if (_initialState == GameState.LevelPlaying)
+                {
+                    builder.RegisterEntryPoint<LevelCompletionRecorder>();
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] RootLifetimeScope не найден (сцена запущена напрямую, минуя Bootstrap) — LevelSelect/прогресс кампании работают в пределах одной этой сцены и не переживут её выгрузку.");
+                levelCatalog = null;
+                builder.Register<LevelSelectionService>(Lifetime.Singleton).As<ILevelSelectionService>();
+                builder.Register<SceneLoaderService>(Lifetime.Singleton).As<ISceneLoaderService>();
+                builder.Register<LevelProgressService>(Lifetime.Singleton).As<ILevelProgressService>();
+            }
+
+            // root.LevelCatalog резолвится из контейнера root-scope и никогда не бывает null (сам
+            // RootLifetimeScope уже подставил свой fallback с LogWarning, если его _levelCatalog не
+            // прошит, см. remarks там) — эта проверка нужна только для ветки "root == null" выше.
+            if (levelCatalog == null)
+            {
+                levelCatalog = ScriptableObject.CreateInstance<LevelCatalogConfig>();
+            }
+
+            builder.RegisterInstance(levelCatalog);
+
+            if (_mainMenuView != null)
+            {
+                builder.RegisterComponent<IMainMenuView>(_mainMenuView);
+                builder.RegisterEntryPoint<MainMenuPresenter>();
+            }
+            else
+            {
+                Debug.Log("[GameLifetimeScope] _mainMenuView не прошит (ожидаемо для сцен без главного меню, например Village_Base) — главное меню не будет работать в этой сцене.");
+            }
+
+            if (_levelSelectView != null)
+            {
+                builder.RegisterComponent<ILevelSelectView>(_levelSelectView);
+                builder.RegisterEntryPoint<LevelSelectPresenter>();
+            }
+            else
+            {
+                Debug.Log("[GameLifetimeScope] _levelSelectView не прошит (ожидаемо для сцен без экрана выбора уровня, например Village_Base) — экран выбора уровня не будет работать в этой сцене.");
             }
         }
     }

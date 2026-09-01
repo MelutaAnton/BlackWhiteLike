@@ -7,5 +7,6 @@
 - [Step 4 accepted deviations](project_step4_accepted_deviations.md) — сессия каста без Command, `Blasted`→`Tossed`, `ByPlayer`, `IsPointerOverUi` — решено, только drift risk.
 - [Step 5 accepted deviations](project_step5_accepted_deviations.md) — WorshipConfig-only значения, CauseMiracle, пауза, IGameStateBinding, InputRouter — решено, только drift risk.
 - [Step 6 accepted deviations](project_step6_accepted_deviations.md) — Lightning→Stunned, Disease-despawn, alignment-визуал — решено, только drift risk.
+- [Step 7 accepted deviations](project_step7_accepted_deviations.md) — root `static Instance`, one baked village, per-scene EventBus + LevelCompletionRecorder; plus verified IStartable-order and Worship-math facts.
 - [Recurring defect classes](project_recurring_defects.md) — editor script vs runtime physics disagreement, and new `[SerializeField]` left unwired by the editor script that places the component.
 - [Static *Rules-классы — не нарушение DI](false-positive-static-rules-tables.md) — почему `VillagerMovementRules`/`VillagerPoseRules` без интерфейса это норма

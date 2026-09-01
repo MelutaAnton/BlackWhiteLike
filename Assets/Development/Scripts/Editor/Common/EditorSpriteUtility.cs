@@ -38,6 +38,17 @@ namespace BlackWhiteLike.Editor.Common
             public const string Pause = BlueIconsFolder + "15_pause.png";
         }
 
+        // Шаг 7 (Кампания из 5 уровней) — иконки экрана выбора уровня. Colored-иконка (не Blue) для
+        // превью карточки уровня — в паке нет отдельных превью на уровень, поэтому одна и та же
+        // иконка "домика" используется для всех пяти карточек (допустимо контрактом задачи).
+        public static class LevelIconPaths
+        {
+            private const string ColoredIconsFolder = "Assets/ThirdParty/GUI/ClassicFantasyRPG_UI/ARTWORKS/UIicons/Colored/";
+            public const string Preview = ColoredIconsFolder + "97_house.png";
+            public const string Locked = BlueIconsFolder + "26_lock.png";
+            public const string Completed = BlueIconsFolder + "65_star.png";
+        }
+
         public static Sprite EnsureSpriteAtPath(string texturePath)
         {
             var importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;

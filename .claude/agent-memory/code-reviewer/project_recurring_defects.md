@@ -44,6 +44,17 @@ Six defect classes have now appeared across steps and are worth checking first o
    repairs. **Check:** every new `ConfigAssetDescriptor` whose initializer depends on assets produced
    by a *different* menu item.
 
+7. **A central class delivered as an empty stub while everything else is written against its full
+   API.** Step 7: `Installers/RootLifetimeScope.cs` shipped as a bare `LifetimeScope` with an empty
+   `Configure` and no members at all, while `GameLifetimeScope.Configure` calls
+   `RootLifetimeScope.Instance` / `.LevelCatalog` / `.LevelSelection` / `.LevelProgress` /
+   `.SceneLoader`, `BootstrapSceneSetupEditor` wires `_levelCatalog` on it, and
+   `BootstrapFlowEntryPoint` exists with no registration anywhere — i.e. the project does not
+   compile. The surrounding xml-doc even *describes* the missing behaviour ("см. remarks
+   RootLifetimeScope"), which makes the stub easy to read past. **Check:** for every new type the
+   diff introduces, grep its members against every call site before reviewing anything else; a
+   `<remarks>` cross-reference to a file is not evidence the file implements it.
+
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 
 **How to apply:** for any new MonoBehaviour in a diff, grep every `[SerializeField]` name against the editor scripts that instantiate it, and grep every physics property the runtime *reads* (`isKinematic`, `useGravity`, `constraints`, `collisionDetectionMode`) against what the editor script *writes*. Report mismatches as blockers — both defect classes are invisible until playtest. For material-swapping controllers, also compare renderer **count and material heterogeneity** in the source prefab YAML against what the config's per-stage array can express: step 6's Synty church has 2 MeshRenderers with 2 *different* materials, but `AlignmentStage._templeMaterials` is a slot array, so a 1-element stage silently repaints both.

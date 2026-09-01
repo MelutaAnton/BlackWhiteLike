@@ -77,6 +77,16 @@ namespace BlackWhiteLike.Editor.Configs
         // зависимости неймспейсов Editor.Configs <-> Editor.Setup). Материалы обязаны существовать
         // на диске ДО вызова этого дескриптора — их создаёт AlignmentVisualSetupEditor.EnsureMaterials(),
         // вызываемый ДО ConfigAssetCreatorEditor.CreateAll() в SetupAlignmentVisual().
+        // Шаг 7 — Кампания из 5 уровней (game-design.md, шаг 7). VillageLayout_01 — единственная
+        // запечённая раскладка деревни для всех пяти уровней (решение владельца: одна деревня).
+        private const string VillageLayout01Path = ConfigsRoot + "/Levels/VillageLayout_01.asset";
+        private const string LevelConfig01Path = ConfigsRoot + "/Levels/LevelConfig_01.asset";
+        private const string LevelConfig02Path = ConfigsRoot + "/Levels/LevelConfig_02.asset";
+        private const string LevelConfig03Path = ConfigsRoot + "/Levels/LevelConfig_03.asset";
+        private const string LevelConfig04Path = ConfigsRoot + "/Levels/LevelConfig_04.asset";
+        private const string LevelConfig05Path = ConfigsRoot + "/Levels/LevelConfig_05.asset";
+        private const string LevelCatalogPath = ConfigsRoot + "/Levels/LevelCatalog.asset";
+
         private const string AlignmentVisualConfigPath = ConfigsRoot + "/Alignment/AlignmentVisual.asset";
         private const string HandMaterialsFolder = "Assets/Development/Art/Materials/Hand";
         private const string TempleMaterialsFolder = "Assets/Development/Art/Materials/Temple";
@@ -123,12 +133,183 @@ namespace BlackWhiteLike.Editor.Configs
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10). Материалы (_handMaterials/_templeMaterials)
             // обязаны существовать на диске к моменту создания — см. class-doc про AlignmentVisualSetupEditor.
             new ConfigAssetDescriptor(typeof(AlignmentVisualConfig), AlignmentVisualConfigPath, InitAlignmentVisualConfig),
+
+            // Шаг 7 — Кампания из 5 уровней (game-design.md, шаг 7). LevelConfig_01 уже создан выше
+            // (шаг 3) без инициализатора (черновой, заполнялся вручную) — здесь только 02..05, все с
+            // прогрессией (target/villagerCount/coinsReward/таймлайн) и общей VillageLayout_01.
+            // Порядок обязателен: VillageLayout_01 (Descriptors выше) → LevelConfig_02..05 → каталог.
+            new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig02Path, so => InitLevelConfig(so,
+                LevelId.Level02, worshipTarget: 130, villagerCount: 5, coinsReward: 15, Level02Timeline)),
+            new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig03Path, so => InitLevelConfig(so,
+                LevelId.Level03, worshipTarget: 160, villagerCount: 4, coinsReward: 20, Level03Timeline)),
+            new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig04Path, so => InitLevelConfig(so,
+                LevelId.Level04, worshipTarget: 200, villagerCount: 4, coinsReward: 25, Level04Timeline)),
+            new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig05Path, so => InitLevelConfig(so,
+                LevelId.Level05, worshipTarget: 250, villagerCount: 3, coinsReward: 30, Level05Timeline)),
+            new ConfigAssetDescriptor(typeof(LevelCatalogConfig), LevelCatalogPath, InitLevelCatalog),
         };
+
+        // Таймлайны прогрессии (game-design.md, шаг 7, ТЗ владельца): плотнее и с более короткими
+        // интервалами с ростом уровня (~25с → ~15с), duration=15с как у LevelConfig_01. targetSiteIndex
+        // — по фактической раскладке сцены (VillageStructurePrefabSetupEditor.Structures): House_01=0/Fire,
+        // House_02=1/Disease, Field_Carrots=2/Hunger (см. TestVillageSceneSetupEditor.DefaultEventTimeline).
+        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level02Timeline =
+        {
+            (NeedType.Fire, 5f, 0, 15f),
+            (NeedType.Disease, 30f, 1, 15f),
+            (NeedType.Hunger, 55f, 2, 15f),
+            (NeedType.Fire, 80f, 0, 15f),
+        };
+
+        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level03Timeline =
+        {
+            (NeedType.Fire, 5f, 0, 15f),
+            (NeedType.Disease, 26f, 1, 15f),
+            (NeedType.Hunger, 47f, 2, 15f),
+            (NeedType.Fire, 68f, 0, 15f),
+            (NeedType.Disease, 89f, 1, 15f),
+        };
+
+        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level04Timeline =
+        {
+            (NeedType.Fire, 5f, 0, 15f),
+            (NeedType.Disease, 23f, 1, 15f),
+            (NeedType.Hunger, 41f, 2, 15f),
+            (NeedType.Fire, 59f, 0, 15f),
+            (NeedType.Disease, 77f, 1, 15f),
+            (NeedType.Hunger, 95f, 2, 15f),
+        };
+
+        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level05Timeline =
+        {
+            (NeedType.Fire, 5f, 0, 15f),
+            (NeedType.Disease, 20f, 1, 15f),
+            (NeedType.Hunger, 35f, 2, 15f),
+            (NeedType.Fire, 50f, 0, 15f),
+            (NeedType.Disease, 65f, 1, 15f),
+            (NeedType.Hunger, 80f, 2, 15f),
+            (NeedType.Fire, 95f, 0, 15f),
+        };
+
+        /// <summary>
+        /// Общий инициализатор LevelConfig_02..05 (шаг 7): прогрессия данными, единая
+        /// VillageLayout_01.asset (решение владельца — одна запечённая деревня на всю кампанию) и
+        /// скриптованный таймлайн по образцу LevelConfig_01 (см. Level0XTimeline выше). Выполняется
+        /// ТОЛЬКО при создании ассета (см. class-doc) — существующий файл не трогаем.
+        /// </summary>
+        private static void InitLevelConfig(SerializedObject so, LevelId id, int worshipTarget, int villagerCount,
+            int coinsReward, (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] timeline)
+        {
+            so.FindProperty("_id").intValue = (int)id;
+            so.FindProperty("_worshipTarget").intValue = worshipTarget;
+            so.FindProperty("_villagerCount").intValue = villagerCount;
+            so.FindProperty("_coinsReward").intValue = coinsReward;
+
+            var layout = AssetDatabase.LoadAssetAtPath<VillageLayoutConfig>(VillageLayout01Path);
+            if (layout == null)
+                Debug.LogWarning($"[Editor] {id}: VillageLayout_01.asset не найден по пути {VillageLayout01Path} — _layout не прошит.");
+            so.FindProperty("_layout").objectReferenceValue = layout;
+
+            var timelineProp = so.FindProperty("_eventTimeline");
+            timelineProp.arraySize = timeline.Length;
+            for (int i = 0; i < timeline.Length; i++)
+            {
+                var element = timelineProp.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("type").intValue = (int)timeline[i].Type;
+                element.FindPropertyRelative("triggerTime").floatValue = timeline[i].TriggerTime;
+                element.FindPropertyRelative("targetSiteIndex").intValue = timeline[i].SiteIndex;
+                element.FindPropertyRelative("duration").floatValue = timeline[i].Duration;
+            }
+        }
+
+        /// <summary>
+        /// Каталог кампании (шаг 7) — 5 записей LevelConfig_01..05 в порядке прохождения, превью —
+        /// единая иконка (EditorSpriteUtility.LevelIconPaths.Preview), т.к. отдельных превью на
+        /// уровень в паках не нашлось (допустимо контрактом задачи). Выполняется ТОЛЬКО при создании
+        /// ассета — существующий каталог дозаполняет <see cref="MigrateLevelCatalogEntries"/>.
+        /// </summary>
+        private static void InitLevelCatalog(SerializedObject so)
+        {
+            var preview = EditorSpriteUtility.EnsureSpriteAtPath(EditorSpriteUtility.LevelIconPaths.Preview);
+            var levelPaths = new[] { LevelConfig01Path, LevelConfig02Path, LevelConfig03Path, LevelConfig04Path, LevelConfig05Path };
+
+            var entries = so.FindProperty("_entries");
+            entries.arraySize = levelPaths.Length;
+            bool anyMissing = false;
+            for (int i = 0; i < levelPaths.Length; i++)
+            {
+                var level = AssetDatabase.LoadAssetAtPath<LevelConfig>(levelPaths[i]);
+                if (level == null) anyMissing = true;
+
+                var element = entries.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("_level").objectReferenceValue = level;
+                element.FindPropertyRelative("_preview").objectReferenceValue = preview;
+            }
+
+            if (anyMissing)
+                Debug.LogWarning("[Editor] LevelCatalog: одна или несколько ссылок на LevelConfig_01..05 не найдены при создании.");
+        }
+
+        /// <summary>
+        /// Миграция каталога, уже существовавшего до шага 7 (Initializer выше — только при создании
+        /// ассета, см. class-doc): дозаполняет недостающие записи (по числу — до 5) и недостающие
+        /// превью в уже присутствующих записях, не трогая и не дублируя уже заполненные. Сопоставление
+        /// "какая запись — какой LevelConfig" — по позиции (0..4 = Level01..05), т.к. записи создаются
+        /// в фиксированном порядке прохождения.
+        /// </summary>
+        private static void MigrateLevelCatalogEntries()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<LevelCatalogConfig>(LevelCatalogPath);
+            if (catalog == null) return; // ещё не создан — InitLevelCatalog при создании соберёт полный набор.
+
+            var levelPaths = new[] { LevelConfig01Path, LevelConfig02Path, LevelConfig03Path, LevelConfig04Path, LevelConfig05Path };
+            var preview = EditorSpriteUtility.EnsureSpriteAtPath(EditorSpriteUtility.LevelIconPaths.Preview);
+
+            var so = new SerializedObject(catalog);
+            var entries = so.FindProperty("_entries");
+
+            int changed = 0;
+            for (int i = 0; i < levelPaths.Length; i++)
+            {
+                var level = AssetDatabase.LoadAssetAtPath<LevelConfig>(levelPaths[i]);
+
+                if (i >= entries.arraySize)
+                {
+                    entries.InsertArrayElementAtIndex(entries.arraySize);
+                    var newElement = entries.GetArrayElementAtIndex(entries.arraySize - 1);
+                    newElement.FindPropertyRelative("_level").objectReferenceValue = level;
+                    newElement.FindPropertyRelative("_preview").objectReferenceValue = preview;
+                    changed++;
+                    continue;
+                }
+
+                var element = entries.GetArrayElementAtIndex(i);
+                var levelProp = element.FindPropertyRelative("_level");
+                if (levelProp.objectReferenceValue == null && level != null)
+                {
+                    levelProp.objectReferenceValue = level;
+                    changed++;
+                }
+
+                var previewProp = element.FindPropertyRelative("_preview");
+                if (previewProp.objectReferenceValue == null && preview != null)
+                {
+                    previewProp.objectReferenceValue = preview;
+                    changed++;
+                }
+            }
+
+            if (changed == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(catalog);
+            Debug.Log($"[Editor] LevelCatalog._entries: дозаполнено {changed} значени(й), всего записей {entries.arraySize}.");
+        }
 
         /// <summary>Дождь (game-design.md §19.4): исцеляет Fire/Hunger, без удержания-накопления вреда.</summary>
         private static void InitRainMiracle(SerializedObject so)
         {
-            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Rain;
+            so.FindProperty("_type").intValue = (int)MiracleType.Rain;
             so.FindProperty("_baseFaithCost").floatValue = 20f;
             so.FindProperty("_holdCostPerSecond").floatValue = 10f;
             so.FindProperty("_baseRadius").floatValue = 2f;
@@ -138,13 +319,13 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_alignmentShift").floatValue = 10f;
             // Шаг 5 (ревью): поле _worshipYield удалено из MiracleConfig — Worship больше не даётся
             // за факт применения чуда, начисляется WorshipService по Awe/Fear (см. WorshipConfig).
-            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.RainCast;
+            so.FindProperty("_castVfx").intValue = (int)VfxEffectType.RainCast;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(RainIconPath);
 
             var resolvesNeeds = so.FindProperty("_resolvesNeeds");
             resolvesNeeds.arraySize = 2;
-            resolvesNeeds.GetArrayElementAtIndex(0).enumValueIndex = (int)NeedType.Fire;
-            resolvesNeeds.GetArrayElementAtIndex(1).enumValueIndex = (int)NeedType.Hunger;
+            resolvesNeeds.GetArrayElementAtIndex(0).intValue = (int)NeedType.Fire;
+            resolvesNeeds.GetArrayElementAtIndex(1).intValue = (int)NeedType.Hunger;
 
             so.FindProperty("_createsNeed").boolValue = false;
             so.FindProperty("_blastsVillagers").boolValue = false;
@@ -153,7 +334,7 @@ namespace BlackWhiteLike.Editor.Configs
         /// <summary>Фаербол (game-design.md §19.4): наносит урон, создаёт Fire-нужду, разбрасывает жителей.</summary>
         private static void InitFireballMiracle(SerializedObject so)
         {
-            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Fireball;
+            so.FindProperty("_type").intValue = (int)MiracleType.Fireball;
             so.FindProperty("_baseFaithCost").floatValue = 30f;
             so.FindProperty("_holdCostPerSecond").floatValue = 15f;
             so.FindProperty("_baseRadius").floatValue = 1.5f;
@@ -162,13 +343,13 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_effectPower").floatValue = 8f;
             so.FindProperty("_alignmentShift").floatValue = -10f;
             // Шаг 5 (ревью): поле _worshipYield удалено из MiracleConfig — см. комментарий в InitRainMiracle.
-            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.FireballExplosion;
+            so.FindProperty("_castVfx").intValue = (int)VfxEffectType.FireballExplosion;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(FireballIconPath);
 
             so.FindProperty("_resolvesNeeds").arraySize = 0;
 
             so.FindProperty("_createsNeed").boolValue = true;
-            so.FindProperty("_createdNeed").enumValueIndex = (int)NeedType.Fire;
+            so.FindProperty("_createdNeed").intValue = (int)NeedType.Fire;
             so.FindProperty("_createdNeedDuration").floatValue = 15f;
             so.FindProperty("_blastsVillagers").boolValue = true;
         }
@@ -176,7 +357,7 @@ namespace BlackWhiteLike.Editor.Configs
         /// <summary>Исцеление (game-design.md §4, шаг 6): разрешает Disease, без урона/разброса — зеркалит стоимость/радиусы Rain.</summary>
         private static void InitHealMiracle(SerializedObject so)
         {
-            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Heal;
+            so.FindProperty("_type").intValue = (int)MiracleType.Heal;
             so.FindProperty("_baseFaithCost").floatValue = 20f; // зеркало Miracle_Rain
             so.FindProperty("_holdCostPerSecond").floatValue = 10f;
             so.FindProperty("_baseRadius").floatValue = 2f;
@@ -184,12 +365,12 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
             so.FindProperty("_effectPower").floatValue = 0f;
             so.FindProperty("_alignmentShift").floatValue = 10f; // положительный, как у Rain — доброе чудо
-            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.HealCast;
+            so.FindProperty("_castVfx").intValue = (int)VfxEffectType.HealCast;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(HealIconPath);
 
             var resolvesNeeds = so.FindProperty("_resolvesNeeds");
             resolvesNeeds.arraySize = 1;
-            resolvesNeeds.GetArrayElementAtIndex(0).enumValueIndex = (int)NeedType.Disease;
+            resolvesNeeds.GetArrayElementAtIndex(0).intValue = (int)NeedType.Disease;
 
             so.FindProperty("_createsNeed").boolValue = false;
             so.FindProperty("_blastsVillagers").boolValue = false;
@@ -200,7 +381,7 @@ namespace BlackWhiteLike.Editor.Configs
         /// <summary>Молния (game-design.md §4, шаг 6): точечный удар, поджигает дом (как Fireball) — стоимость/сила зеркалят Fireball.</summary>
         private static void InitLightningMiracle(SerializedObject so)
         {
-            so.FindProperty("_type").enumValueIndex = (int)MiracleType.Lightning;
+            so.FindProperty("_type").intValue = (int)MiracleType.Lightning;
             so.FindProperty("_baseFaithCost").floatValue = 30f; // как у Fireball
             so.FindProperty("_holdCostPerSecond").floatValue = 15f; // как у Fireball
             so.FindProperty("_baseRadius").floatValue = 1.5f;
@@ -208,14 +389,14 @@ namespace BlackWhiteLike.Editor.Configs
             so.FindProperty("_holdSecondsToMaxRadius").floatValue = 1.5f;
             so.FindProperty("_effectPower").floatValue = 8f; // как у Fireball
             so.FindProperty("_alignmentShift").floatValue = -10f;
-            so.FindProperty("_castVfx").enumValueIndex = (int)VfxEffectType.LightningStrike;
+            so.FindProperty("_castVfx").intValue = (int)VfxEffectType.LightningStrike;
             so.FindProperty("_icon").objectReferenceValue = EditorSpriteUtility.EnsureSpriteAtPath(LightningIconPath);
 
             so.FindProperty("_resolvesNeeds").arraySize = 0;
 
             // Решение владельца 2026-09-01: молния поджигает здание, как Fireball.
             so.FindProperty("_createsNeed").boolValue = true;
-            so.FindProperty("_createdNeed").enumValueIndex = (int)NeedType.Fire;
+            so.FindProperty("_createdNeed").intValue = (int)NeedType.Fire;
             so.FindProperty("_createdNeedDuration").floatValue = 15f; // как у Fireball
             so.FindProperty("_blastsVillagers").boolValue = false;
 
@@ -321,14 +502,14 @@ namespace BlackWhiteLike.Editor.Configs
             for (int i = 0; i < fearByAct.arraySize; i++)
             {
                 var element = fearByAct.GetArrayElementAtIndex(i);
-                if (element.FindPropertyRelative("_act").enumValueIndex == (int)TerrorAct.VillagerStruckByLightning)
+                if (element.FindPropertyRelative("_act").intValue == (int)TerrorAct.VillagerStruckByLightning)
                     return; // уже есть — не дублируем.
             }
 
             int idx = fearByAct.arraySize;
             fearByAct.InsertArrayElementAtIndex(idx);
             var newElement = fearByAct.GetArrayElementAtIndex(idx);
-            newElement.FindPropertyRelative("_act").enumValueIndex = (int)TerrorAct.VillagerStruckByLightning;
+            newElement.FindPropertyRelative("_act").intValue = (int)TerrorAct.VillagerStruckByLightning;
             newElement.FindPropertyRelative("_fear").intValue = 8;
 
             so.ApplyModifiedProperties();
@@ -414,7 +595,7 @@ namespace BlackWhiteLike.Editor.Configs
             for (int i = 0; i < aweEntries.Length; i++)
             {
                 var element = aweByNeed.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("_type").enumValueIndex = (int)aweEntries[i].Type;
+                element.FindPropertyRelative("_type").intValue = (int)aweEntries[i].Type;
                 element.FindPropertyRelative("_awe").intValue = aweEntries[i].Awe;
             }
 
@@ -436,7 +617,7 @@ namespace BlackWhiteLike.Editor.Configs
             for (int i = 0; i < fearEntries.Length; i++)
             {
                 var element = fearByAct.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("_act").enumValueIndex = (int)fearEntries[i].Act;
+                element.FindPropertyRelative("_act").intValue = (int)fearEntries[i].Act;
                 element.FindPropertyRelative("_fear").intValue = fearEntries[i].Fear;
             }
 
@@ -563,6 +744,8 @@ namespace BlackWhiteLike.Editor.Configs
             MigrateMiracleCatalogEntries();
             MigrateWorshipTerrorFearEntries();
             MigrateAlignmentVisualStages();
+            // Шаг 7 — Кампания из 5 уровней.
+            MigrateLevelCatalogEntries();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

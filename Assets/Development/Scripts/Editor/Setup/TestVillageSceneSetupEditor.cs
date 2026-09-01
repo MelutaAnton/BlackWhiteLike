@@ -115,13 +115,29 @@ namespace BlackWhiteLike.Editor.Setup
         [MenuItem("BlackWhiteLike/Setup/Build Test Village Scene")]
         public static void BuildTestVillageScene()
         {
+            BuildVillageSceneCore(ScenePath, GameState.LevelPlaying, isTemporarySandbox: true);
+        }
+
+        /// <summary>
+        /// Ядро сборки деревенской сцены (шаг 3/4/5/6 + шаг 7 "Кампания из 5 уровней") — общее для
+        /// временной песочницы <c>_TestVillage.unity</c> и боевой <c>Village_Base.unity</c>
+        /// (<see cref="VillageLevelSetupEditor"/>, шаг 7): дома/поле/храм, рука, камера, [Systems],
+        /// [Miracles], HUD, Alignment-визуал — идентичны для обеих сцен. Единственные различия между
+        /// вызывающими — путь сцены и то, добавляется ли она в Build Settings (temporary sandbox — нет).
+        /// <paramref name="initialState"/> прошивается в GameLifetimeScope._initialState (обе сцены
+        /// сейчас используют LevelPlaying, но параметризовано на случай будущего расхождения).
+        /// </summary>
+        public static void BuildVillageSceneCore(string scenePath, GameState initialState, bool isTemporarySandbox)
+        {
+            string sceneLabel = Path.GetFileNameWithoutExtension(scenePath);
+
             // Шаг 4 — зависимости, не привязанные к активной сцене (конфиги, VFX-префабы):
             // собираются здесь, ДО работы со сценой, чтобы порядок "конфиги → VFX-префабы → HUD →
             // сцена" был гарантирован при первом же прогоне на чистом проекте. Каждый шаг
             // идемпотентен сам по себе — вызывается только если результат ещё отсутствует на диске.
             EnsureStep4Configs();
             EnsureStep4VfxPrefabs();
-            // HUD (Editor/UI/LevelHudSetupEditor) собирается ПОСЛЕ открытия/создания _TestVillage —
+            // HUD (Editor/UI/LevelHudSetupEditor) собирается ПОСЛЕ открытия/создания сцены —
             // его EnsureSceneInstance кладёт инстанс в АКТИВНУЮ сцену, см. ниже по методу.
 
             // БЕЗ модального диалога (ревью шага 3: EditorUtility.DisplayDialog вешает MCP-мост
@@ -132,7 +148,7 @@ namespace BlackWhiteLike.Editor.Setup
             {
                 if (string.IsNullOrEmpty(activeScene.path))
                 {
-                    Debug.LogError("[Editor] Build Test Village Scene прервана: текущая сцена \"" + activeScene.name +
+                    Debug.LogError("[Editor] Build " + sceneLabel + " прервана: текущая сцена \"" + activeScene.name +
                                     "\" ни разу не сохранялась на диск (нет пути) и содержит изменения — " +
                                     "автосохранение недоступно (вызвало бы диалог \"Save As\"). Сохраните " +
                                     "сцену вручную (File > Save) и запустите пункт меню снова.");
@@ -141,25 +157,25 @@ namespace BlackWhiteLike.Editor.Setup
 
                 if (!EditorSceneManager.SaveScene(activeScene))
                 {
-                    Debug.LogError("[Editor] Build Test Village Scene прервана: не удалось автоматически сохранить " +
+                    Debug.LogError("[Editor] Build " + sceneLabel + " прервана: не удалось автоматически сохранить " +
                                     "текущую сцену \"" + activeScene.name + "\".");
                     return;
                 }
 
                 Debug.Log("[Editor] Текущая сцена \"" + activeScene.name + "\" содержала несохранённые изменения — " +
-                          "сохранена автоматически перед сборкой _TestVillage.");
+                          "сохранена автоматически перед сборкой " + sceneLabel + ".");
             }
 
             EnsureFolder(ScenesFolder);
 
-            bool sceneExists = File.Exists(ScenePath);
+            bool sceneExists = File.Exists(scenePath);
             Scene scene = sceneExists
-                ? EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single)
+                ? EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single)
                 : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             Debug.Log(sceneExists
-                ? "[Editor] Открыта существующая сцена _TestVillage.unity — дособираем недостающее."
-                : "[Editor] Создана новая пустая сцена под _TestVillage.");
+                ? "[Editor] Открыта существующая сцена " + sceneLabel + ".unity — дособираем недостающее."
+                : "[Editor] Создана новая пустая сцена под " + sceneLabel + ".");
 
             // Конфиги — грузим ПОСЛЕ открытия/создания сцены (OpenScene выгружает неиспользуемые
             // ассеты, см. .claude/rules/editor-files.md).
@@ -231,7 +247,7 @@ namespace BlackWhiteLike.Editor.Setup
 
             WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
                 miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView,
-                worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView);
+                worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView, initialState);
 
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10): материалы/конфиг/[AlignmentVisual] +
             // прошивка _handRenderers/_templeRenderers и ссылок на GameLifetimeScope. Вызывается
@@ -261,7 +277,7 @@ namespace BlackWhiteLike.Editor.Setup
             // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ВСЮ собранную сцену
             // перед сохранением (обходит корневые объекты активной сцены, включая только что
             // мигрированные структуры).
-            AssertNoThirdPartyPrefabLinksInScene(scene);
+            AssertNoThirdPartyPrefabLinksInScene(scene, sceneLabel);
 
             Undo.CollapseUndoOperations(undoGroup);
 
@@ -269,13 +285,21 @@ namespace BlackWhiteLike.Editor.Setup
             if (sceneExists)
                 EditorSceneManager.SaveScene(scene);
             else
-                EditorSceneManager.SaveScene(scene, ScenePath);
+                EditorSceneManager.SaveScene(scene, scenePath);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log("[Editor] Build Test Village Scene завершён: " + ScenePath +
-                      " (в Build Settings не добавлена — временная песочница).");
+            if (isTemporarySandbox)
+            {
+                Debug.Log("[Editor] Build " + sceneLabel + " завершён: " + scenePath +
+                          " (в Build Settings не добавлена — временная песочница).");
+            }
+            else
+            {
+                BuildSettingsEditor.EnsureCampaignScenesInBuildSettings();
+                Debug.Log("[Editor] Build " + sceneLabel + " завершён: " + scenePath + ".");
+            }
         }
 
         /// <summary>
@@ -317,10 +341,10 @@ namespace BlackWhiteLike.Editor.Setup
         /// Правило CLAUDE.md "Из ThirdParty в сцену и в наши префабы попадает только визуал" —
         /// проверка ВСЕХ корневых объектов активной сцены после сборки/миграции структур.
         /// </summary>
-        private static void AssertNoThirdPartyPrefabLinksInScene(Scene scene)
+        private static void AssertNoThirdPartyPrefabLinksInScene(Scene scene, string sceneLabel)
         {
             foreach (var root in scene.GetRootGameObjects())
-                EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, "_TestVillage/\"" + root.name + "\"");
+                EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, sceneLabel + "/\"" + root.name + "\"");
         }
 
         private static void WarnIfMissing(Object asset, string path)
@@ -893,7 +917,7 @@ namespace BlackWhiteLike.Editor.Setup
             MiracleTargetingController miracleTargeting, MiracleImpactController miracleImpact, MiracleVfxController miracleVfx,
             MiraclePanelView miraclePanelView, FaithBarView faithBarView,
             WorshipConfig worshipConfig, LevelHudView levelHudView, LevelCompleteView levelCompleteView,
-            LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView)
+            LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView, GameState initialState)
         {
             if (scope == null)
             {
@@ -924,7 +948,7 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetRef(so, "_faithBarView", faithBarView, ownerLabel) ? 1 : 0;
             // Шаг 5 — Worship + win (game-design.md §19.5).
             wired += SetRef(so, "_worshipConfig", worshipConfig, ownerLabel) ? 1 : 0;
-            wired += SetEnumProp(so, "_initialState", (int)GameState.LevelPlaying, ownerLabel) ? 1 : 0;
+            wired += SetEnumProp(so, "_initialState", (int)initialState, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_levelHudView", levelHudView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_levelCompleteView", levelCompleteView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_levelStalledView", levelStalledView, ownerLabel) ? 1 : 0;

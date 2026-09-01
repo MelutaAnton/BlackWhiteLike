@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 99e007a8c426a2c48b26f3fd2a5690ad, type: 3}
   m_Name: FaithConfig
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Data.Configs.Faith.FaithConfig
-  _baseCapacity: 100
+  _baseCapacity: 10000
   _regenPerWorshipper: 2
   _startingFaithPercent: 50
