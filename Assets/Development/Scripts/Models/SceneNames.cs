@@ -10,5 +10,8 @@ namespace BlackWhiteLike.Models
         public const string Bootstrap = "Bootstrap";
         public const string MainMenu = "MainMenu";
         public const string VillageBase = "Village_Base";
+
+        /// <summary>Мета-сцена Temple (game-design §7-§9, шаг 8) — стартует в GameState.TempleMeta.</summary>
+        public const string Temple = "Temple";
     }
 }

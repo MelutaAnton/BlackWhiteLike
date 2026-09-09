@@ -4,9 +4,12 @@ using BlackWhiteLike.Data.Configs.Alignment;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Data.Configs.Idle;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Miracles;
+using BlackWhiteLike.Data.Configs.Rewards;
 using BlackWhiteLike.Data.Configs.Throwable;
+using BlackWhiteLike.Data.Configs.Upgrades;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
 using BlackWhiteLike.Data.Configs.Worship;
@@ -103,6 +106,12 @@ namespace BlackWhiteLike.Editor.Configs
         private const string TempleKindBMaterialPath = TempleMaterialsFolder + "/Temple_Kind_B.mat";
         private const string TempleCruelBMaterialPath = TempleMaterialsFolder + "/Temple_Cruel_B.mat";
 
+        // Шаг 8 — Meta + idle (Temple.unity, кампания магазина прокачки). Три пути — единственный
+        // источник для InitUpgradeCatalog/InitRewardConfig/InitIdleIncomeConfig ниже.
+        private const string UpgradeCatalogPath = ConfigsRoot + "/Upgrades/UpgradeCatalog.asset";
+        private const string RewardConfigPath = ConfigsRoot + "/Rewards/RewardConfig.asset";
+        private const string IdleIncomeConfigPath = ConfigsRoot + "/Idle/IdleIncome.asset";
+
         /// <summary>
         /// Единственное место, где перечислены создаваемые SO. Новый конфиг = новая строка.
         /// </summary>
@@ -147,7 +156,179 @@ namespace BlackWhiteLike.Editor.Configs
             new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig05Path, so => InitLevelConfig(so,
                 LevelId.Level05, worshipTarget: 250, villagerCount: 3, coinsReward: 30, Level05Timeline)),
             new ConfigAssetDescriptor(typeof(LevelCatalogConfig), LevelCatalogPath, InitLevelCatalog),
+
+            // Шаг 8 — Meta + idle (game-design.md, шаг 8). Порядок между собой не важен — три
+            // независимых конфига, ссылок друг на друга не имеют.
+            new ConfigAssetDescriptor(typeof(UpgradeCatalogConfig), UpgradeCatalogPath, InitUpgradeCatalog),
+            new ConfigAssetDescriptor(typeof(RewardConfig), RewardConfigPath, InitRewardConfig),
+            new ConfigAssetDescriptor(typeof(IdleIncomeConfig), IdleIncomeConfigPath, InitIdleIncomeConfig),
         };
+
+        /// <summary>
+        /// Шаг 8 — таблица прокачки (3 категории × 5 уровней, ТЗ владельца): HandPower/MiraclePower —
+        /// проценты прибавки, FaithCapacity — абсолютная прибавка ёмкости. Единственный источник для
+        /// <see cref="InitUpgradeCatalog"/> И <see cref="MigrateUpgradeCatalogEntries"/> — миграция
+        /// дозаполняет недостающие категории/уровни по ЭТОЙ же таблице, не по копии.
+        /// </summary>
+        private static readonly (UpgradeCategory Category, (int Level, float EffectValue, int Price)[] Levels)[] UpgradeCatalogDefs =
+        {
+            (UpgradeCategory.HandPower, new[]
+            {
+                (1, 10f, 20), (2, 20f, 40), (3, 30f, 70), (4, 45f, 110), (5, 60f, 160),
+            }),
+            (UpgradeCategory.FaithCapacity, new[]
+            {
+                (1, 20f, 20), (2, 40f, 40), (3, 60f, 70), (4, 90f, 110), (5, 120f, 160),
+            }),
+            (UpgradeCategory.MiraclePower, new[]
+            {
+                (1, 10f, 25), (2, 20f, 50), (3, 30f, 85), (4, 45f, 130), (5, 60f, 180),
+            }),
+        };
+
+        /// <summary>Только при создании ассета (см. class-doc) — 3 категории по 5 уровней, из <see cref="UpgradeCatalogDefs"/>.</summary>
+        private static void InitUpgradeCatalog(SerializedObject so)
+        {
+            var categories = so.FindProperty("_categories");
+            categories.arraySize = UpgradeCatalogDefs.Length;
+            for (int i = 0; i < UpgradeCatalogDefs.Length; i++)
+            {
+                var categoryElement = categories.GetArrayElementAtIndex(i);
+                categoryElement.FindPropertyRelative("_category").intValue = (int)UpgradeCatalogDefs[i].Category;
+                WriteUpgradeLevels(categoryElement.FindPropertyRelative("_levels"), UpgradeCatalogDefs[i].Levels);
+            }
+        }
+
+        private static void WriteUpgradeLevels(SerializedProperty levelsProp, (int Level, float EffectValue, int Price)[] levelDefs)
+        {
+            levelsProp.arraySize = levelDefs.Length;
+            for (int j = 0; j < levelDefs.Length; j++)
+            {
+                var levelElement = levelsProp.GetArrayElementAtIndex(j);
+                levelElement.FindPropertyRelative("_level").intValue = levelDefs[j].Level;
+                levelElement.FindPropertyRelative("_effectValue").floatValue = levelDefs[j].EffectValue;
+                levelElement.FindPropertyRelative("_price").intValue = levelDefs[j].Price;
+            }
+        }
+
+        /// <summary>
+        /// Миграция каталога, уже существовавшего до шага 8 (Initializer выше — только при создании
+        /// ассета, см. class-doc): дозаполняет недостающие категории целиком и недостающие уровни
+        /// внутри уже присутствующих категорий (сопоставление по <c>_level</c>), не трогая и не
+        /// дублируя уже заполненные записи — тот же приём, что MigrateMiracleCatalogEntries/
+        /// MigrateLevelCatalogEntries выше в этом файле.
+        /// </summary>
+        private static void MigrateUpgradeCatalogEntries()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<UpgradeCatalogConfig>(UpgradeCatalogPath);
+            if (catalog == null) return; // ещё не создан — InitUpgradeCatalog при создании соберёт полный набор.
+
+            var so = new SerializedObject(catalog);
+            var categories = so.FindProperty("_categories");
+
+            var existingByCategory = new System.Collections.Generic.Dictionary<UpgradeCategory, int>();
+            for (int i = 0; i < categories.arraySize; i++)
+            {
+                var cat = (UpgradeCategory)categories.GetArrayElementAtIndex(i).FindPropertyRelative("_category").intValue;
+                existingByCategory[cat] = i;
+            }
+
+            int changed = 0;
+            foreach (var def in UpgradeCatalogDefs)
+            {
+                if (!existingByCategory.TryGetValue(def.Category, out int index))
+                {
+                    index = categories.arraySize;
+                    categories.InsertArrayElementAtIndex(index);
+                    var newElement = categories.GetArrayElementAtIndex(index);
+                    newElement.FindPropertyRelative("_category").intValue = (int)def.Category;
+                    WriteUpgradeLevels(newElement.FindPropertyRelative("_levels"), def.Levels);
+                    changed++;
+                    continue;
+                }
+
+                var levelsProp = categories.GetArrayElementAtIndex(index).FindPropertyRelative("_levels");
+                var existingLevels = new System.Collections.Generic.HashSet<int>();
+                for (int j = 0; j < levelsProp.arraySize; j++)
+                    existingLevels.Add(levelsProp.GetArrayElementAtIndex(j).FindPropertyRelative("_level").intValue);
+
+                foreach (var levelDef in def.Levels)
+                {
+                    if (existingLevels.Contains(levelDef.Level)) continue;
+
+                    int levelIndex = levelsProp.arraySize;
+                    levelsProp.InsertArrayElementAtIndex(levelIndex);
+                    var levelElement = levelsProp.GetArrayElementAtIndex(levelIndex);
+                    levelElement.FindPropertyRelative("_level").intValue = levelDef.Level;
+                    levelElement.FindPropertyRelative("_effectValue").floatValue = levelDef.EffectValue;
+                    levelElement.FindPropertyRelative("_price").intValue = levelDef.Price;
+                    existingLevels.Add(levelDef.Level);
+                    changed++;
+                }
+            }
+
+            if (changed == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(catalog);
+            Debug.Log($"[Editor] UpgradeCatalog: дозаполнено {changed} запис(ей) (категорий/уровней), всего категорий {categories.arraySize}.");
+        }
+
+        /// <summary>Только при создании ассета — множитель первого прохождения уровня (ТЗ владельца).</summary>
+        private static void InitRewardConfig(SerializedObject so)
+        {
+            so.FindProperty("_firstClearMultiplier").floatValue = 2f;
+        }
+
+        // Ревью шага 8 (мелочь): MigrateRewardConfig() удалён — ветка "если 0" была недостижима.
+        // RewardConfig._firstClearMultiplier имеет C#-инициализатор 2f (см. class), и Unity
+        // подставляет его "на лету" для отсутствующего в YAML поля ДО срабатывания OnValidate
+        // (см. class-doc "Пересериализация существующих ассетов" выше) — значение на диске
+        // к моменту вызова миграции уже >= 1 (2f для отсутствующего поля, min 1 от самого
+        // OnValidate для явно записанного 0), проверка "== 0" никогда не проходила.
+
+        /// <summary>Только при создании ассета — идле-доход (ТЗ владельца: 60 монет/час, кап 8ч, минимум 5 мин офлайна).</summary>
+        private static void InitIdleIncomeConfig(SerializedObject so)
+        {
+            so.FindProperty("_coinsPerHour").floatValue = 60f;
+            so.FindProperty("_capHours").floatValue = 8f;
+            so.FindProperty("_minOfflineMinutes").floatValue = 5f;
+        }
+
+        /// <summary>Миграция IdleIncomeConfig — тот же приём "0 -> дефолт", что MigrateRewardConfig.</summary>
+        private static void MigrateIdleIncomeConfig()
+        {
+            var idle = AssetDatabase.LoadAssetAtPath<IdleIncomeConfig>(IdleIncomeConfigPath);
+            if (idle == null) return;
+
+            var so = new SerializedObject(idle);
+            int changed = 0;
+            changed += MigrateFloatIfZero(so, "_coinsPerHour", 60f, "IdleIncomeConfig");
+            changed += MigrateFloatIfZero(so, "_capHours", 8f, "IdleIncomeConfig");
+            changed += MigrateFloatIfZero(so, "_minOfflineMinutes", 5f, "IdleIncomeConfig");
+
+            if (changed == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(idle);
+        }
+
+        /// <summary>Дозаполняет float-поле дефолтом, только если оно сейчас 0 (незаполненное). Возвращает 1, если изменено.</summary>
+        private static int MigrateFloatIfZero(SerializedObject so, string propertyName, float defaultValue, string ownerLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — миграция пропущена.");
+                return 0;
+            }
+
+            if (!Mathf.Approximately(prop.floatValue, 0f)) return 0;
+
+            prop.floatValue = defaultValue;
+            Debug.Log($"[Editor] {ownerLabel}.{propertyName}: 0 -> {defaultValue} (дозаполнение).");
+            return 1;
+        }
 
         // Таймлайны прогрессии (game-design.md, шаг 7, ТЗ владельца): плотнее и с более короткими
         // интервалами с ростом уровня (~25с → ~15с), duration=15с как у LevelConfig_01. targetSiteIndex
@@ -746,6 +927,10 @@ namespace BlackWhiteLike.Editor.Configs
             MigrateAlignmentVisualStages();
             // Шаг 7 — Кампания из 5 уровней.
             MigrateLevelCatalogEntries();
+            // Шаг 8 — Meta + idle. MigrateRewardConfig() удалена (мелочь ревью шага 8) — см.
+            // комментарий на месте бывшего метода, недостижимая ветка "если 0".
+            MigrateUpgradeCatalogEntries();
+            MigrateIdleIncomeConfig();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

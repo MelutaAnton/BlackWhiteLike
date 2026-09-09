@@ -9,6 +9,12 @@ EditorBuildSettings:
     path: Assets/Development/Scenes/Bootstrap.unity
     guid: e9298d52d3496834685faa22c00dc731
   - enabled: 1
+    path: Assets/Development/Scenes/MainMenu.unity
+    guid: 3c5f33f6bde8286409065fa3a8a0f844
+  - enabled: 1
+    path: Assets/Development/Scenes/Temple.unity
+    guid: b33b6cf947b4836429822fab5ff16b01
+  - enabled: 1
     path: Assets/Development/Scenes/Village_Base.unity
     guid: 419885a3050997842b6e8c90416c1a70
   - enabled: 1

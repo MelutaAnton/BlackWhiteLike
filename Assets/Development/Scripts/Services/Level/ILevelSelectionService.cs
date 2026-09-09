@@ -25,5 +25,12 @@ namespace BlackWhiteLike.Services.Level
 
         /// <summary>Считать и сбросить флаг из <see cref="RequestReturnToLevelSelect"/>. true — ровно один раз после запроса.</summary>
         bool ConsumeReturnToLevelSelect();
+
+        /// <summary>
+        /// Сбрасывает выбранный уровень (game-design §7-§9, шаг 8) — после LevelComplete.Continue
+        /// (переход в Temple) выбор больше не актуален, следующий уровень игрок выбирает заново
+        /// на LevelSelect.
+        /// </summary>
+        void ClearSelection();
     }
 }

@@ -32,6 +32,19 @@ namespace BlackWhiteLike.Tests
         }
 
         [Test]
+        public void ClearSelection_AfterSelect_TryGetSelectedReturnsFalse()
+        {
+            var service = new LevelSelectionService();
+            var level = ScriptableObject.CreateInstance<LevelConfig>();
+            service.Select(level);
+
+            service.ClearSelection();
+
+            Assert.IsFalse(service.TryGetSelected(out var selected));
+            Assert.IsNull(selected);
+        }
+
+        [Test]
         public void ConsumeReturnToLevelSelect_WithoutRequest_ReturnsFalse()
         {
             var service = new LevelSelectionService();

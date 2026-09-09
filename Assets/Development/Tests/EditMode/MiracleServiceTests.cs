@@ -7,13 +7,14 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Faith;
+using BlackWhiteLike.Services.Meta;
 using BlackWhiteLike.Services.Miracles;
 
 namespace BlackWhiteLike.Tests
 {
     /// <summary>
-    /// Тесты <see cref="MiracleService"/> (game-design §4, §19, шаг 4) — сессия каста, симметричная
-    /// <c>HandInteractionService.BeginHold/EndHold</c>.
+    /// Тесты <see cref="MiracleService"/> (game-design §4, §19, шаг 4; §8, шаг 8 — эффективные
+    /// статы) — сессия каста, симметричная <c>HandInteractionService.BeginHold/EndHold</c>.
     /// </summary>
     public class MiracleServiceTests
     {
@@ -76,13 +77,16 @@ namespace BlackWhiteLike.Tests
             return catalog;
         }
 
+        private static MiracleService CreateService(IEventBus eventBus, IFaithService faith, MiracleCatalogConfig catalog, IEffectiveStatsService stats = null) =>
+            new MiracleService(eventBus, faith, catalog, stats ?? new FakeEffectiveStatsService());
+
         // --- CanCast ---
 
         [Test]
         public void CanCast_NoConfigInCatalog_ReturnsFalse()
         {
             var catalog = CreateCatalog();
-            var service = new MiracleService(new FakeEventBus(), new FakeFaithService(), catalog);
+            var service = CreateService(new FakeEventBus(), new FakeFaithService(), catalog);
 
             Assert.IsFalse(service.CanCast(MiracleType.Rain));
         }
@@ -92,7 +96,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f));
             var faith = new FakeFaithService { Current = 5f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             Assert.IsFalse(service.CanCast(MiracleType.Rain));
         }
@@ -102,7 +106,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f));
             var faith = new FakeFaithService { Current = 20f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             Assert.IsTrue(service.CanCast(MiracleType.Rain));
         }
@@ -114,7 +118,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f, baseRadius: 2f));
             var faith = new FakeFaithService { Current = 100f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             var began = service.BeginCast(MiracleType.Rain, Vector3.zero);
 
@@ -129,7 +133,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog();
             var faith = new FakeFaithService { Current = 100f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             var began = service.BeginCast(MiracleType.Rain, Vector3.zero);
 
@@ -143,7 +147,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f));
             var faith = new FakeFaithService { Current = 5f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             var began = service.BeginCast(MiracleType.Rain, Vector3.zero);
 
@@ -157,7 +161,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 10f));
             var faith = new FakeFaithService { Current = 100f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
             service.BeginCast(MiracleType.Rain, Vector3.zero);
 
             var secondBegin = service.BeginCast(MiracleType.Rain, Vector3.zero);
@@ -173,7 +177,7 @@ namespace BlackWhiteLike.Tests
             var catalog = CreateCatalog(CreateMiracleConfig(
                 baseFaithCost: 0f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f, holdSecondsToMaxRadius: 1.5f));
             var faith = new FakeFaithService { Current = 1000f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
             service.BeginCast(MiracleType.Rain, Vector3.zero);
 
             service.UpdateCast(1.5f, Vector3.zero);
@@ -188,7 +192,7 @@ namespace BlackWhiteLike.Tests
             var catalog = CreateCatalog(CreateMiracleConfig(
                 baseFaithCost: 10f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f, holdSecondsToMaxRadius: 1f));
             var faith = new FakeFaithService { Current = 10f }; // хватает ровно на BeginCast, на UpdateCast — нет
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
             service.BeginCast(MiracleType.Rain, Vector3.zero);
 
             service.UpdateCast(1f, Vector3.zero);
@@ -206,7 +210,7 @@ namespace BlackWhiteLike.Tests
                 baseFaithCost: 20f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f,
                 holdSecondsToMaxRadius: 1.5f, holdGraceSeconds: 0.15f));
             var faith = new FakeFaithService { Current = 100f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             service.BeginCast(MiracleType.Rain, Vector3.zero); // списывает ровно BaseFaithCost (20)
             service.UpdateCast(0.05f, Vector3.zero);
@@ -225,7 +229,7 @@ namespace BlackWhiteLike.Tests
                 baseFaithCost: 0f, holdCostPerSecond: 10f, baseRadius: 2f, maxRadius: 5f,
                 holdSecondsToMaxRadius: 1.5f, holdGraceSeconds: 0.15f));
             var faith = new FakeFaithService { Current = 1000f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
             service.BeginCast(MiracleType.Rain, Vector3.zero);
 
             service.UpdateCast(0.15f, Vector3.zero); // ровно grace — накачка ещё не началась
@@ -243,7 +247,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig());
             var faith = new FakeFaithService { Current = 100f };
-            var service = new MiracleService(new FakeEventBus(), faith, catalog);
+            var service = CreateService(new FakeEventBus(), faith, catalog);
 
             Assert.DoesNotThrow(() => service.UpdateCast(1f, Vector3.zero));
             Assert.IsFalse(service.IsCasting);
@@ -259,7 +263,7 @@ namespace BlackWhiteLike.Tests
                 baseFaithCost: 0f, holdCostPerSecond: 0f, baseRadius: 2f, maxRadius: 4f, effectPower: 8f, holdSecondsToMaxRadius: 1f));
             var faith = new FakeFaithService { Current = 1000f };
             var eventBus = new FakeEventBus();
-            var service = new MiracleService(eventBus, faith, catalog);
+            var service = CreateService(eventBus, faith, catalog);
             var point = new Vector3(1f, 0f, 2f);
             service.BeginCast(MiracleType.Rain, point);
             service.UpdateCast(1f, point); // радиус -> MaxRadius (4)
@@ -283,7 +287,7 @@ namespace BlackWhiteLike.Tests
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 0f, holdCostPerSecond: 0f));
             var faith = new FakeFaithService { Current = 1000f };
             var eventBus = new FakeEventBus();
-            var service = new MiracleService(eventBus, faith, catalog);
+            var service = CreateService(eventBus, faith, catalog);
             var beginPoint = new Vector3(1f, 0f, 1f);
             var updatedPoint = new Vector3(5f, 0f, 9f);
 
@@ -301,7 +305,7 @@ namespace BlackWhiteLike.Tests
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 0f, baseRadius: 2f, effectPower: 8f));
             var faith = new FakeFaithService { Current = 100f };
             var eventBus = new FakeEventBus();
-            var service = new MiracleService(eventBus, faith, catalog);
+            var service = CreateService(eventBus, faith, catalog);
 
             service.BeginCast(MiracleType.Rain, Vector3.zero);
             service.ReleaseCast();
@@ -316,7 +320,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig());
             var eventBus = new FakeEventBus();
-            var service = new MiracleService(eventBus, new FakeFaithService(), catalog);
+            var service = CreateService(eventBus, new FakeFaithService(), catalog);
 
             service.ReleaseCast();
 
@@ -331,7 +335,7 @@ namespace BlackWhiteLike.Tests
             var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f));
             var faith = new FakeFaithService { Current = 100f };
             var eventBus = new FakeEventBus();
-            var service = new MiracleService(eventBus, faith, catalog);
+            var service = CreateService(eventBus, faith, catalog);
             service.BeginCast(MiracleType.Rain, Vector3.zero);
 
             service.CancelCast();
@@ -345,7 +349,7 @@ namespace BlackWhiteLike.Tests
         public void CancelCast_WithoutSession_IsNoOp()
         {
             var catalog = CreateCatalog(CreateMiracleConfig());
-            var service = new MiracleService(new FakeEventBus(), new FakeFaithService(), catalog);
+            var service = CreateService(new FakeEventBus(), new FakeFaithService(), catalog);
 
             Assert.DoesNotThrow(() => service.CancelCast());
             Assert.IsFalse(service.IsCasting);
@@ -355,9 +359,38 @@ namespace BlackWhiteLike.Tests
         public void CurrentRadius_OutsideSession_IsZero()
         {
             var catalog = CreateCatalog(CreateMiracleConfig());
-            var service = new MiracleService(new FakeEventBus(), new FakeFaithService(), catalog);
+            var service = CreateService(new FakeEventBus(), new FakeFaithService(), catalog);
 
             Assert.AreEqual(0f, service.CurrentRadius);
+        }
+
+        // --- Шаг 8: IEffectiveStatsService (мета-апгрейд MiraclePower) ---
+
+        [Test]
+        public void BeginCast_ScalesBaseRadius_ByMiracleRadiusMultiplier()
+        {
+            var stats = new FakeEffectiveStatsService { MiracleRadiusMultiplier = 1.5f };
+            var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 0f, baseRadius: 2f));
+            var service = CreateService(new FakeEventBus(), new FakeFaithService { Current = 100f }, catalog, stats);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            Assert.AreEqual(3f, service.CurrentRadius, 0.001f); // 2 * 1.5
+        }
+
+        [Test]
+        public void ReleaseCast_ScalesPower_ByMiraclePowerMultiplier()
+        {
+            var stats = new FakeEffectiveStatsService { MiraclePowerMultiplier = 2f };
+            var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 0f, baseRadius: 2f, effectPower: 8f));
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, new FakeFaithService { Current = 100f }, catalog, stats);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+            service.ReleaseCast();
+
+            var evt = eventBus.PublishedEvents.OfType<MiracleCastEvent>().Single();
+            Assert.AreEqual(16f, evt.Power, 0.001f); // EffectPower(8) * multiplier(2) * radius/baseRadius(1)
         }
     }
 }

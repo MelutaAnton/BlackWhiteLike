@@ -1,3 +1,4 @@
 - [Шаг 4: Чудеса + Faith](project_step4_miracles_faith.md) — что уже реализовано (сервисы/конфиги/UI), чего ещё нет (Heal/Lightning/Worship), как расширять новым чудом/нуждой
 - [Шаг 5: Worship + win](project_step5_worship_win.md) — WorshipService/AlignmentService/LevelFlowService, FSM через IGameStateBinding, InputRouter, HUD/оверлеи уровня
 - [Шаг 6: Heal/Lightning + Alignment-визуал](project_step6_heal_lightning_alignment.md) — LightningStruck-стимул, Disease-despawn, AlignmentVisualConfig/Controller
+- [Шаг 8: Meta + idle](project_step8_meta_idle.md) — MetaProgressService/EconomyService/EffectiveStatsService/IdleIncomeService, Temple/WelcomeBack UI, гейт gameplay-регистраций по _initialState

@@ -1,5 +1,6 @@
 using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Services.Meta;
 using UnityEngine;
 
 namespace BlackWhiteLike.Services.Hand
@@ -7,7 +8,9 @@ namespace BlackWhiteLike.Services.Hand
     /// <summary>
     /// Реализация <see cref="IHandInteractionService"/>. Pure C#, без обращений к UnityEngine.Time —
     /// история позиций pointer'а хранится в кольцевом буфере без аллокаций на кадр (см. CLAUDE.md —
-    /// Update-петля руки не должна аллоцировать). Буфер аллоцируется один раз в конструкторе.
+    /// Update-петля руки не должна аллоцировать). Буфер аллоцируется один раз в конструкторе. Шаг 8:
+    /// предел броска и предел массы захвата модифицируются мета-апгрейдом HandPower через
+    /// <see cref="IEffectiveStatsService"/>.
     /// </summary>
     public sealed class HandInteractionService : IHandInteractionService
     {
@@ -26,6 +29,7 @@ namespace BlackWhiteLike.Services.Hand
         }
 
         private readonly HandConfig _config;
+        private readonly IEffectiveStatsService _stats;
         private readonly PositionSample[] _samples;
         private readonly int _sampleCapacity;
         private int _sampleCount;
@@ -33,9 +37,10 @@ namespace BlackWhiteLike.Services.Hand
 
         public bool IsHolding { get; private set; }
 
-        public HandInteractionService(HandConfig config)
+        public HandInteractionService(HandConfig config, IEffectiveStatsService stats)
         {
             _config = config;
+            _stats = stats;
             _sampleCapacity = Mathf.Max(
                 MinSampleCapacity,
                 Mathf.CeilToInt(config.ThrowVelocitySampleWindow * AssumedMaxSampleRateHz) + 4);
@@ -48,7 +53,7 @@ namespace BlackWhiteLike.Services.Hand
             if (!grabbable.CanBeGrabbed) return false;
             if (grabbable.Body == null) return false;
 
-            return grabbable.Body.mass <= _config.MaxGrabMass;
+            return grabbable.Body.mass <= _config.MaxGrabMass * _stats.HandMassMultiplier;
         }
 
         public void BeginHold(Vector3 worldPosition, float unscaledTime)
@@ -105,7 +110,7 @@ namespace BlackWhiteLike.Services.Hand
             if (dt <= 0f) return Vector3.zero; // защита от деления на 0/отрицательное время
 
             var velocity = (newest.Position - oldestValid.Position) / dt * _config.ThrowForceScale;
-            return ClampMagnitude(velocity, _config.MaxThrowForce);
+            return ClampMagnitude(velocity, _config.MaxThrowForce * _stats.HandForceMultiplier);
         }
 
         public Vector3 CalculateFollowVelocity(Vector3 currentPosition, Vector3 targetPosition)

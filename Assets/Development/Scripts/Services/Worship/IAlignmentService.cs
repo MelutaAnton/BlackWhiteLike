@@ -8,7 +8,11 @@ namespace BlackWhiteLike.Services.Worship
     /// </summary>
     public interface IAlignmentService
     {
-        /// <summary>Текущий AlignmentScore, <see cref="MinScore"/>..<see cref="MaxScore"/>. Стартует с 0.</summary>
+        /// <summary>
+        /// Текущий AlignmentScore, <see cref="MinScore"/>..<see cref="MaxScore"/>. Стартует со
+        /// значения <c>IMetaProgressService.AlignmentScore</c> на момент конструирования (game-design
+        /// §8, шаг 8) — не всегда 0.
+        /// </summary>
         float Score { get; }
 
         /// <summary>

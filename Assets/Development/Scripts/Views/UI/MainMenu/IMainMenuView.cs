@@ -9,5 +9,8 @@ namespace BlackWhiteLike.Views.UI.MainMenu
 
         /// <summary>Клик по кнопке Play — презентер переключает FSM на GameState.LevelSelect.</summary>
         event Action PlayClicked;
+
+        /// <summary>Клик по кнопке Temple (game-design §7-§9, шаг 8) — презентер загружает сцену Temple.</summary>
+        event Action TempleClicked;
     }
 }

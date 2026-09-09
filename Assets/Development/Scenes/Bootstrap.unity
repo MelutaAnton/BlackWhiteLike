@@ -245,6 +245,9 @@ MonoBehaviour:
   autoRun: 1
   autoInjectGameObjects: []
   _levelCatalog: {fileID: 11400000, guid: 3d3a6d118206e67428ba01b7a508c737, type: 2}
+  _upgradeCatalog: {fileID: 11400000, guid: 32591f1667723554980e9558c1f30480, type: 2}
+  _rewardConfig: {fileID: 11400000, guid: 506cf65cdad947c4da6c2367aa83b265, type: 2}
+  _idleIncomeConfig: {fileID: 11400000, guid: 0d9ed0f80ad88f646b2fbc1e1f6f47a2, type: 2}
 --- !u!4 &667469615
 Transform:
   m_ObjectHideFlags: 0

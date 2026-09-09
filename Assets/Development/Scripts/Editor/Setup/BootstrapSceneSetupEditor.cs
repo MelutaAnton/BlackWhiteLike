@@ -1,6 +1,9 @@
 using System.IO;
 using System.Linq;
+using BlackWhiteLike.Data.Configs.Idle;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Rewards;
+using BlackWhiteLike.Data.Configs.Upgrades;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
 using UnityEditor;
@@ -35,6 +38,12 @@ namespace BlackWhiteLike.Editor.Setup
         private const string SystemsRootName = "[Systems]";
         private const string RootScopeName = "[RootScope]";
         private const string LevelCatalogPath = "Assets/Development/Data/Configs/Levels/LevelCatalog.asset";
+
+        // Шаг 8 — Meta + idle: конфиги живут на [RootScope] (переживают загрузку сцен), а не на
+        // сценном [Systems]/GameLifetimeScope — прогресс прокачки и идле-доход межсценные.
+        private const string UpgradeCatalogPath = "Assets/Development/Data/Configs/Upgrades/UpgradeCatalog.asset";
+        private const string RewardConfigPath = "Assets/Development/Data/Configs/Rewards/RewardConfig.asset";
+        private const string IdleIncomeConfigPath = "Assets/Development/Data/Configs/Idle/IdleIncome.asset";
 
         [MenuItem("BlackWhiteLike/Setup/Build Bootstrap Scene")]
         public static void BuildBootstrapScene()
@@ -96,7 +105,10 @@ namespace BlackWhiteLike.Editor.Setup
             // Шаг 7 — [RootScope] (RootLifetimeScope) — персистентный Composition Root верхнего
             // уровня, отдельный от per-level [Systems]/GameLifetimeScope.
             var rootScope = EnsureRootScope();
-            WireRootScope(rootScope.GetComponent<RootLifetimeScope>());
+            var rootLifetimeScope = rootScope.GetComponent<RootLifetimeScope>();
+            WireRootScope(rootLifetimeScope);
+            // Шаг 8 — Meta + idle: UpgradeCatalog/RewardConfig/IdleIncomeConfig — тоже на [RootScope].
+            WireMetaConfigs(rootLifetimeScope);
 
             Undo.CollapseUndoOperations(undoGroup);
 
@@ -204,6 +216,58 @@ namespace BlackWhiteLike.Editor.Setup
             prop.objectReferenceValue = catalog;
             so.ApplyModifiedProperties();
             Debug.Log("[Editor] RootLifetimeScope._levelCatalog прошит ссылкой на LevelCatalog.asset.");
+        }
+
+        /// <summary>
+        /// Шаг 8 — Meta + idle: прошивает <c>_upgradeCatalog</c>/<c>_rewardConfig</c>/<c>_idleIncomeConfig</c>
+        /// на RootLifetimeScope. Не перезаписывает уже прошитые поля (тот же принцип, что
+        /// <see cref="WireRootScope"/>) и не присваивает null, если конфиг ещё не создан (сначала
+        /// прогоните "BlackWhiteLike/Configs/Create Empty SO Set").
+        /// </summary>
+        private static void WireMetaConfigs(RootLifetimeScope scope)
+        {
+            if (scope == null)
+            {
+                Debug.LogWarning("[Editor] RootLifetimeScope не найден на [RootScope] — _upgradeCatalog/_rewardConfig/_idleIncomeConfig не прошиты.");
+                return;
+            }
+
+            var so = new SerializedObject(scope);
+            int wired = 0;
+            wired += WireIfEmpty(so, "_upgradeCatalog", AssetDatabase.LoadAssetAtPath<UpgradeCatalogConfig>(UpgradeCatalogPath), "UpgradeCatalog.asset") ? 1 : 0;
+            wired += WireIfEmpty(so, "_rewardConfig", AssetDatabase.LoadAssetAtPath<RewardConfig>(RewardConfigPath), "RewardConfig.asset") ? 1 : 0;
+            wired += WireIfEmpty(so, "_idleIncomeConfig", AssetDatabase.LoadAssetAtPath<IdleIncomeConfig>(IdleIncomeConfigPath), "IdleIncome.asset") ? 1 : 0;
+            so.ApplyModifiedProperties();
+
+            Debug.Log($"[Editor] RootLifetimeScope: {wired} из 3 meta-конфигов прошито заново (уже прошитые не тронуты).");
+        }
+
+        private static bool WireIfEmpty(SerializedObject so, string propertyName, Object value, string assetLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на RootLifetimeScope — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return false;
+            }
+
+            if (prop.objectReferenceValue != null)
+            {
+                Debug.Log($"[Editor] RootLifetimeScope.{propertyName} уже прошит — не перезаписываем.");
+                return false;
+            }
+
+            if (value == null)
+            {
+                Debug.LogWarning($"[Editor] {assetLabel} не найден — сначала прогоните \"BlackWhiteLike/Configs/Create Empty SO Set\", " +
+                                  $"{propertyName} не прошит.");
+                return false;
+            }
+
+            prop.objectReferenceValue = value;
+            Debug.Log($"[Editor] RootLifetimeScope.{propertyName} прошит ссылкой на {assetLabel}.");
+            return true;
         }
 
         /// <summary>

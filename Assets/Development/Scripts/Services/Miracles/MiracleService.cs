@@ -2,19 +2,23 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Faith;
+using BlackWhiteLike.Services.Meta;
 using UnityEngine;
 
 namespace BlackWhiteLike.Services.Miracles
 {
     /// <summary>
     /// Реализация <see cref="IMiracleService"/>. Pure C# — держит ровно одну активную сессию каста
-    /// (см. xml-doc интерфейса), тот же прецедент, что <c>HandInteractionService</c>.
+    /// (см. xml-doc интерфейса), тот же прецедент, что <c>HandInteractionService</c>. Шаг 8: сила
+    /// эффекта и радиус модифицируются мета-апгрейдом MiraclePower через
+    /// <see cref="IEffectiveStatsService"/>.
     /// </summary>
     public sealed class MiracleService : IMiracleService
     {
         private readonly IEventBus _eventBus;
         private readonly IFaithService _faithService;
         private readonly MiracleCatalogConfig _catalog;
+        private readonly IEffectiveStatsService _stats;
 
         private bool _isCasting;
         private MiracleType _type;
@@ -24,11 +28,17 @@ namespace BlackWhiteLike.Services.Miracles
         private float _pumpedTime;
         private float _radius;
 
-        public MiracleService(IEventBus eventBus, IFaithService faithService, MiracleCatalogConfig catalog)
+        // Базовый радиус сессии УЖЕ с учётом MiracleRadiusMultiplier — зафиксирован на BeginCast,
+        // чтобы ReleaseCast делил на тот же масштаб, каким считался рост радиуса при накачке
+        // (апгрейд не может поменяться посреди одной сессии каста — покупка доступна только в Temple).
+        private float _effectiveBaseRadius;
+
+        public MiracleService(IEventBus eventBus, IFaithService faithService, MiracleCatalogConfig catalog, IEffectiveStatsService stats)
         {
             _eventBus = eventBus;
             _faithService = faithService;
             _catalog = catalog;
+            _stats = stats;
         }
 
         public bool IsCasting => _isCasting;
@@ -52,7 +62,8 @@ namespace BlackWhiteLike.Services.Miracles
             _point = point;
             _holdTime = 0f;
             _pumpedTime = 0f;
-            _radius = config.BaseRadius;
+            _effectiveBaseRadius = config.BaseRadius * _stats.MiracleRadiusMultiplier;
+            _radius = _effectiveBaseRadius;
 
             return true;
         }
@@ -76,7 +87,8 @@ namespace BlackWhiteLike.Services.Miracles
             {
                 _pumpedTime = pumpableTime;
                 var t = Mathf.Clamp01(_pumpedTime / _config.HoldSecondsToMaxRadius);
-                _radius = Mathf.Lerp(_config.BaseRadius, _config.MaxRadius, t);
+                var effectiveMaxRadius = _config.MaxRadius * _stats.MiracleRadiusMultiplier;
+                _radius = Mathf.Lerp(_effectiveBaseRadius, effectiveMaxRadius, t);
             }
             // Иначе — Faith не хватило на этот тик накачки: накачиваемое время и радиус замирают
             // на текущих значениях, сессия остаётся легальной (BaseFaithCost уже оплачен при BeginCast).
@@ -86,7 +98,7 @@ namespace BlackWhiteLike.Services.Miracles
         {
             if (!_isCasting) return;
 
-            var power = _config.EffectPower * (_radius / _config.BaseRadius);
+            var power = _config.EffectPower * _stats.MiraclePowerMultiplier * (_radius / _effectiveBaseRadius);
             _eventBus.Publish(new MiracleCastEvent(_type, _point, power, _radius));
 
             CloseSession();
@@ -106,6 +118,7 @@ namespace BlackWhiteLike.Services.Miracles
             _holdTime = 0f;
             _pumpedTime = 0f;
             _radius = 0f;
+            _effectiveBaseRadius = 0f;
         }
     }
 }

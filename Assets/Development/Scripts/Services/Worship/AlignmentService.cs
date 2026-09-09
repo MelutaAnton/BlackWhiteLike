@@ -4,6 +4,7 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Worship;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Meta;
 using UnityEngine;
 
 namespace BlackWhiteLike.Services.Worship
@@ -43,11 +44,15 @@ namespace BlackWhiteLike.Services.Worship
         private readonly IDisposable _needTriggeredSubscription;
         private readonly IDisposable _villagerStateChangedSubscription;
 
-        public AlignmentService(IEventBus eventBus, WorshipConfig worshipConfig, MiracleCatalogConfig catalog)
+        public AlignmentService(IEventBus eventBus, WorshipConfig worshipConfig, MiracleCatalogConfig catalog, IMetaProgressService metaProgress)
         {
             _eventBus = eventBus;
             _worshipConfig = worshipConfig;
             _catalog = catalog;
+
+            // Шаг 8: старт не всегда 0 — уровень наследует персистентный AlignmentScore игрока
+            // (game-design §8), сохранённый LevelCompletionRecorder'ом по итогам предыдущего уровня.
+            _score = metaProgress.AlignmentScore;
 
             _needResolvedSubscription = _eventBus.Subscribe<NeedResolvedEvent>(evt => ApplyMiracleShift(evt.ByPlayer, evt.CauseMiracle));
             _needTriggeredSubscription = _eventBus.Subscribe<NeedTriggeredEvent>(evt => ApplyMiracleShift(evt.ByPlayer, evt.CauseMiracle));

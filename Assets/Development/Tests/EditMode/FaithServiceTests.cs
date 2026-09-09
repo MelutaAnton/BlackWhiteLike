@@ -10,7 +10,7 @@ using BlackWhiteLike.Services.Village;
 
 namespace BlackWhiteLike.Tests
 {
-    /// <summary>Тесты <see cref="FaithService"/> (game-design §4, §19, шаг 4).</summary>
+    /// <summary>Тесты <see cref="FaithService"/> (game-design §4, §19, шаг 4; §8, шаг 8 — эффективные статы).</summary>
     public class FaithServiceTests
     {
         /// <summary>
@@ -65,7 +65,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void Constructor_StartsAtCapacityTimesStartingPercent()
         {
-            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             Assert.AreEqual(50f, service.Current, 0.001f);
             Assert.AreEqual(100f, service.Capacity, 0.001f);
@@ -75,7 +75,7 @@ namespace BlackWhiteLike.Tests
         public void Tick_RegenIsProportionalToWorshipCount()
         {
             var villagers = new FakeVillagerStateService { WorshipCount = 3 };
-            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 1000f, regenPerWorshipper: 2f, startingFaithPercent: 0f), villagers);
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 1000f, regenPerWorshipper: 2f, startingFaithPercent: 0f), villagers, new FakeEffectiveStatsService());
 
             service.Tick(1f); // 2 * 3 * 1 = 6
 
@@ -87,7 +87,7 @@ namespace BlackWhiteLike.Tests
         {
             var villagers = new FakeVillagerStateService { WorshipCount = 0 };
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(startingFaithPercent: 10f), villagers);
+            var service = new FaithService(eventBus, CreateConfig(startingFaithPercent: 10f), villagers, new FakeEffectiveStatsService());
 
             service.Tick(1f);
 
@@ -99,7 +99,7 @@ namespace BlackWhiteLike.Tests
         public void Tick_ClampsAtCapacity()
         {
             var villagers = new FakeVillagerStateService { WorshipCount = 100 };
-            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 50f, regenPerWorshipper: 10f, startingFaithPercent: 90f), villagers);
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 50f, regenPerWorshipper: 10f, startingFaithPercent: 90f), villagers, new FakeEffectiveStatsService());
 
             service.Tick(10f); // регена с запасом на переполнение
 
@@ -111,7 +111,7 @@ namespace BlackWhiteLike.Tests
         {
             var villagers = new FakeVillagerStateService { WorshipCount = 1 };
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 1000f, regenPerWorshipper: 5f, startingFaithPercent: 0f), villagers);
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 1000f, regenPerWorshipper: 5f, startingFaithPercent: 0f), villagers, new FakeEffectiveStatsService());
 
             service.Tick(1f);
 
@@ -124,7 +124,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CanAfford_EnoughCurrent_ReturnsTrue()
         {
-            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             Assert.IsTrue(service.CanAfford(50f));
         }
@@ -132,7 +132,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CanAfford_NotEnoughCurrent_ReturnsFalse()
         {
-            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             Assert.IsFalse(service.CanAfford(50.1f));
         }
@@ -141,7 +141,7 @@ namespace BlackWhiteLike.Tests
         public void TrySpend_EnoughCurrent_SpendsAllOrNothing_ReturnsTrue()
         {
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             var spent = service.TrySpend(30f);
 
@@ -154,7 +154,7 @@ namespace BlackWhiteLike.Tests
         public void TrySpend_NotEnoughCurrent_ReturnsFalse_AndDoesNotChange()
         {
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             var spent = service.TrySpend(50.1f);
 
@@ -167,7 +167,7 @@ namespace BlackWhiteLike.Tests
         public void TrySpend_ZeroOrNegative_ReturnsTrue_WithoutChange()
         {
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService());
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 50f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             Assert.IsTrue(service.TrySpend(0f));
             Assert.IsTrue(service.TrySpend(-5f));
@@ -181,7 +181,7 @@ namespace BlackWhiteLike.Tests
         public void RefillToCapacity_SetsCurrentToCapacity_AndPublishes()
         {
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 0f), new FakeVillagerStateService());
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 0f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             service.RefillToCapacity();
 
@@ -195,11 +195,34 @@ namespace BlackWhiteLike.Tests
         public void RefillToCapacity_AlreadyFull_DoesNotPublish()
         {
             var eventBus = new FakeEventBus();
-            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 100f), new FakeVillagerStateService());
+            var service = new FaithService(eventBus, CreateConfig(baseCapacity: 100f, startingFaithPercent: 100f), new FakeVillagerStateService(), new FakeEffectiveStatsService());
 
             service.RefillToCapacity();
 
             Assert.IsEmpty(eventBus.PublishedEvents.OfType<FaithChangedEvent>());
+        }
+
+        // --- Шаг 8: IEffectiveStatsService (мета-апгрейд FaithCapacity) ---
+
+        [Test]
+        public void Capacity_AddsFaithCapacityBonus_FromEffectiveStats()
+        {
+            var stats = new FakeEffectiveStatsService { FaithCapacityBonus = 25f };
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 100f, startingFaithPercent: 0f), new FakeVillagerStateService(), stats);
+
+            Assert.AreEqual(125f, service.Capacity, 0.001f);
+        }
+
+        [Test]
+        public void Tick_RegenScaledByFaithRegenMultiplier_FromEffectiveStats()
+        {
+            var stats = new FakeEffectiveStatsService { FaithRegenMultiplier = 2f };
+            var villagers = new FakeVillagerStateService { WorshipCount = 1 };
+            var service = new FaithService(new FakeEventBus(), CreateConfig(baseCapacity: 1000f, regenPerWorshipper: 5f, startingFaithPercent: 0f), villagers, stats);
+
+            service.Tick(1f); // 5 * 1 * 1 * 2(multiplier) = 10
+
+            Assert.AreEqual(10f, service.Current, 0.001f);
         }
     }
 }

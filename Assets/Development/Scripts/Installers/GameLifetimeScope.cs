@@ -14,9 +14,12 @@ using BlackWhiteLike.Data.Configs.Alignment;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Data.Configs.Idle;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Miracles;
+using BlackWhiteLike.Data.Configs.Rewards;
 using BlackWhiteLike.Data.Configs.Throwable;
+using BlackWhiteLike.Data.Configs.Upgrades;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
 using BlackWhiteLike.Data.Configs.Worship;
@@ -38,6 +41,7 @@ using BlackWhiteLike.Views.UI.Hud;
 using BlackWhiteLike.Views.UI.LevelSelect;
 using BlackWhiteLike.Views.UI.MainMenu;
 using BlackWhiteLike.Views.UI.Overlay;
+using BlackWhiteLike.Views.UI.Temple;
 using UnityEngine;
 using VContainer;
 using VContainer.Unity;
@@ -88,6 +92,10 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private MainMenuView _mainMenuView;
         [SerializeField] private LevelSelectView _levelSelectView;
 
+        [Header("Шаг 8 — Meta + idle")]
+        [SerializeField] private TempleView _templeView;
+        [SerializeField] private WelcomeBackView _welcomeBackView;
+
         protected override void Configure(IContainerBuilder builder)
         {
             // Шаг 7: root-scope (Bootstrap, DontDestroyOnLoad) — может отсутствовать (тестовые
@@ -96,6 +104,10 @@ namespace BlackWhiteLike.Installers
             // RegisterCampaignFlow — root-сервисы кампании). См. remarks RootLifetimeScope —
             // почему это static Instance, а не канонический parentReference VContainer.
             var root = RootLifetimeScope.Instance;
+
+            // Шаг 8: явный флаг "реальный кампания-флоу доступен" — закрывает долг шага 7
+            // (LevelCompletePresenter раньше выводил это косвенно, см. remarks CampaignContext).
+            builder.RegisterInstance(new CampaignContext(root != null));
 
             // Core
             builder.Register<EventBus>(Lifetime.Singleton).As<IEventBus>();
@@ -134,23 +146,42 @@ namespace BlackWhiteLike.Installers
             // один presenter не читал Current в Start(), только подписывался на события.
             builder.RegisterEntryPoint<GameBootstrap>();
 
-            // Шаг 2 — Камера + рука.
-            RegisterHandAndCamera(builder);
+            // Шаг 8 (гейт): деревня/жители/нужды/чудеса/Faith/VFX/рука/камера — ТОЛЬКО в игровой
+            // сцене (_initialState == LevelPlaying). Мета-сцены (MainMenu/Temple) их не используют —
+            // без гейта они падали бы на резолве отсутствующих зависимостей или спавнили жителей в
+            // меню (playtest-дефект шага 7, см. remarks RegisterVillageSystems). Проверено по факту:
+            // _TestVillage/_TestHand/Village_Base сериализованы с _initialState = LevelPlaying(2),
+            // поэтому гейт не отбирает у тестовых сцен ничего из уже работавшего.
+            if (_initialState == GameState.LevelPlaying)
+            {
+                // Шаг 2 — Камера + рука.
+                RegisterHandAndCamera(builder);
 
-            // Шаг 3 — Жители + события.
-            RegisterVillageSystems(builder, root);
+                // Шаг 3 — Жители + события.
+                RegisterVillageSystems(builder, root);
 
-            // Шаг 4 — Чудеса + Faith.
-            RegisterMiracleSystems(builder);
+                // Шаг 4 — Чудеса + Faith.
+                RegisterMiracleSystems(builder);
+            }
+            else
+            {
+                Debug.Log("[GameLifetimeScope] _initialState != LevelPlaying — рука/камера/деревня/жители/нужды/чудеса/Faith/VFX не регистрируются в этой сцене (гейт шага 8, мета-сцена).");
+            }
 
-            // Шаг 5 — Worship + win.
+            // Шаг 5 — Worship + win (FSM-биндинги/InputRouter — всегда; Worship/Alignment/LevelFlow/
+            // HUD уровня — гейт внутри метода, см. remarks RegisterLevelFlow).
             RegisterLevelFlow(builder);
 
-            // Шаг 6 — Alignment-визуал (Heal/Lightning — данные, новых сервисов не требуют).
+            // Шаг 6 — Alignment-визуал (Heal/Lightning — данные, новых сервисов не требуют). Не
+            // гейтится по _initialState — независимый условный паттерн (по прошитости полей), см.
+            // remarks RegisterAlignmentVisual.
             RegisterAlignmentVisual(builder);
 
             // Шаг 7 — Кампания: LevelSelect, прогресс, root↔scene.
             RegisterCampaignFlow(builder, root);
+
+            // Шаг 8 — Экономика/мета-статы (все сцены) + офлайн-доход/Temple (мета-сцены).
+            RegisterMetaSystems(builder, root);
         }
 
         /// <summary>
@@ -401,37 +432,43 @@ namespace BlackWhiteLike.Installers
         }
 
         /// <summary>
-        /// FSM-биндинги, Worship/Alignment/LevelFlow, InputRouter и HUD/оверлеи уровня (game-design
-        /// §9, §10, §13, шаг 5). Состояния регистрируются как именованные биндинги
-        /// (<see cref="IGameStateBinding"/>), собираемые <c>GameFlowService</c> в конструкторе
-        /// (см. remarks на нём) — не в его конструкторе напрямую. LevelSelect/TempleMeta/WelcomeBack
-        /// — заглушки <see cref="NullState"/> (экраны шагов 7-8), чтобы ChangeState/PushState на них
-        /// не роняли <c>StateMachine.TryGetState</c> в LogError.
+        /// FSM-биндинги (ВСЕГДА, все сцены), InputRouter (всегда) и, под гейтом шага 8 — Worship/
+        /// Alignment/LevelFlow/HUD/оверлеи уровня (game-design §9, §10, §13, шаг 5). Состояния
+        /// регистрируются как именованные биндинги (<see cref="IGameStateBinding"/>), собираемые
+        /// <c>GameFlowService</c> в конструкторе (см. remarks на нём) — не в его конструкторе
+        /// напрямую. TempleMeta/WelcomeBack — полноценные состояния с шага 8 (были заглушками
+        /// <see cref="NullState"/> на шаге 5).
         /// </summary>
         private void RegisterLevelFlow(IContainerBuilder builder)
         {
             builder.RegisterInstance(new BootstrapSettings(_initialState));
-
-            var worshipConfig = _worshipConfig;
-            if (worshipConfig == null)
-            {
-                Debug.LogWarning("[GameLifetimeScope] _worshipConfig не прошит (ожидаемо для сцен без Worship) — используется fallback WorshipConfig с дефолтами (пустые таблицы Awe/Fear).");
-                worshipConfig = ScriptableObject.CreateInstance<WorshipConfig>();
-            }
-
-            builder.RegisterInstance(worshipConfig);
 
             builder.Register<UnityTimeScaleProvider>(Lifetime.Singleton).As<ITimeScaleProvider, IDisposable>();
 
             // Состояния FSM — обычные Singleton; биндинг на GameState — отдельной записью
             // IGameStateBinding ниже. Порядок регистрации между Register<TState> и
             // Register<IGameStateBinding> значения не имеет — VContainer резолвит граф зависимостей
-            // после Build(), а не по мере вызовов Register.
+            // после Build(), а не по мере вызовов Register. ВСЕГДА регистрируется целиком (не под
+            // гейтом шага 8) — каждая сцена (включая мета-сцены) должна иметь полную таблицу
+            // состояний, иначе ChangeState/PushState на непрошитый ключ роняет StateMachine.TryGetState.
             builder.Register<MainMenuState>(Lifetime.Singleton);
             builder.Register<LevelSelectState>(Lifetime.Singleton);
-            builder.Register<LevelPlayingState>(Lifetime.Singleton);
             builder.Register<LevelCompleteState>(Lifetime.Singleton);
             builder.Register<PausedState>(Lifetime.Singleton);
+            builder.Register<TempleMetaState>(Lifetime.Singleton);
+            builder.Register<WelcomeBackState>(Lifetime.Singleton);
+
+            // БЛОКЕР 1 (ревью шага 8, регрессия MainMenu/Temple): LevelPlayingState зависит от
+            // ILevelFlowService, который регистрируется НИЖЕ в этом же методе только под гейтом
+            // _initialState == LevelPlaying. Раньше LevelPlayingState регистрировался и попадал в
+            // биндинги БЕЗУСЛОВНО, а GameFlowService резолвит IEnumerable<IGameStateBinding> эагерно
+            // в конструкторе (RegisterEntryPoint строит EntryPointDispatcher сразу на Build()) — в
+            // мета-сценах контейнер падал на Build() с "No such registration ILevelFlowService".
+            // Регистрация состояния — под тем же гейтом, что и его единственная зависимость.
+            if (_initialState == GameState.LevelPlaying)
+            {
+                builder.Register<LevelPlayingState>(Lifetime.Singleton);
+            }
 
             // Первый Play Mode шага 5: несколько Register<IGameStateBinding>(r => ...) VContainer
             // НЕ собирает в коллекцию — у Func-регистраций один и тот же ImplementationType, и
@@ -439,34 +476,62 @@ namespace BlackWhiteLike.Installers
             // коллекция регистрируется ОДНОЙ записью точного типа IEnumerable<IGameStateBinding>:
             // Registry.TryGet проверяет точное совпадение типа раньше fallback'ов на коллекции
             // (Registry.cs, TryGet), и GameFlowService получает готовый список.
-            // Заглушки TempleMeta/WelcomeBack (NullState) — экраны шага 8 ещё не существуют, но
-            // ключ должен быть зарегистрирован, чтобы ChangeState не падал. LevelSelect с шага 7 —
-            // полноценный LevelSelectState (панель переключает LevelSelectPresenter/MainMenuPresenter
-            // по GameStateChangedEvent).
+            // Шаг 8: TempleMeta/WelcomeBack — полноценные состояния (TempleMetaState/WelcomeBackState),
+            // заменили NullState-заглушки шага 5.
             builder.Register<IEnumerable<IGameStateBinding>>(
-                r => new IGameStateBinding[]
+                r =>
                 {
-                    new GameStateBinding(GameState.MainMenu, r.Resolve<MainMenuState>()),
-                    new GameStateBinding(GameState.LevelSelect, r.Resolve<LevelSelectState>()),
-                    new GameStateBinding(GameState.LevelPlaying, r.Resolve<LevelPlayingState>()),
-                    new GameStateBinding(GameState.LevelComplete, r.Resolve<LevelCompleteState>()),
-                    new GameStateBinding(GameState.Paused, r.Resolve<PausedState>()),
-                    new GameStateBinding(GameState.TempleMeta, new NullState()),
-                    new GameStateBinding(GameState.WelcomeBack, new NullState()),
+                    var bindings = new List<IGameStateBinding>
+                    {
+                        new GameStateBinding(GameState.MainMenu, r.Resolve<MainMenuState>()),
+                        new GameStateBinding(GameState.LevelSelect, r.Resolve<LevelSelectState>()),
+                        new GameStateBinding(GameState.LevelComplete, r.Resolve<LevelCompleteState>()),
+                        new GameStateBinding(GameState.Paused, r.Resolve<PausedState>()),
+                        new GameStateBinding(GameState.TempleMeta, r.Resolve<TempleMetaState>()),
+                        new GameStateBinding(GameState.WelcomeBack, r.Resolve<WelcomeBackState>()),
+                    };
+
+                    // БЛОКЕР 1: тот же гейт, что регистрация LevelPlayingState выше — без него
+                    // резолвер упал бы на r.Resolve<LevelPlayingState>() в мета-сцене (тип не
+                    // зарегистрирован). Без записи для GameState.LevelPlaying в мета-сцене
+                    // StateMachine.TryGetState на этот ключ пишет LogError и возвращает null (не
+                    // бросает) — переход в LevelPlaying там штатно никто не запрашивает, это не
+                    // регрессия, а корректное отсутствие игровой FSM-ветки вне игровой сцены.
+                    if (_initialState == GameState.LevelPlaying)
+                    {
+                        bindings.Add(new GameStateBinding(GameState.LevelPlaying, r.Resolve<LevelPlayingState>()));
+                    }
+
+                    return bindings;
                 },
                 Lifetime.Singleton);
 
             builder.Register<InputRouter>(Lifetime.Singleton).As<IInputRouter>();
 
-            // WorshipService/LevelFlowService — оба ITickable ПОСЛЕ FaithService (RegisterMiracleSystems
-            // отработал выше): реген Faith в этом кадре должен применяться раньше decay/win-check
-            // Worship и stall-check LevelFlow, тот же приём, что порядок VillagerStateService → FaithService.
-            builder.Register<WorshipService>(Lifetime.Singleton).As<IWorshipService, ITickable, IDisposable>();
-            builder.Register<AlignmentService>(Lifetime.Singleton).As<IAlignmentService, IDisposable>();
-            builder.Register<LevelFlowService>(Lifetime.Singleton).As<ILevelFlowService, ITickable, IDisposable>();
+            // Шаг 8 (гейт): Worship/Alignment/LevelFlow/HUD уровня — только в игровой сцене. Мета-сцены
+            // (MainMenu/Temple) не ведут счёт Worship/Alignment уровня — читают персистентный
+            // IMetaProgressService.AlignmentScore напрямую, если понадобится (сейчас не понадобилось).
+            if (_initialState == GameState.LevelPlaying)
+            {
+                var worshipConfig = _worshipConfig;
+                if (worshipConfig == null)
+                {
+                    Debug.LogWarning("[GameLifetimeScope] _worshipConfig не прошит (ожидаемо для сцен без Worship) — используется fallback WorshipConfig с дефолтами (пустые таблицы Awe/Fear).");
+                    worshipConfig = ScriptableObject.CreateInstance<WorshipConfig>();
+                }
 
-            RegisterLevelHud(builder);
-            RegisterLevelOverlays(builder);
+                builder.RegisterInstance(worshipConfig);
+
+                // WorshipService/LevelFlowService — оба ITickable ПОСЛЕ FaithService (RegisterMiracleSystems
+                // отработал выше): реген Faith в этом кадре должен применяться раньше decay/win-check
+                // Worship и stall-check LevelFlow, тот же приём, что порядок VillagerStateService → FaithService.
+                builder.Register<WorshipService>(Lifetime.Singleton).As<IWorshipService, ITickable, IDisposable>();
+                builder.Register<AlignmentService>(Lifetime.Singleton).As<IAlignmentService, IDisposable>();
+                builder.Register<LevelFlowService>(Lifetime.Singleton).As<ILevelFlowService, ITickable, IDisposable>();
+
+                RegisterLevelHud(builder);
+                RegisterLevelOverlays(builder);
+            }
         }
 
         /// <summary>
@@ -572,7 +637,13 @@ namespace BlackWhiteLike.Installers
             {
                 levelCatalog = root.LevelCatalog;
                 builder.RegisterInstance(root.LevelSelection);
-                builder.RegisterInstance(root.LevelProgress);
+
+                // Шаг 8: root.LevelProgress и root.MetaProgress резолвят ОДИН И ТОТ ЖЕ инстанс
+                // MetaProgressService (см. remarks на нём) — регистрируем его в сценовом контейнере
+                // ОДНОЙ записью под обоими интерфейсами (тот же приём, что LevelHudView/IWorshipPopupHost),
+                // а не двумя RegisterInstance с двумя отдельными Registration на один объект.
+                builder.RegisterInstance(root.MetaProgress).As<IMetaProgressService, ILevelProgressService>();
+
                 builder.RegisterInstance(root.SceneLoader);
 
                 // Мост LevelCompletedEvent -> прогресс нужен только игровой сцене (симметрично
@@ -589,7 +660,11 @@ namespace BlackWhiteLike.Installers
                 levelCatalog = null;
                 builder.Register<LevelSelectionService>(Lifetime.Singleton).As<ILevelSelectionService>();
                 builder.Register<SceneLoaderService>(Lifetime.Singleton).As<ISceneLoaderService>();
-                builder.Register<LevelProgressService>(Lifetime.Singleton).As<ILevelProgressService>();
+
+                // Шаг 8: LevelProgressService слился в MetaProgressService (см. remarks на нём) —
+                // тот же fallback-паттерн, что у остальных root-сервисов этой ветки.
+                builder.Register<PlayerProfile>(Lifetime.Singleton).As<IPlayerProfile>();
+                builder.Register<MetaProgressService>(Lifetime.Singleton).As<IMetaProgressService, ILevelProgressService>();
             }
 
             // root.LevelCatalog резолвится из контейнера root-scope и никогда не бывает null (сам
@@ -620,6 +695,86 @@ namespace BlackWhiteLike.Installers
             else
             {
                 Debug.Log("[GameLifetimeScope] _levelSelectView не прошит (ожидаемо для сцен без экрана выбора уровня, например Village_Base) — экран выбора уровня не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>
+        /// Экономика/мета-статы и офлайн-доход/Temple (game-design §8, §15, шаг 8).
+        /// </summary>
+        /// <remarks>
+        /// <see cref="EconomyService"/>/<see cref="EffectiveStatsService"/> регистрируются БЕЗ гейта
+        /// на <see cref="_initialState"/> (в отличие от RegisterHandAndCamera/RegisterVillageSystems/
+        /// RegisterMiracleSystems/внутреннего гейта RegisterLevelFlow выше) — они нужны и в
+        /// LevelPlaying (награда за уровень, бонусы Faith/руки/чудес через
+        /// <see cref="IEffectiveStatsService"/>), и в Temple (покупка апгрейдов). Каталоги
+        /// (Upgrade/Reward/Idle) — тот же root-или-fallback паттерн, что <see cref="RegisterCampaignFlow"/>.
+        /// </remarks>
+        private void RegisterMetaSystems(IContainerBuilder builder, RootLifetimeScope root)
+        {
+            UpgradeCatalogConfig upgradeCatalog;
+            RewardConfig rewardConfig;
+            IdleIncomeConfig idleIncomeConfig;
+
+            if (root != null)
+            {
+                upgradeCatalog = root.UpgradeCatalog;
+                rewardConfig = root.RewardConfig;
+                idleIncomeConfig = root.IdleIncomeConfig;
+            }
+            else
+            {
+                Debug.LogWarning("[GameLifetimeScope] RootLifetimeScope не найден — каталог апгрейдов/наград/idle-конфиг локальные fallback'и (не переживут выгрузку сцены).");
+                upgradeCatalog = ScriptableObject.CreateInstance<UpgradeCatalogConfig>();
+                rewardConfig = ScriptableObject.CreateInstance<RewardConfig>();
+                idleIncomeConfig = ScriptableObject.CreateInstance<IdleIncomeConfig>();
+            }
+
+            builder.RegisterInstance(upgradeCatalog);
+            builder.RegisterInstance(rewardConfig);
+            builder.RegisterInstance(idleIncomeConfig);
+
+            builder.Register<EconomyService>(Lifetime.Singleton).As<IEconomyService>();
+            builder.Register<EffectiveStatsService>(Lifetime.Singleton).As<IEffectiveStatsService>();
+
+            // БЛОКЕР 4 (ревью шага 8, Temple standalone падал): гейт IdleIncomeService — ТОЛЬКО
+            // _initialState != LevelPlaying, БЕЗ проверки root. Без root в этой ветке уже
+            // зарегистрировано всё необходимое (ITimeProvider/IMetaProgressService/IEconomyService/
+            // IdleIncomeConfig — все выше и без гейта на root), а TemplePresenter требует
+            // IIdleIncomeService безусловно (см. ниже) — раньше Temple.unity, запущенная напрямую
+            // (минуя Bootstrap), падала на резолве. Цена: standalone-Temple штампует LastSeenUtc в
+            // сцено-локальный fallback-профиль (RegisterCampaignFlow, ветка root == null) — это
+            // безвредно, профиль всё равно не переживает выгрузку сцены.
+            if (_initialState != GameState.LevelPlaying)
+            {
+                builder.Register<IdleIncomeService>(Lifetime.Singleton).As<IIdleIncomeService, IStartable>();
+
+                // Решение оркестратора (двойной idle-UI, ревью шага 8): в Temple офлайн-доход
+                // обслуживает ТОЛЬКО кнопка _collectIdleButton (TempleView/§6) — WelcomeBackPresenter
+                // регистрируется исключительно в мета-сцене БЕЗ Temple-view (одна точка UX на сцену).
+                // Оверлей "с возвращением" в TempleCanvas остаётся заделом на будущее.
+                if (_welcomeBackView != null && _templeView == null)
+                {
+                    builder.RegisterComponent<IWelcomeBackView>(_welcomeBackView);
+                    builder.RegisterEntryPoint<WelcomeBackPresenter>();
+                }
+                else if (_welcomeBackView != null)
+                {
+                    Debug.Log("[GameLifetimeScope] _welcomeBackView прошит вместе с _templeView — оверлей 'с возвращением' не регистрируется в этой сцене (idle-доход в Temple обслуживает кнопка TempleView, см. решение оркестратора шага 8).");
+                }
+                else
+                {
+                    Debug.LogWarning("[GameLifetimeScope] _welcomeBackView не прошит — оверлей 'с возвращением' не будет работать в этой сцене.");
+                }
+            }
+
+            if (_templeView != null)
+            {
+                builder.RegisterComponent<ITempleView>(_templeView);
+                builder.RegisterEntryPoint<TemplePresenter>();
+            }
+            else
+            {
+                Debug.Log("[GameLifetimeScope] _templeView не прошит (ожидаемо для сцен без Temple) — экран Temple не будет работать в этой сцене.");
             }
         }
     }

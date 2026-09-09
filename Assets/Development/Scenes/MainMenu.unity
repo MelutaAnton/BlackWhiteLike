@@ -329,6 +329,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 03c3ac7e45ba7ce4497bd81a3c49b333, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.MainMenu.MainMenuView
+--- !u!114 &663452056 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 8529881219353761725, guid: 9a08577112d39d44c8329ea1ed8135bd, type: 3}
+  m_PrefabInstance: {fileID: 663452053}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da175796a692d9c44a0457fb6f73798f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Overlay.WelcomeBackView
 --- !u!1 &868446575
 GameObject:
   m_ObjectHideFlags: 0
@@ -470,6 +481,10 @@ PrefabInstance:
       propertyPath: _levelSelectView
       value: 
       objectReference: {fileID: 663452054}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _welcomeBackView
+      value: 
+      objectReference: {fileID: 663452056}
     - target: {fileID: 7756572630295305983, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: m_Name
       value: SystemsRoot

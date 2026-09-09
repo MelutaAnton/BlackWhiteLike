@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Six defect classes have now appeared across steps and are worth checking first on every review:
+Defect classes that have appeared across steps and are worth checking first on every review:
 
 1. **Editor script and runtime disagree about physics state.** The editor script bakes a component setup the runtime never completes. Step 3 example: `VillagerPrefabSetupEditor` writes `isKinematic = true; useGravity = false` on `Villager.prefab` with the comment "рантайм переключит при Tossed", but `VillagerController.ApplyPhysicsForState` only touches `constraints` — nothing ever clears `isKinematic`, so every `linearVelocity` write is a no-op and no `OnCollisionEnter` fires against static ground.
 2. **`[SerializeField]` added to a controller but never wired by the editor script that places it.** Step 3 example: `TestVillageSceneSetupEditor.EnsureNeedSite` adds `NeedSiteController` but leaves `_siteIndex`, `_needType` and the three visual refs at their defaults, so every site is `(Fire, 0)` and `SetVisualState` is a silent no-op. `.claude/rules/editor-files.md` names this class ("проверять результат численно"), which makes it a regression, not a new discovery.
@@ -19,7 +19,8 @@ Six defect classes have now appeared across steps and are worth checking first o
    `EditorPrefabUtility.InstantiateUnpacked` and saved as our own prefab. **Check:** every
    `PrefabUtility.InstantiatePrefab` call in a diff — if the argument can be a ThirdParty asset and it is
    not immediately unpacked, it is a blocker; in YAML, `m_SourcePrefab: {... guid: X}` whose GUID resolves
-   under `Assets/ThirdParty` is a blocker.
+   under `Assets/ThirdParty` is a blocker. (A connected instance of OUR OWN `Development/Prefabs/...`
+   asset is correct and must NOT be flagged — step 8's `TempleSceneSetupEditor` does this deliberately.)
 
 4. **DI graph defects that only surface at `Build()`.** Step 5: (a) seven `Register<IGameStateBinding>(r => ..., Singleton)` — VContainer's `CollectionInstanceProvider` rejects same-`ImplementationType` singletons ("Conflict implementation type"); (b) a cycle hidden behind the Func: `GameFlowService(IEnumerable<IGameStateBinding>)` → `LevelPlayingState(ILevelFlowService)` → `LevelFlowService(IGameFlowService)` — `TypeAnalyzer` cannot see through lambdas, so it dies at runtime as `Lazy<T>` re-entrancy. Also (c) `InputRouter` snapshotting `gameFlow.Current` in its ctor: `RegisterComponent` build-callbacks resolve it BEFORE `GameBootstrap.Start()`, and `Start()` publishes no event → latched to UI forever. **Check:** every `Register<T>(Func)` in `GameLifetimeScope` — are there ≥2 for the same interface? Walk ctor deps of every type resolved inside a Func back to the Func's owner. Any service that caches FSM state in its ctor is wrong — read `gameFlow.Current` lazily.
 
@@ -42,7 +43,7 @@ Six defect classes have now appeared across steps and are worth checking first o
    descriptor got none — and `CreateAll` is itself a menu item (`Configs/Create Empty SO Set`), so
    running it before the material-producing script bakes an asset full of nulls that nothing ever
    repairs. **Check:** every new `ConfigAssetDescriptor` whose initializer depends on assets produced
-   by a *different* menu item.
+   by a *different* menu item. (Step 8 got this right — three new descriptors, three migrations.)
 
 7. **A central class delivered as an empty stub while everything else is written against its full
    API.** Step 7: `Installers/RootLifetimeScope.cs` shipped as a bare `LifetimeScope` with an empty
@@ -54,6 +55,36 @@ Six defect classes have now appeared across steps and are worth checking first o
    RootLifetimeScope"), which makes the stub easy to read past. **Check:** for every new type the
    diff introduces, grep its members against every call site before reviewing anything else; a
    `<remarks>` cross-reference to a file is not evidence the file implements it.
+
+8. **A new conditional gate around registrations orphans the dependencies of things left OUTSIDE the
+   gate.** Step 8 (three blockers from ONE gate): `GameLifetimeScope.Configure` grew
+   `if (_initialState == GameState.LevelPlaying)` around village/miracle/worship registrations. But
+   (a) `LevelPlayingState` stayed registered unconditionally in the always-built
+   `IEnumerable<IGameStateBinding>` table while its ctor dep `ILevelFlowService` moved inside the
+   gate — `GameFlowService` iterates the bindings **in its constructor**, so the collection resolves
+   eagerly and every meta scene dies at `Build()` (MainMenu.unity was a step-7 regression, not just
+   the new scene); (b) `RegisterAlignmentVisual` stayed ungated while `AlignmentVisualController.
+   Construct` needs the now-gated `IAlignmentService`, and `RegisterComponent` **forces injection via
+   a build callback** (`ContainerBuilderUnityExtensions.cs:138`), so it also throws at `Build()`;
+   (c) a service gated on `root != null` (`IdleIncomeService`) was consumed by a presenter gated only
+   on `_view != null` (`TemplePresenter`).
+   **Check on every new gate:** list what the gate now EXCLUDES, then grep every excluded contract
+   for consumers that are still registered unconditionally — including indirect ones reached through
+   an eagerly-resolved `IEnumerable<T>` and through `RegisterComponent`'d MonoBehaviour `Construct`
+   signatures. Two conditions on the same object graph (`_initialState` and `root != null`) must be
+   checked as a matrix, not one at a time.
+
+9. **`IStartable` that PUBLISHES an event registered before the `IStartable`s that SUBSCRIBE to it.**
+   Step 8: `IdleIncomeService` (registered line 718) computes offline income and publishes
+   `IdleIncomeReadyEvent` in `Start()`; `WelcomeBackPresenter` (723) and `TemplePresenter` (734)
+   subscribe in *their* `Start()`. `EntryPointDispatcher` resolves `IReadOnlyList<IStartable>` and
+   calls `Start()` in registration order, and `EventBus` has no replay/sticky channel — so the event
+   is published into an empty channel and the whole feature is silently dead. This is the concrete
+   realisation of the step-7 warning already in [[step7-accepted-deviations]] ("the moment any
+   `IState.Enter()` starts publishing events, every startable registered after will miss them").
+   **Check:** for every `IStartable` in a diff, does its `Start()` call `_eventBus.Publish`? If yes,
+   every subscriber must either be registered EARLIER or read the state through a pull API
+   (`bool HasPending { get; }`) instead of the event.
 
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 

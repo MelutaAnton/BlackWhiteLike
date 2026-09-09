@@ -20,6 +20,8 @@ namespace BlackWhiteLike.Services.Level
             return level != null;
         }
 
+        public void ClearSelection() => _selected = null;
+
         public void RequestReturnToLevelSelect() => _returnRequested = true;
 
         public bool ConsumeReturnToLevelSelect()

@@ -1,6 +1,7 @@
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Meta;
 using BlackWhiteLike.Services.Village;
 using UnityEngine;
 using VContainer.Unity;
@@ -11,26 +12,34 @@ namespace BlackWhiteLike.Services.Faith
     /// Реализация <see cref="IFaithService"/>. Pure C#, тот же прецедент, что <c>VillagerStateService</c>:
     /// SO (<see cref="FaithConfig"/>) и другой pure C#-сервис (<see cref="IVillagerStateService"/>)
     /// как источники данных, без обращений к остальному UnityEngine кроме Mathf/моста Tick().
+    /// Шаг 8: <see cref="Capacity"/>/реген модифицируются мета-апгрейдами через
+    /// <see cref="IEffectiveStatsService"/> (FaithCapacity).
     /// </summary>
     public sealed class FaithService : IFaithService, ITickable
     {
         private readonly IEventBus _eventBus;
         private readonly FaithConfig _config;
         private readonly IVillagerStateService _villagerStateService;
+        private readonly IEffectiveStatsService _stats;
 
         private float _current;
 
-        public FaithService(IEventBus eventBus, FaithConfig config, IVillagerStateService villagerStateService)
+        public FaithService(
+            IEventBus eventBus,
+            FaithConfig config,
+            IVillagerStateService villagerStateService,
+            IEffectiveStatsService stats)
         {
             _eventBus = eventBus;
             _config = config;
             _villagerStateService = villagerStateService;
+            _stats = stats;
 
-            _current = _config.BaseCapacity * (_config.StartingFaithPercent / 100f);
+            _current = Capacity * (_config.StartingFaithPercent / 100f);
         }
 
         public float Current => _current;
-        public float Capacity => _config.BaseCapacity;
+        public float Capacity => _config.BaseCapacity + _stats.FaithCapacityBonus;
 
         public bool CanAfford(float amount) => amount <= 0f || _current >= amount;
 
@@ -49,7 +58,7 @@ namespace BlackWhiteLike.Services.Faith
             var worshippers = _villagerStateService.CountInState(VillagerState.Worship);
             if (worshippers <= 0) return; // нет молящихся — нечего регенерировать, без публикации события
 
-            var regen = _config.RegenPerWorshipper * worshippers * deltaTime;
+            var regen = _config.RegenPerWorshipper * worshippers * deltaTime * _stats.FaithRegenMultiplier;
             SetCurrent(Mathf.Min(_current + regen, Capacity));
         }
 

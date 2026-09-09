@@ -1,7 +1,7 @@
 using System;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Alignment;
-using BlackWhiteLike.Services.Worship;
+using BlackWhiteLike.Services.Meta;
 using UnityEngine;
 using VContainer;
 
@@ -33,19 +33,25 @@ namespace BlackWhiteLike.Controllers.Temple
         private IDisposable _alignmentChangedSubscription;
 
         [Inject]
-        public void Construct(IEventBus eventBus, AlignmentVisualConfig config, IAlignmentService alignment)
+        public void Construct(IEventBus eventBus, AlignmentVisualConfig config, IMetaProgressService metaProgress)
         {
             _eventBus = eventBus;
             _config = config;
 
             Subscribe();
 
-            // Стартовый score читается из IAlignmentService.Score, а не хардкодится 0f (ревью шага 6,
-            // ВАЖНО 4) — на момент Construct сервис уже мог получить сдвиг (например, если сцена
-            // собрана так, что AlignmentService успел обработать событие до инъекции этого контроллера).
-            // Событие AlignmentChangedEvent для стартового значения 0 не публикуется (Shift публикует
-            // только при реальном изменении), поэтому применяем актуальный стейдж явно здесь один раз.
-            ApplyStage(_config.GetStageFor(alignment.Score));
+            // БЛОКЕР 2 (ревью шага 8): было IAlignmentService — регистрируется ТОЛЬКО в игровой
+            // сцене (гейт _initialState == LevelPlaying, см. GameLifetimeScope), а alignment-визуал
+            // храма ДОЛЖЕН работать и в Temple (суть сцены — храм мутирует по накопленному score).
+            // IMetaProgressService зарегистрирован во ВСЕХ сценах (включая fallback-ветку без root),
+            // и AlignmentService в игровой сцене сидируется ИЗ ТОГО ЖЕ metaProgress.AlignmentScore
+            // на своём конструировании (см. AlignmentService) — стартовый стейдж отсюда совпадает с
+            // тем, что раньше читался через IAlignmentService.Score, поведение в игровой сцене не
+            // меняется. Live-обновления по-прежнему приходят через подписку на AlignmentChangedEvent
+            // (публикует AlignmentService при реальном сдвиге в игровой сцене) — в чисто мета-сценах
+            // (Temple/MainMenu) событие не публикуется, стартовый стейдж остаётся актуальным, пока
+            // персистентный AlignmentScore не изменится (следующий заход после игровой сессии).
+            ApplyStage(_config.GetStageFor(metaProgress.AlignmentScore));
 
             _initialized = true;
         }

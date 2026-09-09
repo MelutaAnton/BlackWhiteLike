@@ -36,6 +36,8 @@ namespace BlackWhiteLike.Editor.Common
         public static class HudIconPaths
         {
             public const string Pause = BlueIconsFolder + "15_pause.png";
+            // Шаг 8 (Meta + idle) — иконка монеты для Temple/WelcomeBack (найдено на диске: .../Flat/Blue/101_Coin.png).
+            public const string Coin = BlueIconsFolder + "101_Coin.png";
         }
 
         // Шаг 7 (Кампания из 5 уровней) — иконки экрана выбора уровня. Colored-иконка (не Blue) для

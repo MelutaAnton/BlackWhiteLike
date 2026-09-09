@@ -10,7 +10,10 @@ using VContainer.Unity;
 
 namespace BlackWhiteLike.Views.UI.Overlay
 {
-    /// <summary>MVP-Presenter экрана итогов уровня (game-design §10, §13, шаг 5; §7, шаг 7 — возврат в кампанию). Pure C#.</summary>
+    /// <summary>
+    /// MVP-Presenter экрана итогов уровня (game-design §10, §13, шаг 5; §7, шаг 7 — возврат в
+    /// кампанию; §9, шаг 8 — переход в Temple).
+    /// </summary>
     public sealed class LevelCompletePresenter : IStartable, IDisposable
     {
         private readonly ILevelCompleteView _view;
@@ -20,6 +23,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
         private readonly IGameFlowService _gameFlow;
         private readonly ILevelSelectionService _selection;
         private readonly ISceneLoaderService _sceneLoader;
+        private readonly CampaignContext _campaignContext;
 
         private IDisposable _levelCompletedSubscription;
 
@@ -30,7 +34,8 @@ namespace BlackWhiteLike.Views.UI.Overlay
             IWorshipService worshipService,
             IGameFlowService gameFlow,
             ILevelSelectionService selection,
-            ISceneLoaderService sceneLoader)
+            ISceneLoaderService sceneLoader,
+            CampaignContext campaignContext)
         {
             _view = view;
             _eventBus = eventBus;
@@ -39,6 +44,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
             _gameFlow = gameFlow;
             _selection = selection;
             _sceneLoader = sceneLoader;
+            _campaignContext = campaignContext;
         }
 
         public void Start()
@@ -60,28 +66,24 @@ namespace BlackWhiteLike.Views.UI.Overlay
         }
 
         /// <summary>
-        /// Шаг 7: "доступны selection+sceneLoader" (реальный кампания-флоу, root есть) определяется
-        /// через <see cref="ILevelSelectionService.TryGetSelected"/> — сервис зарегистрирован
-        /// безусловно (root или локальный fallback, см. remarks GameLifetimeScope), но
-        /// <c>Select</c> на нём вызывает только <c>LevelSelectPresenter.OnCardClicked</c> — то есть
-        /// реальный переход через экран выбора уровня. В тестовой сцене без root/LevelSelect (level
-        /// прошит вручную на GameLifetimeScope) выбора никогда не было — сигнал совпадает с "root
-        /// отсутствует" без прямой зависимости presenter'а на Installers.RootLifetimeScope.
+        /// Шаг 8: "реальный кампания-флоу доступен" — явный <see cref="CampaignContext.HasRoot"/>
+        /// (закрывает долг шага 7 — раньше это выводилось косвенно через
+        /// <c>ILevelSelectionService.TryGetSelected(out _)</c>, см. историю в CampaignContext).
+        /// Выбор уровня сбрасывается всегда — актуален только до следующего LevelSelect.
         /// </summary>
         private void OnContinueClicked()
         {
             _view.Hide();
+            _selection.ClearSelection();
 
-            if (_selection.TryGetSelected(out _))
+            if (_campaignContext.HasRoot)
             {
-                // Реальный кампания-флоу: назад в MainMenu, сразу на панель выбора уровня.
-                // GameState.TempleMeta (Temple, шаг 8) здесь больше не используется.
-                _selection.RequestReturnToLevelSelect();
-                _sceneLoader.Load(SceneNames.MainMenu);
+                // Реальный кампания-флоу (game-design §9, шаг 8): после уровня — в Temple, не в MainMenu.
+                _sceneLoader.Load(SceneNames.Temple);
             }
             else
             {
-                Debug.Log("[LevelCompletePresenter] Уровень не был выбран через LevelSelect (тестовая сцена без root) — переход в TempleMeta, как на шаге 5.");
+                Debug.Log("[LevelCompletePresenter] Root отсутствует (тестовая сцена) — переход в TempleMeta локально, как на шаге 5.");
                 _gameFlow.ChangeState(GameState.TempleMeta);
             }
         }

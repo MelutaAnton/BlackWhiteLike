@@ -22,12 +22,15 @@ namespace BlackWhiteLike.Editor.Setup
     {
         public const string BootstrapScenePath = "Assets/Development/Scenes/Bootstrap.unity";
         public const string MainMenuScenePath = "Assets/Development/Scenes/MainMenu.unity";
+        // Шаг 8 (Meta + idle) — Temple встаёт МЕЖДУ MainMenu и Village_Base (контракт задачи).
+        public const string TempleScenePath = "Assets/Development/Scenes/Temple.unity";
         public const string VillageBaseScenePath = "Assets/Development/Scenes/Village_Base.unity";
 
         private static readonly string[] CanonicalOrder =
         {
             BootstrapScenePath,
             MainMenuScenePath,
+            TempleScenePath,
             VillageBaseScenePath,
         };
 

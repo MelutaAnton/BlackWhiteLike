@@ -10,7 +10,7 @@ using BlackWhiteLike.Services.Worship;
 
 namespace BlackWhiteLike.Tests
 {
-    /// <summary>Тесты <see cref="AlignmentService"/> (game-design §4, §7, §19, шаг 5).</summary>
+    /// <summary>Тесты <see cref="AlignmentService"/> (game-design §4, §7, §19, шаг 5; §8, шаг 8 — старт из профиля).</summary>
     public class AlignmentServiceTests
     {
         private static MiracleConfig CreateMiracleConfig(MiracleType type, float alignmentShift)
@@ -41,12 +41,28 @@ namespace BlackWhiteLike.Tests
             return config;
         }
 
+        private static AlignmentService CreateService(
+            EventBus eventBus,
+            WorshipConfig worshipConfig,
+            MiracleCatalogConfig catalog,
+            float startingAlignmentScore = 0f) =>
+            new AlignmentService(eventBus, worshipConfig, catalog, new FakeMetaProgressService { AlignmentScore = startingAlignmentScore });
+
         [Test]
         public void Score_StartsAtZero()
         {
-            var service = new AlignmentService(new EventBus(), CreateWorshipConfig(), CreateCatalog());
+            var service = CreateService(new EventBus(), CreateWorshipConfig(), CreateCatalog());
 
             Assert.AreEqual(0f, service.Score);
+        }
+
+        [Test]
+        public void Score_SeededFromMetaProgress_AlignmentScore()
+        {
+            // Шаг 8: уровень наследует персистентный AlignmentScore игрока, а не всегда стартует с 0.
+            var service = CreateService(new EventBus(), CreateWorshipConfig(), CreateCatalog(), startingAlignmentScore: 42f);
+
+            Assert.AreEqual(42f, service.Score, 0.001f);
         }
 
         [Test]
@@ -54,7 +70,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Rain, 10f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
@@ -66,7 +82,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Rain, 10f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: false, default));
 
@@ -78,7 +94,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Fireball, -10f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Fireball));
 
@@ -90,7 +106,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(); // пустой каталог
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
@@ -101,7 +117,7 @@ namespace BlackWhiteLike.Tests
         public void VillagerHardLanding_GrabbedThenTossedToStunned_ShiftsByHandTerrorAlignmentShift()
         {
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(handTerrorAlignmentShift: -3f), CreateCatalog());
+            var service = CreateService(eventBus, CreateWorshipConfig(handTerrorAlignmentShift: -3f), CreateCatalog());
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
@@ -116,7 +132,7 @@ namespace BlackWhiteLike.Tests
             // Симметрично WorshipService (аудит ВАЖНО 5) — Fireball уже даёт свой сдвиг через
             // NeedTriggeredEvent, Blasted -> Stunned не должен задваивать счёт.
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(handTerrorAlignmentShift: -3f), CreateCatalog());
+            var service = CreateService(eventBus, CreateWorshipConfig(handTerrorAlignmentShift: -3f), CreateCatalog());
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Blasted));
@@ -129,7 +145,7 @@ namespace BlackWhiteLike.Tests
         public void VillagerStateChanged_OtherTransition_DoesNotShift()
         {
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), CreateCatalog());
+            var service = CreateService(eventBus, CreateWorshipConfig(), CreateCatalog());
 
             eventBus.Publish(new VillagerStateChangedEvent(VillagerId.FromInstanceId(1), VillagerState.Panic, VillagerState.Idle, VillagerStimulus.None));
 
@@ -141,7 +157,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Rain, 60f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 1, byPlayer: true, MiracleType.Rain));
@@ -154,7 +170,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Fireball, -60f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Fireball));
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 1, byPlayer: true, MiracleType.Fireball));
@@ -167,7 +183,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Rain, 10f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
 
             AlignmentChangedEvent? captured = null;
             using (eventBus.Subscribe<AlignmentChangedEvent>(e => captured = e))
@@ -185,7 +201,7 @@ namespace BlackWhiteLike.Tests
         {
             var catalog = CreateCatalog(CreateMiracleConfig(MiracleType.Rain, 100f));
             var eventBus = new EventBus();
-            var service = new AlignmentService(eventBus, CreateWorshipConfig(), catalog);
+            var service = CreateService(eventBus, CreateWorshipConfig(), catalog);
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain)); // -> 100 (clamp)
 
             AlignmentChangedEvent? captured = null;

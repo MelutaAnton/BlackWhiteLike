@@ -3,6 +3,7 @@ using System.IO;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Views.UI.LevelSelect;
 using BlackWhiteLike.Views.UI.MainMenu;
+using BlackWhiteLike.Views.UI.Overlay;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
@@ -80,6 +81,8 @@ namespace BlackWhiteLike.Editor.UI
 
             BuildMainMenuPanel(root.transform, fontAsset, ref totalWired, ref totalExpected);
             BuildLevelSelectPanel(root.transform, fontAsset, ref totalWired, ref totalExpected);
+            // Шаг 8 (Meta + idle) — оверлей WelcomeBack, сиблинг панелей (CLAUDE.md §7).
+            BuildWelcomeBackOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
 
             Debug.Log($"[Editor] MainMenuCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
 
@@ -124,16 +127,19 @@ namespace BlackWhiteLike.Editor.UI
             if (string.IsNullOrEmpty(title.text)) title.text = "BlackWhiteLike";
 
             var playButton = BuildMenuButton(panelGo.transform, "PlayButton", fontAsset, "Play", new Vector2(0f, -80f), new Vector2(320f, 88f));
+            // Шаг 8 (Meta + idle) — вход в Temple.unity, ниже Play.
+            var templeButton = BuildMenuButton(panelGo.transform, "TempleButton", fontAsset, "Temple", new Vector2(0f, -184f), new Vector2(320f, 88f));
 
             var view = panelGo.GetComponent<MainMenuView>();
             if (view == null) view = panelGo.AddComponent<MainMenuView>();
 
-            const int expected = 2;
+            const int expected = 3;
             totalExpected += expected;
             var so = new SerializedObject(view);
             int wired = 0;
             wired += SetRef(so, "_playButton", playButton, "MainMenuView") ? 1 : 0;
             wired += SetRef(so, "_root", panelGo, "MainMenuView") ? 1 : 0;
+            wired += SetRef(so, "_templeButton", templeButton, "MainMenuView") ? 1 : 0;
             so.ApplyModifiedProperties();
             totalWired += wired;
             LogWireResult("MainMenuView", wired, expected);
@@ -329,6 +335,132 @@ namespace BlackWhiteLike.Editor.UI
             LogWireResult(ownerLabel, wired, expected);
 
             return cardView;
+        }
+
+        // ------------------------------------------------------------------------------------
+        // WelcomeBackOverlay — сиблинг MainMenuPanel/LevelSelectPanel (CLAUDE.md §7). Структура
+        // дублирует TempleCanvasSetupEditor.BuildWelcomeBackOverlay (тот же приём, что и остальные
+        // общие блоки Editor.UI — избегаем циклической зависимости между файлами канвасов).
+        // ------------------------------------------------------------------------------------
+
+        private static void BuildWelcomeBackOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
+        {
+            var containerGo = FindOrCreateUIChild(canvasRoot, "WelcomeBackOverlay");
+            var containerRt = (RectTransform)containerGo.transform;
+            SetAnchor(containerRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+
+            var dimGo = FindOrCreateUIChild(containerGo.transform, "Dim");
+            var dimRt = (RectTransform)dimGo.transform;
+            SetAnchor(dimRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var dimImage = dimGo.GetComponent<Image>();
+            if (dimImage == null) dimImage = dimGo.AddComponent<Image>();
+            dimImage.raycastTarget = true; // блокер тапов, пока оверлей открыт
+            dimImage.maskable = false;
+            dimImage.color = new Color(0f, 0f, 0f, 0.6f);
+
+            var panelGo = FindOrCreateUIChild(containerGo.transform, "Panel");
+            var panelRt = (RectTransform)panelGo.transform;
+            SetAnchor(panelRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(520f, 320f));
+            var panelImage = panelGo.GetComponent<Image>();
+            if (panelImage == null) panelImage = panelGo.AddComponent<Image>();
+            panelImage.raycastTarget = true;
+            panelImage.maskable = false;
+            panelImage.color = new Color(0.1f, 0.1f, 0.13f, 0.95f);
+
+            var titleGo = FindOrCreateUIChild(panelGo.transform, "Title");
+            var titleRt = (RectTransform)titleGo.transform;
+            SetAnchor(titleRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -32f), new Vector2(440f, 56f));
+            var title = titleGo.GetComponent<TextMeshProUGUI>();
+            if (title == null) title = titleGo.AddComponent<TextMeshProUGUI>();
+            title.raycastTarget = false;
+            title.maskable = false;
+            title.font = fontAsset;
+            title.fontSize = 40f;
+            title.fontStyle = FontStyles.Bold;
+            title.alignment = TextAlignmentOptions.Center;
+            if (string.IsNullOrEmpty(title.text)) title.text = "Welcome back!";
+
+            var coinsGo = FindOrCreateUIChild(panelGo.transform, "CoinsText");
+            var coinsRt = (RectTransform)coinsGo.transform;
+            SetAnchor(coinsRt, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(440f, 56f));
+            var coinsText = coinsGo.GetComponent<TextMeshProUGUI>();
+            if (coinsText == null) coinsText = coinsGo.AddComponent<TextMeshProUGUI>();
+            coinsText.raycastTarget = false;
+            coinsText.maskable = false;
+            coinsText.font = fontAsset;
+            coinsText.fontSize = 32f;
+            coinsText.alignment = TextAlignmentOptions.Center;
+            if (string.IsNullOrEmpty(coinsText.text)) coinsText.text = "+0 coins";
+
+            var collectButton = BuildOverlayButton(panelGo.transform, "CollectButton", fontAsset, "Collect", 24f, new Vector2(280f, 72f));
+
+            var closeButton = BuildOverlayButton(panelGo.transform, "CloseButton", fontAsset, "Close", -24f, new Vector2(180f, 56f));
+            var closeRt = (RectTransform)closeButton.transform;
+            closeRt.anchoredPosition = new Vector2(0f, -96f);
+
+            if (containerGo.activeSelf)
+            {
+                containerGo.SetActive(false);
+                Debug.Log("[Editor] WelcomeBackOverlay: активен по умолчанию -> выключен.");
+            }
+
+            if (containerGo.transform.GetSiblingIndex() != canvasRoot.childCount - 1)
+                containerGo.transform.SetAsLastSibling();
+
+            var view = containerGo.GetComponent<WelcomeBackView>();
+            if (view == null) view = containerGo.AddComponent<WelcomeBackView>();
+
+            const int expected = 4;
+            totalExpected += expected;
+            var so = new SerializedObject(view);
+            int wired = 0;
+            wired += SetRef(so, "_root", containerGo, "WelcomeBackView") ? 1 : 0;
+            wired += SetRef(so, "_coinsText", coinsText, "WelcomeBackView") ? 1 : 0;
+            wired += SetRef(so, "_collectButton", collectButton, "WelcomeBackView") ? 1 : 0;
+            wired += SetRef(so, "_closeButton", closeButton, "WelcomeBackView") ? 1 : 0;
+            so.ApplyModifiedProperties();
+            totalWired += wired;
+            LogWireResult("WelcomeBackView", wired, expected);
+        }
+
+        private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
+            string caption, float anchoredY, Vector2 size)
+        {
+            var go = FindOrCreateUIChild(panel, name);
+            var rt = (RectTransform)go.transform;
+            SetAnchor(rt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, anchoredY), size);
+
+            var bg = go.GetComponent<Image>();
+            if (bg == null) bg = go.AddComponent<Image>();
+            bg.raycastTarget = true;
+            bg.maskable = false;
+            bg.color = new Color(0.25f, 0.55f, 0.35f, 1f);
+
+            var button = go.GetComponent<Button>();
+            if (button == null) button = go.AddComponent<Button>();
+            button.transition = Selectable.Transition.ColorTint;
+            button.targetGraphic = bg;
+            var colors = button.colors;
+            colors.selectedColor = colors.normalColor;
+            button.colors = colors;
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+
+            var textGo = FindOrCreateUIChild(go.transform, "Label");
+            var textRt = (RectTransform)textGo.transform;
+            SetAnchor(textRt, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+            var tmp = textGo.GetComponent<TextMeshProUGUI>();
+            if (tmp == null) tmp = textGo.AddComponent<TextMeshProUGUI>();
+            tmp.raycastTarget = false;
+            tmp.maskable = false;
+            tmp.font = fontAsset;
+            tmp.fontSize = 28f;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.text = caption;
+
+            return button;
         }
 
         // ------------------------------------------------------------------------------------

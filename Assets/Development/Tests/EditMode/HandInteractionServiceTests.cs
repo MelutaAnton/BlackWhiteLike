@@ -5,10 +5,11 @@ using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Hand;
+using BlackWhiteLike.Services.Meta;
 
 namespace BlackWhiteLike.Tests
 {
-    /// <summary>Тесты <see cref="HandInteractionService"/> (game-design §19, шаг 2; ревью шага 2 — Б1, В2, В9, В15).</summary>
+    /// <summary>Тесты <see cref="HandInteractionService"/> (game-design §19, шаг 2; ревью шага 2 — Б1, В2, В9, В15; §8, шаг 8 — эффективные статы).</summary>
     public class HandInteractionServiceTests
     {
         /// <summary>
@@ -60,12 +61,15 @@ namespace BlackWhiteLike.Tests
             return config;
         }
 
+        private static HandInteractionService CreateService(HandConfig config, IEffectiveStatsService stats = null) =>
+            new HandInteractionService(config, stats ?? new FakeEffectiveStatsService());
+
         // --- CanGrab ---
 
         [Test]
         public void CanGrab_NullGrabbable_ReturnsFalse()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
 
             Assert.IsFalse(service.CanGrab(null));
         }
@@ -73,7 +77,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CanGrab_CanBeGrabbedFalse_ReturnsFalse()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
             var go = new GameObject("FakeBody", typeof(Rigidbody));
             try
             {
@@ -93,7 +97,7 @@ namespace BlackWhiteLike.Tests
         public void CanGrab_BodyIsNull_ReturnsFalse()
         {
             // В15 (ревью шага 2): комментарий у FakeGrabbable давно обещал этот кейс, теста не было.
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
             var grabbable = new FakeGrabbable { Body = null, CanBeGrabbed = true };
 
             Assert.IsFalse(service.CanGrab(grabbable));
@@ -102,7 +106,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CanGrab_MassAboveLimit_ReturnsFalse()
         {
-            var service = new HandInteractionService(CreateConfig(maxGrabMass: 10f));
+            var service = CreateService(CreateConfig(maxGrabMass: 10f));
             var go = new GameObject("FakeBody", typeof(Rigidbody));
             try
             {
@@ -121,7 +125,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CanGrab_MassWithinLimit_ReturnsTrue()
         {
-            var service = new HandInteractionService(CreateConfig(maxGrabMass: 10f));
+            var service = CreateService(CreateConfig(maxGrabMass: 10f));
             var go = new GameObject("FakeBody", typeof(Rigidbody));
             try
             {
@@ -137,12 +141,33 @@ namespace BlackWhiteLike.Tests
             }
         }
 
+        [Test]
+        public void CanGrab_MassAboveRawLimit_ButWithinBoostedLimit_ReturnsTrue()
+        {
+            // Шаг 8: HandMassMultiplier > 1 (апгрейд HandPower) поднимает реальный предел массы.
+            var stats = new FakeEffectiveStatsService { HandMassMultiplier = 2f };
+            var service = CreateService(CreateConfig(maxGrabMass: 10f), stats);
+            var go = new GameObject("FakeBody", typeof(Rigidbody));
+            try
+            {
+                var body = go.GetComponent<Rigidbody>();
+                body.mass = 15f; // выше raw 10, но в пределах 10*2=20
+                var grabbable = new FakeGrabbable { Body = body, CanBeGrabbed = true };
+
+                Assert.IsTrue(service.CanGrab(grabbable));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
         // --- IsHolding / BeginHold / EndHold ---
 
         [Test]
         public void IsHolding_TogglesWithBeginAndEndHold()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
 
             Assert.IsFalse(service.IsHolding);
 
@@ -158,7 +183,7 @@ namespace BlackWhiteLike.Tests
         {
             // Окно = 2с, специально широкое: если бы BeginHold НЕ чистил историю, семплы первого
             // удержания (t=0, t=1) остались бы валидны и на момент второго BeginHold (t=2).
-            var service = new HandInteractionService(CreateConfig(throwVelocitySampleWindow: 2f, maxThrowForce: 1000f));
+            var service = CreateService(CreateConfig(throwVelocitySampleWindow: 2f, maxThrowForce: 1000f));
 
             service.BeginHold(Vector3.zero, 0f);
             service.RecordSample(new Vector3(10f, 0f, 0f), 1f);
@@ -173,7 +198,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void EndHold_ClearsHistory_SubsequentThrowIsZero()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
 
             service.BeginHold(Vector3.zero, 0f);
             service.RecordSample(new Vector3(5f, 0f, 0f), 1f);
@@ -189,7 +214,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CalculateThrowVelocity_FewerThanTwoSamples_ReturnsZero()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
 
             service.BeginHold(Vector3.zero, 0f);
 
@@ -201,7 +226,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CalculateThrowVelocity_NoSamplesAtAll_ReturnsZero()
         {
-            var service = new HandInteractionService(CreateConfig());
+            var service = CreateService(CreateConfig());
 
             var velocity = service.CalculateThrowVelocity(1f);
 
@@ -213,7 +238,7 @@ namespace BlackWhiteLike.Tests
         {
             // Окно 0.2с. Старый семпл на t=0 (сместился на 100м — если бы учитывался, дал бы
             // огромную скорость), затем в окне два свежих семпла с маленьким смещением.
-            var service = new HandInteractionService(CreateConfig(throwVelocitySampleWindow: 0.2f, throwForceScale: 1f, maxThrowForce: 1000f));
+            var service = CreateService(CreateConfig(throwVelocitySampleWindow: 0.2f, throwForceScale: 1f, maxThrowForce: 1000f));
 
             service.BeginHold(new Vector3(100f, 0f, 0f), 0f); // старее окна к моменту t=1
             service.RecordSample(new Vector3(0f, 0f, 0f), 0.9f);
@@ -233,7 +258,7 @@ namespace BlackWhiteLike.Tests
             // В15 (ревью шага 2): "в окне остался ровно один валидный семпл" — отдельно от кейса
             // "семплов вообще меньше двух" (там их физически 1-0), здесь их несколько, но окно
             // (0.1с, windowStart=0.9) вырезает все, кроме последнего.
-            var service = new HandInteractionService(CreateConfig(throwVelocitySampleWindow: 0.1f, maxThrowForce: 1000f));
+            var service = CreateService(CreateConfig(throwVelocitySampleWindow: 0.1f, maxThrowForce: 1000f));
 
             service.BeginHold(new Vector3(0f, 0f, 0f), 0f);
             service.RecordSample(new Vector3(1f, 0f, 0f), 0.85f);
@@ -249,7 +274,7 @@ namespace BlackWhiteLike.Tests
         {
             // В15 (ревью шага 2): dt <= 0 — например, два семпла в один и тот же render-кадр
             // (одинаковый unscaledTime). Деление на 0 не должно давать NaN/Infinity, только 0.
-            var service = new HandInteractionService(CreateConfig(throwVelocitySampleWindow: 2f, maxThrowForce: 1000f));
+            var service = CreateService(CreateConfig(throwVelocitySampleWindow: 2f, maxThrowForce: 1000f));
 
             service.BeginHold(Vector3.zero, 1f);
             service.RecordSample(new Vector3(5f, 0f, 0f), 1f);
@@ -265,7 +290,7 @@ namespace BlackWhiteLike.Tests
             // Окно должно перекрывать интервал между семплами (1с) — иначе старый семпл отфильтруется
             // как "старше окна" (см. CalculateThrowVelocity_SamplesOlderThanWindow_AreIgnored) и тест
             // проверял бы не то, что заявлено в имени.
-            var service = new HandInteractionService(CreateConfig(throwForceScale: 3f, maxThrowForce: 1000f, throwVelocitySampleWindow: 2f));
+            var service = CreateService(CreateConfig(throwForceScale: 3f, maxThrowForce: 1000f, throwVelocitySampleWindow: 2f));
 
             service.BeginHold(Vector3.zero, 0f);
             service.RecordSample(new Vector3(2f, 0f, 0f), 1f);
@@ -279,7 +304,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CalculateThrowVelocity_ClampsToMaxThrowForce()
         {
-            var service = new HandInteractionService(CreateConfig(throwForceScale: 1f, maxThrowForce: 5f, throwVelocitySampleWindow: 2f));
+            var service = CreateService(CreateConfig(throwForceScale: 1f, maxThrowForce: 5f, throwVelocitySampleWindow: 2f));
 
             service.BeginHold(Vector3.zero, 0f);
             service.RecordSample(new Vector3(100f, 0f, 0f), 1f); // сырая скорость 100 >> maxThrowForce
@@ -291,13 +316,28 @@ namespace BlackWhiteLike.Tests
         }
 
         [Test]
+        public void CalculateThrowVelocity_ClampsToBoostedMaxThrowForce_FromEffectiveStats()
+        {
+            // Шаг 8: HandForceMultiplier > 1 (апгрейд HandPower) поднимает реальный предел броска.
+            var stats = new FakeEffectiveStatsService { HandForceMultiplier = 2f };
+            var service = CreateService(CreateConfig(throwForceScale: 1f, maxThrowForce: 5f, throwVelocitySampleWindow: 2f), stats);
+
+            service.BeginHold(Vector3.zero, 0f);
+            service.RecordSample(new Vector3(100f, 0f, 0f), 1f); // сырая скорость 100 >> maxThrowForce*multiplier(10)
+
+            var velocity = service.CalculateThrowVelocity(1f);
+
+            Assert.AreEqual(10f, velocity.magnitude, 0.001f);
+        }
+
+        [Test]
         public void RecordSample_ExceedsCapacityWithinWindow_RingBufferWrapsWithoutCorruption()
         {
             // В2 (ревью шага 2): ёмкость буфера рассчитана на AssumedMaxSampleRateHz (480 Гц) в
             // пределах окна. Здесь сознательно пишем плотнее (эффективно ~10 000 Гц), чтобы
             // гарантированно переполнить буфер, ДАЖЕ когда все семплы по времени попадают в окно
             // (window=1с), и убедиться, что расчёт не "тянет" вытесненный первый (аномальный) семпл.
-            var service = new HandInteractionService(CreateConfig(
+            var service = CreateService(CreateConfig(
                 throwForceScale: 1f, maxThrowForce: 1_000_000f, throwVelocitySampleWindow: 1f));
 
             service.BeginHold(new Vector3(100000f, 0f, 0f), 0f); // аномальный первый семпл — должен быть вытеснен
@@ -321,7 +361,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CalculateFollowVelocity_PointsTowardTarget()
         {
-            var service = new HandInteractionService(CreateConfig(followStiffness: 2f, followMaxSpeed: 1000f));
+            var service = CreateService(CreateConfig(followStiffness: 2f, followMaxSpeed: 1000f));
 
             var velocity = service.CalculateFollowVelocity(Vector3.zero, new Vector3(3f, 0f, 0f));
 
@@ -332,7 +372,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void CalculateFollowVelocity_ClampsToFollowMaxSpeed()
         {
-            var service = new HandInteractionService(CreateConfig(followStiffness: 10f, followMaxSpeed: 4f));
+            var service = CreateService(CreateConfig(followStiffness: 10f, followMaxSpeed: 4f));
 
             var velocity = service.CalculateFollowVelocity(Vector3.zero, new Vector3(100f, 0f, 0f));
 
@@ -343,7 +383,7 @@ namespace BlackWhiteLike.Tests
         public void CalculateFollowVelocity_ClampsToFollowMaxSpeed_PreservesDirection()
         {
             // В15 (ревью шага 2): раньше проверялся только модуль, не направление.
-            var service = new HandInteractionService(CreateConfig(followStiffness: 10f, followMaxSpeed: 4f));
+            var service = CreateService(CreateConfig(followStiffness: 10f, followMaxSpeed: 4f));
 
             var target = new Vector3(100f, 0f, 50f);
             var velocity = service.CalculateFollowVelocity(Vector3.zero, target);
@@ -362,7 +402,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void IsSoftPlacement_SpeedBelowThreshold_ReturnsTrue()
         {
-            var service = new HandInteractionService(CreateConfig(softPlacementSpeedThreshold: 0.1f));
+            var service = CreateService(CreateConfig(softPlacementSpeedThreshold: 0.1f));
 
             Assert.IsTrue(service.IsSoftPlacement(new Vector3(0.05f, 0f, 0f)));
         }
@@ -370,7 +410,7 @@ namespace BlackWhiteLike.Tests
         [Test]
         public void IsSoftPlacement_SpeedAboveThreshold_ReturnsFalse()
         {
-            var service = new HandInteractionService(CreateConfig(softPlacementSpeedThreshold: 0.1f));
+            var service = CreateService(CreateConfig(softPlacementSpeedThreshold: 0.1f));
 
             Assert.IsFalse(service.IsSoftPlacement(new Vector3(5f, 0f, 0f)));
         }

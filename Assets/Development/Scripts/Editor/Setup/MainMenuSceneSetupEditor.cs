@@ -5,6 +5,7 @@ using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Views.UI.LevelSelect;
 using BlackWhiteLike.Views.UI.MainMenu;
+using BlackWhiteLike.Views.UI.Overlay;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -93,13 +94,16 @@ namespace BlackWhiteLike.Editor.Setup
 
             MainMenuView mainMenuView = null;
             LevelSelectView levelSelectView = null;
+            WelcomeBackView welcomeBackView = null;
             if (canvasInstance != null)
             {
                 mainMenuView = canvasInstance.GetComponentInChildren<MainMenuView>(true);
                 levelSelectView = canvasInstance.GetComponentInChildren<LevelSelectView>(true);
+                // Шаг 8 (Meta + idle) — WelcomeBackOverlay добавлен в MainMenuCanvas.prefab, сиблинг панелей.
+                welcomeBackView = canvasInstance.GetComponentInChildren<WelcomeBackView>(true);
             }
 
-            WireScope(systemsScope, mainMenuView, levelSelectView);
+            WireScope(systemsScope, mainMenuView, levelSelectView, welcomeBackView);
 
             AssertNoThirdPartyPrefabLinksInScene(scene);
 
@@ -142,7 +146,8 @@ namespace BlackWhiteLike.Editor.Setup
                 EditorPrefabUtility.AssertNoThirdPartyPrefabLinks(root, "MainMenu/\"" + root.name + "\"");
         }
 
-        private static void WireScope(GameLifetimeScope scope, MainMenuView mainMenuView, LevelSelectView levelSelectView)
+        private static void WireScope(GameLifetimeScope scope, MainMenuView mainMenuView, LevelSelectView levelSelectView,
+            WelcomeBackView welcomeBackView)
         {
             if (scope == null)
             {
@@ -150,7 +155,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 3;
+            const int expected = 4;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -158,6 +163,8 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetEnumProp(so, "_initialState", (int)GameState.MainMenu, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_mainMenuView", mainMenuView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_levelSelectView", levelSelectView, ownerLabel) ? 1 : 0;
+            // Шаг 8 (Meta + idle).
+            wired += SetRef(so, "_welcomeBackView", welcomeBackView, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)
