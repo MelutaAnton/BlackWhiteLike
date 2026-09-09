@@ -235,6 +235,19 @@ namespace BlackWhiteLike.Controllers.Village
             _body.linearVelocity = throwVelocity;
             _softPlaced = isSoftPlacement;
 
+            if (isSoftPlacement)
+            {
+                // Playtest-фикс 2026-09-10: аккуратная постановка — без кувырка. Житель опускается
+                // на землю вертикально: угловая скорость в ноль, крен/тангаж от переноски снят
+                // (остаётся только yaw), вращение заморожено на время спуска — перекрывает
+                // RigidbodyConstraints.None, выставленный ApplyPhysicsForState(Tossed) при захвате.
+                // Приземление (Landed -> Idle) переустановит constraints штатно.
+                _body.angularVelocity = Vector3.zero;
+                _body.rotation = Quaternion.Euler(0f, _body.rotation.eulerAngles.y, 0f);
+                _body.constraints = RigidbodyConstraints.FreezeRotation;
+                return;
+            }
+
             ApplyTossTumble();
         }
 
@@ -257,6 +270,12 @@ namespace BlackWhiteLike.Controllers.Village
             // OnGrabbed) — ApplyPhysicsForState(Tossed) снимает constraints/выставляет
             // CollisionDetectionMode ДО того, как ниже будет выставлена скорость разлёта.
             _stateService.ReportStimulus(_villagerId, VillagerStimulus.Blasted);
+
+            // Playtest-фикс 2026-09-10: если взрыв застал жителя в мягком спуске (OnReleased
+            // заморозил вращение, а self-loop Tossed -> Tossed события не публикует и
+            // ApplyPhysicsForState не переустановит), тумблу нужна явная разморозка. Для обычного
+            // полёта строка — идемпотентный no-op (constraints уже None).
+            _body.constraints = RigidbodyConstraints.None;
 
             _body.linearVelocity = VillagerMovementRules.ComputeBlastVelocity(origin, _body.position, power, _config.BlastUpwardBias);
             ApplyTossTumble();
