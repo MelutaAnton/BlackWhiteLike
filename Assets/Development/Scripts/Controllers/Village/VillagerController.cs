@@ -83,6 +83,13 @@ namespace BlackWhiteLike.Controllers.Village
         private bool _isGrabbed;
         private bool _gravityBeforeGrab;
 
+        // Playtest-фикс 2026-09-09 (решение владельца, механика soft-release): рука отпустила жителя
+        // мягко (ниже HandConfig.SoftPlacementSpeedThreshold) — следующее приземление считается
+        // Landed независимо от импакта (падение с высоты переноски собственным весом — не швырок).
+        // Сбрасывается при потреблении (OnCollisionEnter) и при любом событии, которое НЕ является
+        // мягкой постановкой (новый захват, взрыв, пуловый сброс).
+        private bool _softPlaced;
+
         public GrabbableId Id => _grabbableId;
         public GrabbableKind Kind => GrabbableKind.Villager;
         public Rigidbody Body => _body;
@@ -186,6 +193,9 @@ namespace BlackWhiteLike.Controllers.Village
             // from=Idle (не Stunned) — это хард-сброс перед новой жизнью, а не настоящий переход
             // Stunned->Idle, StandUp здесь стрелять не должен.
             ApplyStateVisuals(VillagerState.Idle, VillagerState.Idle);
+
+            // Пуловый сброс — флаг предыдущей жизни объекта не должен пережить переиспользование.
+            _softPlaced = false;
         }
 
         /// <summary>
@@ -208,17 +218,22 @@ namespace BlackWhiteLike.Controllers.Village
             _body.useGravity = false;
             _body.angularVelocity = Vector3.zero;
 
+            // Новый захват отменяет флаг мягкой постановки от предыдущего релиза (если жителя
+            // схватили снова до того, как он успел приземлиться, — старый флаг больше не актуален).
+            _softPlaced = false;
+
             // ReportStimulus публикует VillagerStateChangedEvent синхронно (Idle/Panic/Worship →
             // Tossed) — OnVillagerStateChanged тут же вызовет ApplyPhysicsForState(Tossed), который
             // и выставит constraints/collisionDetectionMode для полёта. Дублировать здесь не нужно.
             _stateService.ReportStimulus(_villagerId, VillagerStimulus.Grabbed);
         }
 
-        public void OnReleased(Vector3 throwVelocity)
+        public void OnReleased(Vector3 throwVelocity, bool isSoftPlacement)
         {
             _isGrabbed = false;
             _body.useGravity = _gravityBeforeGrab;
             _body.linearVelocity = throwVelocity;
+            _softPlaced = isSoftPlacement;
 
             ApplyTossTumble();
         }
@@ -233,6 +248,10 @@ namespace BlackWhiteLike.Controllers.Village
         public void ApplyBlast(Vector3 origin, float power)
         {
             if (_isGrabbed) return;
+
+            // Взрыв — не мягкая постановка рукой; флаг предыдущего soft-release (если был) больше не
+            // актуален для физически иного исхода приземления.
+            _softPlaced = false;
 
             // ReportStimulus публикует VillagerStateChangedEvent синхронно (тот же контракт, что в
             // OnGrabbed) — ApplyPhysicsForState(Tossed) снимает constraints/выставляет
@@ -366,9 +385,15 @@ namespace BlackWhiteLike.Controllers.Village
             if (_currentState != VillagerState.Tossed) return; // приземление имеет смысл только после броска
 
             var impactSpeed = collision.relativeVelocity.magnitude;
-            var isHardLanding = impactSpeed >= _config.HardLandingSpeedThreshold;
 
-            _stateService.ReportStimulus(_villagerId, isHardLanding ? VillagerStimulus.HardLanded : VillagerStimulus.Landed);
+            // Playtest-фикс 2026-09-09: мягкая постановка (_softPlaced) всегда даёт Landed, даже если
+            // падение с высоты переноски (CarryHeight) само по себе превышает HardLandingSpeedThreshold —
+            // см. VillagerMovementRules.ResolveLandingStimulus. Флаг потребляется здесь же (сброс сразу
+            // после чтения), следующее приземление без нового soft-release снова считается по порогу.
+            var stimulus = VillagerMovementRules.ResolveLandingStimulus(_softPlaced, impactSpeed, _config.HardLandingSpeedThreshold);
+            _softPlaced = false;
+
+            _stateService.ReportStimulus(_villagerId, stimulus);
             _eventBus.Publish(new ObjectLandedEvent(_grabbableId, impactSpeed, false));
         }
 

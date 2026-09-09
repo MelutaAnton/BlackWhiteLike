@@ -27,7 +27,12 @@ namespace BlackWhiteLike.Core.Interaction
         /// <summary>Вызывается рукой в момент захвата.</summary>
         void OnGrabbed();
 
-        /// <summary>Вызывается рукой в момент отпускания. <paramref name="throwVelocity"/> — Vector3.zero = мягкая постановка.</summary>
-        void OnReleased(Vector3 throwVelocity);
+        /// <summary>
+        /// Вызывается рукой в момент отпускания. <paramref name="throwVelocity"/> — Vector3.zero = мягкая постановка.
+        /// <paramref name="isSoftPlacement"/> — релиз ниже <c>HandConfig.SoftPlacementSpeedThreshold</c>
+        /// (playtest-фикс 2026-09-09, решение владельца): мягко отпущенный объект падает с высоты
+        /// переноски (CarryHeight) собственным весом, и этот удар о землю — не швырок, а не жест-бросок.
+        /// </summary>
+        void OnReleased(Vector3 throwVelocity, bool isSoftPlacement);
     }
 }

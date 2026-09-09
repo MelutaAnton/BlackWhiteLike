@@ -19,4 +19,4 @@ MonoBehaviour:
   _throwForceScale: 1.2
   _maxThrowForce: 20
   _throwVelocitySampleWindow: 0.15
-  _softPlacementSpeedThreshold: 0.05
+  _softPlacementSpeedThreshold: 3

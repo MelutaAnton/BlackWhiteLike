@@ -218,9 +218,14 @@ namespace BlackWhiteLike.Controllers.Hand
             var grabbable = _grabbedObject;
             _grabbedObject = null;
 
+            // В9: порог "мягкой постановки" — решение сервиса (HandConfig.SoftPlacementSpeedThreshold),
+            // не сравнение с точным нулём в контроллере. Вычисляем один раз — используется и для
+            // выбора анимации, и (playtest-фикс 2026-09-09) для исхода жителя при приземлении.
+            var isSoftPlacement = _handInteractionService.IsSoftPlacement(throwVelocity);
+
             if (grabbable.Body != null)
             {
-                grabbable.OnReleased(throwVelocity);
+                grabbable.OnReleased(throwVelocity, isSoftPlacement);
             }
 
             _handInteractionService.EndHold();
@@ -228,9 +233,6 @@ namespace BlackWhiteLike.Controllers.Hand
             if (_animator != null)
             {
                 _animator.SetBool(AnimatorHashes.IsCarrying, false);
-                // В9: порог "мягкой постановки" — решение сервиса (HandConfig.SoftPlacementSpeedThreshold),
-                // не сравнение с точным нулём в контроллере.
-                var isSoftPlacement = _handInteractionService.IsSoftPlacement(throwVelocity);
                 _animator.SetTrigger(isSoftPlacement ? AnimatorHashes.Place : AnimatorHashes.Release);
             }
 

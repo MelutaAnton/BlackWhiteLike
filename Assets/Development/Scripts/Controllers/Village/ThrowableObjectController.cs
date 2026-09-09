@@ -80,7 +80,10 @@ namespace BlackWhiteLike.Controllers.Village
             _body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         }
 
-        public void OnReleased(Vector3 throwVelocity)
+        // isSoftPlacement (playtest-фикс 2026-09-09) здесь намеренно не используется: у бросковых
+        // объектов нет исхода "оглушение" — приземление всегда решается LandingImpactThreshold,
+        // поведение объектов этим фиксом не меняется (см. IGrabbable.OnReleased).
+        public void OnReleased(Vector3 throwVelocity, bool isSoftPlacement)
         {
             _isGrabbed = false;
             _body.useGravity = _gravityBeforeGrab;

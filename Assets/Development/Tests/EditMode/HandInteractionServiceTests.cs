@@ -24,7 +24,7 @@ namespace BlackWhiteLike.Tests
             public Rigidbody Body { get; set; }
             public bool CanBeGrabbed { get; set; } = true;
             public void OnGrabbed() { }
-            public void OnReleased(Vector3 throwVelocity) { }
+            public void OnReleased(Vector3 throwVelocity, bool isSoftPlacement) { }
         }
 
         /// <summary>

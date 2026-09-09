@@ -1,3 +1,4 @@
+using BlackWhiteLike.Models;
 using UnityEngine;
 
 namespace BlackWhiteLike.Services.Village
@@ -161,6 +162,21 @@ namespace BlackWhiteLike.Services.Village
             }
 
             return nearest;
+        }
+
+        /// <summary>
+        /// Исход приземления жителя после броска рукой (playtest-дефект 2026-09-09, решение
+        /// владельца — механика soft-release): мягкая постановка (релиз ниже
+        /// HandConfig.SoftPlacementSpeedThreshold, <paramref name="isSoftPlaced"/>) всё равно роняет
+        /// жителя с высоты переноски (CarryHeight ≈ 1.5м) собственным весом — импакт легко превышает
+        /// HardLandingSpeedThreshold, но это падение под своим весом, а не швырок, поэтому исход
+        /// всегда Landed независимо от скорости импакта. Обычный (не мягкий) релиз — прежнее
+        /// сравнение с порогом. Чистая арифметика — тестируется без Unity-сцены.
+        /// </summary>
+        public static VillagerStimulus ResolveLandingStimulus(bool isSoftPlaced, float impactSpeed, float hardLandingSpeedThreshold)
+        {
+            if (isSoftPlaced) return VillagerStimulus.Landed;
+            return impactSpeed >= hardLandingSpeedThreshold ? VillagerStimulus.HardLanded : VillagerStimulus.Landed;
         }
 
         private static float HorizontalDistanceSqr(Vector3 a, Vector3 b)
