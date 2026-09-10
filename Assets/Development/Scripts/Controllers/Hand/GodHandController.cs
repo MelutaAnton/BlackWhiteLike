@@ -4,6 +4,7 @@ using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Hand;
+using BlackWhiteLike.Services.Haptics;
 using UnityEngine;
 using VContainer;
 
@@ -40,6 +41,7 @@ namespace BlackWhiteLike.Controllers.Hand
         private HandConfig _handConfig;
         private IPointerWorldProjector _pointerWorldProjector;
         private IHandModeService _handModeService;
+        private IHapticsService _hapticsService;
         private bool _initialized;
 
         // Буфер одноразового ввода до ближайшего физтика (см. .claude/rules/physics-input.md):
@@ -64,7 +66,8 @@ namespace BlackWhiteLike.Controllers.Hand
             IEventBus eventBus,
             HandConfig handConfig,
             IPointerWorldProjector pointerWorldProjector,
-            IHandModeService handModeService)
+            IHandModeService handModeService,
+            IHapticsService hapticsService)
         {
             _inputProvider = inputProvider;
             _inputRouter = inputRouter;
@@ -73,6 +76,7 @@ namespace BlackWhiteLike.Controllers.Hand
             _handConfig = handConfig;
             _pointerWorldProjector = pointerWorldProjector;
             _handModeService = handModeService;
+            _hapticsService = hapticsService;
 
             // В11: _grabAnchor используется без null-проверки в каждом FixedUpdate (в отличие от
             // _visualRoot, который per-frame переживает отсутствие ссылки) — без него первое же
@@ -198,6 +202,7 @@ namespace BlackWhiteLike.Controllers.Hand
             _grabbedObject = grabbable;
             grabbable.OnGrabbed();
             _handInteractionService.BeginHold(_grabAnchor.position, _lastUnscaledTime);
+            _hapticsService.LightTap();
 
             if (_animator != null)
             {
@@ -238,6 +243,10 @@ namespace BlackWhiteLike.Controllers.Hand
 
             if (publishEvent)
             {
+                // Шаг 9 (§19.9): отклик только на настоящий бросок — мягкая постановка (isSoftPlacement)
+                // не жест "швырка" и не должна давать тот же тактильный отклик, что и бросок.
+                if (!isSoftPlacement) _hapticsService.MediumImpact();
+
                 _eventBus.Publish(new ObjectThrownEvent(grabbable.Id, throwVelocity));
             }
         }

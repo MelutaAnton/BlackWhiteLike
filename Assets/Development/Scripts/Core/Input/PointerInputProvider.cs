@@ -238,12 +238,10 @@ namespace BlackWhiteLike.Core.Input
                 _isPointerHeld = false;
                 _pointerHoldTime = 0f;
 
-                var currentDistance = Vector2.Distance(activeTouches[0].screenPosition, activeTouches[1].screenPosition);
-
-                if (_pinchActive)
-                {
-                    _zoom = (currentDistance - _previousPinchDistance) * PinchZoomSensitivity;
-                }
+                // Шаг 9: арифметика пинча вынесена в PinchGestureRules (pure C#, покрыта тестами
+                // PinchGestureRulesTests) — здесь только вызов, формула не менялась.
+                var currentDistance = PinchGestureRules.ComputeDistance(activeTouches[0].screenPosition, activeTouches[1].screenPosition);
+                _zoom = PinchGestureRules.ComputeZoomDelta(currentDistance, _previousPinchDistance, _pinchActive, PinchZoomSensitivity);
 
                 _previousPinchDistance = currentDistance;
                 _pinchActive = true;

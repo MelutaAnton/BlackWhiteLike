@@ -151,8 +151,12 @@ namespace BlackWhiteLike.Editor.UI
                 rows.Add(BuildUpgradeRow(columnGo.transform, category, rowTitle, fontAsset, ref totalWired, ref totalExpected));
 
             var creatureTeaser = BuildCreatureTeaser(panelGo.transform, fontAsset, ref totalWired, ref totalExpected);
+            // Фикс ревью шага 9: раньше якоря были (0.98, 0.04)-(1, 0) — инвертированы по y
+            // (anchorMin.y > anchorMax.y), фактическая высота кнопки была меньше sizeDelta и
+            // TouchHitZoneEditor такой узел чинить отказывается. Точечный якорь в правом нижнем
+            // углу + центр-пивот: отступ 24 от краёв при размере 260x88 (сразу ≥ хит-зоны 88).
             var nextLevelButton = BuildTempleButton(panelGo.transform, "NextLevelButton", fontAsset, "Next level",
-                new Vector2(0.98f, 0.04f), new Vector2(1f, 0f), new Vector2(-24f, 24f), new Vector2(260f, 72f));
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-154f, 68f), new Vector2(260f, 88f));
 
             var view = panelGo.GetComponent<TempleView>();
             if (view == null) view = panelGo.AddComponent<TempleView>();
@@ -586,8 +590,14 @@ namespace BlackWhiteLike.Editor.UI
 
         private static GameObject FindOrCreateUIChild(Transform parent, string name)
         {
-            var existing = parent.Find(name);
-            if (existing != null) return existing.gameObject;
+            // После Apply Safe Area (SafeAreaSetupEditor) прямые дети канваса (и дети непрозрачных
+            // full-stretch панелей-фонов) переезжают на уровень ниже, под SafeAreaRoot — ищем сначала
+            // напрямую, затем там, иначе повторный прогон Build создаст пустой дубль на старом месте.
+            var direct = parent.Find(name);
+            if (direct != null) return direct.gameObject;
+
+            var underSafeArea = parent.Find("SafeAreaRoot/" + name);
+            if (underSafeArea != null) return underSafeArea.gameObject;
 
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, worldPositionStays: false);

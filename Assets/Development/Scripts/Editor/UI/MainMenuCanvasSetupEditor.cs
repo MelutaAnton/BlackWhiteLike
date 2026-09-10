@@ -519,8 +519,14 @@ namespace BlackWhiteLike.Editor.UI
 
         private static GameObject FindOrCreateUIChild(Transform parent, string name)
         {
-            var existing = parent.Find(name);
-            if (existing != null) return existing.gameObject;
+            // После Apply Safe Area (SafeAreaSetupEditor) прямые дети канваса (и дети непрозрачных
+            // full-stretch панелей-фонов) переезжают на уровень ниже, под SafeAreaRoot — ищем сначала
+            // напрямую, затем там, иначе повторный прогон Build создаст пустой дубль на старом месте.
+            var direct = parent.Find(name);
+            if (direct != null) return direct.gameObject;
+
+            var underSafeArea = parent.Find("SafeAreaRoot/" + name);
+            if (underSafeArea != null) return underSafeArea.gameObject;
 
             var go = new GameObject(name, typeof(RectTransform));
             go.transform.SetParent(parent, worldPositionStays: false);

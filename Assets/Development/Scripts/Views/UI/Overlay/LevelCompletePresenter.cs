@@ -3,6 +3,7 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Flow;
+using BlackWhiteLike.Services.Haptics;
 using BlackWhiteLike.Services.Level;
 using BlackWhiteLike.Services.Worship;
 using UnityEngine;
@@ -24,6 +25,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
         private readonly ILevelSelectionService _selection;
         private readonly ISceneLoaderService _sceneLoader;
         private readonly CampaignContext _campaignContext;
+        private readonly IHapticsService _hapticsService;
 
         private IDisposable _levelCompletedSubscription;
 
@@ -35,7 +37,8 @@ namespace BlackWhiteLike.Views.UI.Overlay
             IGameFlowService gameFlow,
             ILevelSelectionService selection,
             ISceneLoaderService sceneLoader,
-            CampaignContext campaignContext)
+            CampaignContext campaignContext,
+            IHapticsService hapticsService)
         {
             _view = view;
             _eventBus = eventBus;
@@ -45,6 +48,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
             _selection = selection;
             _sceneLoader = sceneLoader;
             _campaignContext = campaignContext;
+            _hapticsService = hapticsService;
         }
 
         public void Start()
@@ -63,6 +67,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
         private void OnLevelCompleted(LevelCompletedEvent evt)
         {
             _view.Show(_worshipService.Current, _worshipService.Target, _worshipService.AweTotal, _worshipService.FearTotal, _levelConfig.CoinsReward);
+            _hapticsService.Success(); // Шаг 9 (§19.9): отклик на показ экрана победы.
         }
 
         /// <summary>

@@ -86,6 +86,39 @@ Defect classes that have appeared across steps and are worth checking first on e
    every subscriber must either be registered EARLIER or read the state through a pull API
    (`bool HasPending { get; }`) instead of the event.
 
+10. **An editor script measures a `RectTransform` by `sizeDelta` instead of `rect.size`.** Step 9:
+    `TouchHitZoneEditor.EnsureMinHitZone` grows `sizeDelta` to a minimum and logs "72 -> 88" as if that
+    were the rendered size. For a *stretched* rect (`anchorMin != anchorMax` on that axis) `sizeDelta` is
+    an **offset from the parent's rect**, not a size: `TempleCanvas/TemplePanel/NextLevelButton` has
+    `anchorMin (0.98, 0.04)` / `anchorMax (1, 0)` (the y pair is even inverted), so at 1920×1080 its real
+    height is `72 + (0 - 0.04)*1080 = 28.8`, and setting `sizeDelta.y = 88` yields 44.8 — the audit reports
+    success while the button stays under half the target. **Check:** any diff that reads or writes
+    `sizeDelta` as a size — it is only equal to the size when `anchorMin == anchorMax` on that axis.
+    Correct form: measure `rt.rect.size`, grow via `rt.sizeDelta += (min - rt.rect.size)` per axis.
+    Layout groups are the *second* question here, not the first (step 9's `UpgradesColumn`
+    `VerticalLayoutGroup` was harmless — all four `m_ChildControl*`/`m_ChildForceExpand*` are 0).
+
+11. **A structural change to a canvas prefab silently breaks the sibling `Build ...` script that owns it.**
+    Step 9: `SafeAreaSetupEditor` inserts a `SafeAreaRoot` node and reparents every direct child of the
+    canvas root under it, but `LevelHudSetupEditor` / `MainMenuCanvasSetupEditor` /
+    `TempleCanvasSetupEditor` each have a private `FindOrCreateUIChild(parent, name)` that does
+    `parent.Find(name)` — root-only. After the insert, a rerun of any `Build ...` item does not just orphan
+    nodes: it creates an EMPTY duplicate at the root and then `SetRef`s the view's `[SerializeField]`s to
+    that duplicate (`LevelHudSetupEditor.cs:280-286` wires `_worshipFill`, `_pauseButton`, `_popupRoot`, …),
+    i.e. the HUD goes blank with no error. **Check:** whenever a diff re-parents or wraps nodes inside a
+    prefab another editor script builds, grep that script's node-lookup helper — a root-relative `Find`
+    must learn the new intermediate node (step 9's own `TouchHitZoneEditor.ResolveRelative` shows the
+    correct two-probe form: direct path, then `"SafeAreaRoot/" + path`). A warning emitted by the *inserting*
+    script on its NEXT run is not a guard — it fires one run after the breakage.
+
+12. **A safe-area wrapper swallows the full-screen backdrops it was supposed to leave alone.** Step 9:
+    reparenting *all* canvas-root children under `SafeAreaRoot` also moves opaque full-stretch panels —
+    `MainMenuPanel`, `LevelSelectPanel`, `TemplePanel` each carry an `Image` at `a: 1` (`0.08/0.08/0.12`) —
+    so on a notched/cutout device the menu background stops painting the inset strips. **Check:** list the
+    canvas root's direct children with their anchors + `Image.m_Color.a` before accepting a blanket
+    reparent; anything full-stretch and opaque (backgrounds, `Dim` blockers) must stay outside the fitted
+    node, only content goes inside.
+
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 
 **How to apply:** for any new MonoBehaviour in a diff, grep every `[SerializeField]` name against the editor scripts that instantiate it, and grep every physics property the runtime *reads* (`isKinematic`, `useGravity`, `constraints`, `collisionDetectionMode`) against what the editor script *writes*. Report mismatches as blockers — both defect classes are invisible until playtest. For material-swapping controllers, also compare renderer **count and material heterogeneity** in the source prefab YAML against what the config's per-stage array can express: step 6's Synty church has 2 MeshRenderers with 2 *different* materials, but `AlignmentStage._templeMaterials` is a slot array, so a 1-element stage silently repaints both.

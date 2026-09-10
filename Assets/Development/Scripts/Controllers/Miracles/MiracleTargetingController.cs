@@ -3,6 +3,7 @@ using BlackWhiteLike.Core.Interaction;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Hand;
+using BlackWhiteLike.Services.Haptics;
 using BlackWhiteLike.Services.Miracles;
 using UnityEngine;
 using VContainer;
@@ -35,6 +36,7 @@ namespace BlackWhiteLike.Controllers.Miracles
         private IMiracleService _miracleService;
         private IPointerWorldProjector _pointerWorldProjector;
         private MiracleCatalogConfig _catalog;
+        private IHapticsService _hapticsService;
         private bool _initialized;
 
         // Последняя валидная точка проекции на землю — нужна, чтобы UpdateCast/BeginCast могли
@@ -49,7 +51,8 @@ namespace BlackWhiteLike.Controllers.Miracles
             IHandModeService handModeService,
             IMiracleService miracleService,
             IPointerWorldProjector pointerWorldProjector,
-            MiracleCatalogConfig catalog)
+            MiracleCatalogConfig catalog,
+            IHapticsService hapticsService)
         {
             _inputProvider = inputProvider;
             _inputRouter = inputRouter;
@@ -57,6 +60,7 @@ namespace BlackWhiteLike.Controllers.Miracles
             _miracleService = miracleService;
             _pointerWorldProjector = pointerWorldProjector;
             _catalog = catalog;
+            _hapticsService = hapticsService;
 
             _initialized = true;
         }
@@ -102,6 +106,7 @@ namespace BlackWhiteLike.Controllers.Miracles
             if (_miracleService.IsCasting && _inputProvider.PointerUp)
             {
                 _miracleService.ReleaseCast();
+                _hapticsService.MediumImpact(); // Шаг 9 (§19.9): отклик на завершение каста чуда.
             }
 
             var hasPoint = _pointerWorldProjector.TryProjectToGround(_inputProvider.PointerPosition, _groundMask, out var point);
@@ -139,6 +144,7 @@ namespace BlackWhiteLike.Controllers.Miracles
                 // закрыть только что открытую сессию). Закрываем с задержкой в один кадр вместо
                 // того, чтобы сессия повисла до следующего тапа.
                 _miracleService.ReleaseCast();
+                _hapticsService.MediumImpact(); // Шаг 9 (§19.9): отклик на завершение каста чуда.
             }
         }
 

@@ -31,6 +31,7 @@ using BlackWhiteLike.Services.Faith;
 using BlackWhiteLike.Services.Flow;
 using BlackWhiteLike.Services.Flow.States;
 using BlackWhiteLike.Services.Hand;
+using BlackWhiteLike.Services.Haptics;
 using BlackWhiteLike.Services.Idle;
 using BlackWhiteLike.Services.Level;
 using BlackWhiteLike.Services.Meta;
@@ -115,6 +116,12 @@ namespace BlackWhiteLike.Installers
             // Services
             builder.Register<SystemTimeProvider>(Lifetime.Singleton).As<ITimeProvider>();
             builder.Register<PlayerPrefsProfileStorage>(Lifetime.Singleton).As<IProfileStorage>();
+
+            // Шаг 9 (§19.9): тактильный отклик — во ВСЕХ сценах, безусловно (не под гейтом
+            // _initialState — LightTap/Success нужны и мета-сценам, например будущим кнопкам
+            // Temple). NullHapticsService — no-op контрактная точка, реализация с вибрацией
+            // добавляется позже без изменения точек вызова.
+            builder.Register<NullHapticsService>(Lifetime.Singleton).As<IHapticsService>();
 
             // Input — ITickable, тикается VContainer'ом каждый кадр без MonoBehaviour.
             // RegisterEntryPoint делает AsImplementedInterfaces() сам по себе — доп. .As<>() после него
