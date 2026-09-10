@@ -184,26 +184,27 @@ namespace BlackWhiteLike.Controllers.Camera
         {
             var panActive = _inputProvider.Pan.sqrMagnitude > 0f;
 
-            // Блокер 3 (ревью шага 4): провайдер пишет Pan на любом одиночном тач-жесте
-            // (PointerInputProvider.UpdateTouchGestures) — на тач-устройствах Pan всегда идёт
-            // вместе с IsPointerHeld, поэтому без этого гейта HandleRmbPan стартовал pan-жест
-            // камеры в режиме Miracle (накачка чуда тащила бы камеру) и при протаскивании пальца
-            // по HUD. На PC не проявлялось: там Pan приходит только от RMB (IsPointerHeld относится
-            // к основной pointer-кнопке/пальцу, а не к ПКМ), так что этот гейт десктопный путь ни в
-            // одном режиме руки не трогает. Различить источник Pan (RMB vs одиночный тач) через
-            // IInputProvider нельзя — провайдер физически не знает о режиме руки.
-            var blockedByHandOrUi = _inputProvider.IsPointerHeld &&
-                                     (_handModeService.Mode != HandMode.Grab || _inputProvider.IsPointerOverUi);
+            // Пока идёт жест основного пальца/ЛКМ (IsPointerHeld), этот путь выключен полностью —
+            // жестом владеет HandleDragPan со всеми его гейтами (режим руки, HUD, IGrabbable под
+            // pointer'ом). Провайдер пишет Pan на любом одиночном тач-свайпе
+            // (PointerInputProvider.UpdateTouchGestures), и до этого гейта на мобиле во время
+            // свайпа работали ОБА якорных пути с разными якорями: две коррекции за кадр по ещё не
+            // сдвинутой камере (CinemachineBrain двигает её в LateUpdate) давали незатухающее
+            // перепрыгивание pivot'а через цель — тряску камеры каждый кадр (playtest шага 9).
+            // Прежний узкий гейт (Miracle-режим / HUD, ревью шага 4) этим покрыт как частный
+            // случай. На PC IsPointerHeld относится к основной кнопке, а Pan приходит только от
+            // RMB — чистый RMB-drag работает как раньше.
+            var blockedByPrimaryGesture = _inputProvider.IsPointerHeld;
 
-            if (panActive && !_rmbPanEngaged && !blockedByHandOrUi)
+            if (panActive && !_rmbPanEngaged && !blockedByPrimaryGesture)
             {
                 _rmbPanEngaged = _pointerWorldProjector.TryProjectToGround(
                     _inputProvider.PointerPosition, _groundMask, out _rmbPanWorldAnchor);
             }
-            else if (!panActive || blockedByHandOrUi)
+            else if (!panActive || blockedByPrimaryGesture)
             {
-                // blockedByHandOrUi сбрасывает и уже взведённый pan — смена режима руки/выход
-                // pointer'а на HUD посреди жеста не должны оставлять его висеть до следующего кадра.
+                // blockedByPrimaryGesture сбрасывает и уже взведённый pan — начало касания посреди
+                // RMB-жеста не должно оставлять его висеть до следующего кадра.
                 _rmbPanEngaged = false;
             }
 
