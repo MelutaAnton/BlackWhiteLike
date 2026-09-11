@@ -54,7 +54,16 @@ namespace BlackWhiteLike.Services.Miracles
         {
             if (_isCasting) return false; // одна активная сессия одновременно
             if (!_catalog.TryGet(type, out var config)) return false;
-            if (!_faithService.TrySpend(config.BaseFaithCost)) return false;
+
+            if (!_faithService.TrySpend(config.BaseFaithCost))
+            {
+                // Публикуем ТОЛЬКО при отказе нехваткой Faith (TrySpend возвращает false ровно в
+                // этом случае — amount<=0 всегда true, см. FaithService.TrySpend) — шаг 10, волна 2,
+                // решение владельца: rewarded-окно должно реагировать на явный тап игрока, не только
+                // на автоматический soft-fail (LevelStalledEvent).
+                _eventBus.Publish(new MiracleDeniedEvent(type, (int)config.BaseFaithCost, _faithService.Current));
+                return false;
+            }
 
             _isCasting = true;
             _type = type;

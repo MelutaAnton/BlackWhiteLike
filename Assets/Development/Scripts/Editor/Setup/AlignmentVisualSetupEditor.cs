@@ -92,6 +92,8 @@ namespace BlackWhiteLike.Editor.Setup
             if (config == null)
                 Debug.LogWarning("[Editor] " + AlignmentVisualConfigPath + " не найден после CreateAll() — _alignmentVisualConfig не прошит.");
 
+            MigrateUiPaletteIfAllWhite(config);
+
             var go = TestHandSceneSetupEditor.FindInSceneIncludingInactive("[AlignmentVisual]");
             if (go == null)
             {
@@ -295,6 +297,76 @@ namespace BlackWhiteLike.Editor.Setup
             Debug.Log("[Editor] Создан " + destPath + " — тинтованная копия (" + label + ").");
             return material;
         }
+
+        // ------------------------------------------------------------------------------------
+        // UiPalette (playtest-фикс волны 2 шага 10 — миграция ассетов, собранных ДО этого фикса)
+        // ------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Playtest-фикс волны 2 шага 10: реальный <c>AlignmentVisual.asset</c> сериализован ВСЕМИ
+        /// пятью тонами <c>UiPalette</c> белым ещё с шага 6 (Color.white был дефолтом
+        /// <see cref="AlignmentUiPalette.Default"/> ДО этого фикса) — шкала Worship красилась в
+        /// белый, текст "0/100" тонул на белом фоне. Штампуем рекомендованный набор (см. новый
+        /// <see cref="AlignmentUiPalette.Default"/>) ТОЛЬКО если все пять тонов всё ещё белые (старое
+        /// дефолтное состояние) — если хоть один отличается от белого, считаем палитру уже
+        /// настроенной владельцем вручную и не трогаем. Идемпотентен: после первой миграции Neutral
+        /// становится жёлтым (не белым), повторный прогон видит allWhite == false и no-op'ает.
+        /// </summary>
+        private static void MigrateUiPaletteIfAllWhite(AlignmentVisualConfig config)
+        {
+            if (config == null) return;
+
+            var so = new SerializedObject(config);
+            var paletteProp = so.FindProperty("_uiPalette");
+            if (paletteProp == null)
+            {
+                Debug.LogWarning("[Editor] AlignmentVisualConfig._uiPalette не найдено — миграция палитры пропущена.");
+                return;
+            }
+
+            var saintProp = paletteProp.FindPropertyRelative("_saintTint");
+            var kindProp = paletteProp.FindPropertyRelative("_kindTint");
+            var neutralProp = paletteProp.FindPropertyRelative("_neutralTint");
+            var cruelProp = paletteProp.FindPropertyRelative("_cruelTint");
+            var demonProp = paletteProp.FindPropertyRelative("_demonTint");
+
+            if (saintProp == null || kindProp == null || neutralProp == null || cruelProp == null || demonProp == null)
+            {
+                Debug.LogWarning("[Editor] AlignmentUiPalette: не все поля тонов найдены — миграция палитры пропущена.");
+                return;
+            }
+
+            var allWhite = saintProp.colorValue == Color.white
+                && kindProp.colorValue == Color.white
+                && neutralProp.colorValue == Color.white
+                && cruelProp.colorValue == Color.white
+                && demonProp.colorValue == Color.white;
+
+            if (!allWhite)
+            {
+                Debug.Log("[Editor] AlignmentVisual.asset: UiPalette уже настроена (не все тона белые) — миграция пропущена.");
+                return;
+            }
+
+            var recommended = AlignmentUiPalette.Default;
+            Debug.Log("[Editor] AlignmentVisual.asset: UiPalette всё ещё дефолтная (все пять тонов белые) — штампую рекомендованный набор: " +
+                      $"Saint {ColorToLog(Color.white)} -> {ColorToLog(recommended.SaintTint)}, " +
+                      $"Kind {ColorToLog(Color.white)} -> {ColorToLog(recommended.KindTint)}, " +
+                      $"Neutral {ColorToLog(Color.white)} -> {ColorToLog(recommended.NeutralTint)}, " +
+                      $"Cruel {ColorToLog(Color.white)} -> {ColorToLog(recommended.CruelTint)}, " +
+                      $"Demon {ColorToLog(Color.white)} -> {ColorToLog(recommended.DemonTint)}.");
+
+            saintProp.colorValue = recommended.SaintTint;
+            kindProp.colorValue = recommended.KindTint;
+            neutralProp.colorValue = recommended.NeutralTint;
+            cruelProp.colorValue = recommended.CruelTint;
+            demonProp.colorValue = recommended.DemonTint;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(config);
+        }
+
+        private static string ColorToLog(Color c) => $"({c.r:0.00}, {c.g:0.00}, {c.b:0.00})";
 
         // ------------------------------------------------------------------------------------
         // Утилиты

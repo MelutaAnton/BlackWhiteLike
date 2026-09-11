@@ -73,9 +73,14 @@ namespace BlackWhiteLike.Core.Events
     }
 
     /// <summary>
-    /// Публикуется <c>LevelFlowService</c> при soft-fail (game-design §9, §13, шаг 5): Faith ≈ 0,
-    /// нет активных и ожидающих нужд, Worship ниже порога уровня. UI-реакция —
-    /// rewarded-заглушка "Пополнить веру" (см. <c>LevelStalledPresenter</c>).
+    /// Публикуется <c>LevelFlowService</c> при АВТОМАТИЧЕСКОМ soft-fail (game-design §9, §13, шаг 5):
+    /// Faith ≈ 0, нет блокирующих нужд (<c>ILevelEventService.HasBlockingNeeds</c>), Worship ниже
+    /// порога уровня. Показ ограничен кулдауном после отказа игрока (см.
+    /// <c>LevelFlowService.StallReshowCooldownAfterDecline</c>).
+    /// UI-реакция — rewarded-окно (см. <c>LevelStalledPresenter</c>), у которого (шаг 10, волна 2)
+    /// это ОДИН из ДВУХ путей показа: второй — явный тап игрока по чуду без хватающей Faith
+    /// (<c>MiracleDeniedEvent</c>, публикуется <c>MiracleService.BeginCast</c>), показывается
+    /// немедленно и кулдауном этого события не ограничен.
     /// </summary>
     public readonly struct LevelStalledEvent
     {

@@ -169,6 +169,65 @@ namespace BlackWhiteLike.Tests
             Assert.IsFalse(secondBegin);
         }
 
+        // --- Шаг 10, волна 2: MiracleDeniedEvent — публикуется ТОЛЬКО при отказе нехваткой Faith ---
+
+        [Test]
+        public void BeginCast_NotEnoughFaith_PublishesMiracleDeniedEvent_WithCostAndFaithAvailable()
+        {
+            var catalog = CreateCatalog(CreateMiracleConfig(type: MiracleType.Rain, baseFaithCost: 20f));
+            var faith = new FakeFaithService { Current = 5f };
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, faith, catalog);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            var evt = eventBus.PublishedEvents.OfType<MiracleDeniedEvent>().Single();
+            Assert.AreEqual(MiracleType.Rain, evt.Type);
+            Assert.AreEqual(20, evt.Cost);
+            Assert.AreEqual(5f, evt.FaithAvailable, 0.001f);
+        }
+
+        [Test]
+        public void BeginCast_EnoughFaith_DoesNotPublishMiracleDeniedEvent()
+        {
+            var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 20f));
+            var faith = new FakeFaithService { Current = 100f };
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, faith, catalog);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<MiracleDeniedEvent>());
+        }
+
+        [Test]
+        public void BeginCast_NoConfigInCatalog_DoesNotPublishMiracleDeniedEvent()
+        {
+            var catalog = CreateCatalog();
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, new FakeFaithService { Current = 100f }, catalog);
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<MiracleDeniedEvent>());
+        }
+
+        [Test]
+        public void BeginCast_WhileAlreadyCasting_DoesNotPublishMiracleDeniedEvent()
+        {
+            // Другая причина отказа (сессия уже идёт) — не нехватка Faith, событие не публикуется.
+            var catalog = CreateCatalog(CreateMiracleConfig(baseFaithCost: 10f));
+            var faith = new FakeFaithService { Current = 100f };
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, faith, catalog);
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+            eventBus.PublishedEvents.Clear();
+
+            service.BeginCast(MiracleType.Rain, Vector3.zero);
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<MiracleDeniedEvent>());
+        }
+
         // --- UpdateCast ---
 
         [Test]

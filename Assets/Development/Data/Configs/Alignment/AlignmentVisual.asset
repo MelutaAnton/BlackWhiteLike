@@ -48,8 +48,8 @@ MonoBehaviour:
     _decalPrefabsToSpawn: []
     _vfxToActivate: 
   _uiPalette:
-    _saintTint: {r: 1, g: 1, b: 1, a: 1}
-    _kindTint: {r: 1, g: 1, b: 1, a: 1}
-    _neutralTint: {r: 1, g: 1, b: 1, a: 1}
-    _cruelTint: {r: 1, g: 1, b: 1, a: 1}
-    _demonTint: {r: 1, g: 1, b: 1, a: 1}
+    _saintTint: {r: 0.55, g: 0.8, b: 1, a: 1}
+    _kindTint: {r: 0.7, g: 0.85, b: 1, a: 1}
+    _neutralTint: {r: 1, g: 0.82, b: 0.35, a: 1}
+    _cruelTint: {r: 0.95, g: 0.55, b: 0.3, a: 1}
+    _demonTint: {r: 0.85, g: 0.25, b: 0.25, a: 1}

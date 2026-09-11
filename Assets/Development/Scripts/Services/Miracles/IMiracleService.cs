@@ -27,7 +27,8 @@ namespace BlackWhiteLike.Services.Miracles
         /// <summary>
         /// Начинает сессию: списывает BaseFaithCost, фиксирует точку и стартовый радиус (BaseRadius).
         /// Возвращает false, если уже идёт другая сессия или <see cref="CanCast"/> == false — в этом
-        /// случае Faith не тратится и сессия не открывается.
+        /// случае Faith не тратится и сессия не открывается. Отказ ИМЕННО нехваткой Faith (шаг 10,
+        /// волна 2) публикует <c>MiracleDeniedEvent</c> — единственная причина отказа, дающая событие.
         /// </summary>
         bool BeginCast(MiracleType type, Vector3 point);
 

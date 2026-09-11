@@ -255,6 +255,84 @@ namespace BlackWhiteLike.Tests
             Assert.AreEqual(hideCountBefore, view.HideCount);
         }
 
+        // --- Шаг 10, волна 2: MiracleDeniedEvent — второй путь показа, независимый от кулдауна ---
+
+        [Test]
+        public void MiracleDeniedEvent_ShowsView()
+        {
+            var view = new FakeLevelStalledView();
+            var eventBus = new EventBus();
+            var presenter = CreatePresenter(view, eventBus, new FakeFaithService());
+            presenter.Start();
+
+            eventBus.Publish(new MiracleDeniedEvent(MiracleType.Rain, 20, 5f));
+
+            Assert.IsTrue(view.IsVisible);
+        }
+
+        [Test]
+        public void MiracleDeniedEvent_SetsQuestionText_BeforeShow()
+        {
+            var view = new FakeLevelStalledView();
+            var eventBus = new EventBus();
+            var presenter = CreatePresenter(view, eventBus, new FakeFaithService());
+            presenter.Start();
+
+            eventBus.Publish(new MiracleDeniedEvent(MiracleType.Rain, 20, 5f));
+
+            Assert.IsFalse(string.IsNullOrEmpty(view.LastQuestionText));
+        }
+
+        [Test]
+        public void MiracleDeniedEvent_WhileAlreadyVisible_IsNoOp()
+        {
+            var view = new FakeLevelStalledView();
+            var eventBus = new EventBus();
+            var presenter = CreatePresenter(view, eventBus, new FakeFaithService());
+            presenter.Start();
+            eventBus.Publish(new LevelStalledEvent());
+            var showCountBefore = view.ShowCount;
+
+            eventBus.Publish(new MiracleDeniedEvent(MiracleType.Rain, 20, 5f));
+
+            Assert.AreEqual(showCountBefore, view.ShowCount);
+        }
+
+        [Test]
+        public void MiracleDeniedEvent_IgnoresStallReshowCooldown()
+        {
+            // Кулдаун (LevelFlowService.StallReshowCooldownAfterDecline) относится только к
+            // автоматическому LevelStalledEvent — презентер его вообще не читает для этого пути,
+            // MiracleDeniedEvent всегда показывает окно немедленно (если оно ещё не открыто).
+            var view = new FakeLevelStalledView();
+            var eventBus = new EventBus();
+            var presenter = CreatePresenter(view, eventBus, new FakeFaithService());
+            presenter.Start();
+            eventBus.Publish(new LevelStalledEvent());
+            view.RaiseDeclineClicked(); // окно закрыто, "кулдаун" (в LevelFlowService) начался бы здесь
+
+            eventBus.Publish(new MiracleDeniedEvent(MiracleType.Rain, 20, 5f));
+
+            Assert.IsTrue(view.IsVisible);
+        }
+
+        [Test]
+        public void DeclineClicked_AfterMiracleDeniedShow_CallsAcknowledgeStallDeclined_AndHides()
+        {
+            // Decline работает так же, откуда бы окно ни было показано.
+            var view = new FakeLevelStalledView();
+            var eventBus = new EventBus();
+            var levelFlow = new FakeLevelFlowService();
+            var presenter = CreatePresenter(view, eventBus, new FakeFaithService(), levelFlow);
+            presenter.Start();
+            eventBus.Publish(new MiracleDeniedEvent(MiracleType.Rain, 20, 5f));
+
+            view.RaiseDeclineClicked();
+
+            Assert.AreEqual(1, levelFlow.AcknowledgeStallDeclinedCallCount);
+            Assert.IsFalse(view.IsVisible);
+        }
+
         [Test]
         public void Dispose_UnsubscribesFromView()
         {

@@ -15,6 +15,16 @@ namespace BlackWhiteLike.Views.UI.Overlay
     /// ключ <see cref="LocalizationKeys.LevelStalledQuestion"/>) — единственный источник текста,
     /// локальный <c>LocalizedString</c> убран (был тем же приёмом, что <c>TutorialStep.Text</c>).
     /// </summary>
+    /// <remarks>
+    /// Два независимых пути показа (шаг 10, волна 2, решение владельца):
+    /// 1. <c>LevelStalledEvent</c> — автоматический soft-fail (<c>LevelFlowService.Tick</c>), с
+    ///    кулдауном <c>LevelFlowService.StallReshowCooldownAfterDecline</c> после отказа.
+    /// 2. <c>MiracleDeniedEvent</c> — явный тап игрока по чуду, на которое не хватило Faith
+    ///    (<c>MiracleService.BeginCast</c>) — показывает окно НЕМЕДЛЕННО, кулдаун автоматического
+    ///    пути на него не распространяется (он никогда не проверяется в <see cref="OnMiracleDenied"/>).
+    /// Оба пути идут через один и тот же <see cref="_isVisible"/>-гейт: если окно уже открыто —
+    /// повторный показ (из любого пути) — no-op.
+    /// </remarks>
     public sealed class LevelStalledPresenter : IStartable, IDisposable
     {
         private readonly ILevelStalledView _view;
@@ -24,7 +34,13 @@ namespace BlackWhiteLike.Views.UI.Overlay
         private readonly ILocalizationService _localizationService;
 
         private IDisposable _levelStalledSubscription;
+        private IDisposable _miracleDeniedSubscription;
         private IDisposable _faithChangedSubscription;
+
+        // Презентер сам отслеживает видимость (ILevelStalledView — тупой UI без геттера состояния,
+        // не плодим его ради этого) — нужен, чтобы OnMiracleDenied не переоткрывал уже показанное
+        // окно и чтобы отличать "уже открыто" от "открыть снова".
+        private bool _isVisible;
 
         public LevelStalledPresenter(
             ILevelStalledView view,
@@ -43,9 +59,11 @@ namespace BlackWhiteLike.Views.UI.Overlay
         public void Start()
         {
             _view.Hide();
+            _isVisible = false;
             _view.RefillClicked += OnRefillClicked;
             _view.DeclineClicked += OnDeclineClicked;
             _levelStalledSubscription = _eventBus.Subscribe<LevelStalledEvent>(OnLevelStalled);
+            _miracleDeniedSubscription = _eventBus.Subscribe<MiracleDeniedEvent>(OnMiracleDenied);
             _faithChangedSubscription = _eventBus.Subscribe<FaithChangedEvent>(OnFaithChanged);
         }
 
@@ -54,13 +72,28 @@ namespace BlackWhiteLike.Views.UI.Overlay
             _view.RefillClicked -= OnRefillClicked;
             _view.DeclineClicked -= OnDeclineClicked;
             _levelStalledSubscription?.Dispose();
+            _miracleDeniedSubscription?.Dispose();
             _faithChangedSubscription?.Dispose();
         }
 
-        private void OnLevelStalled(LevelStalledEvent evt)
+        private void OnLevelStalled(LevelStalledEvent evt) => ShowQuestion();
+
+        /// <summary>
+        /// Шаг 10, волна 2: явный тап по чуду без хватающей Faith — показываем НЕМЕДЛЕННО, минуя
+        /// кулдаун автоматического soft-fail (см. remarks класса). Уже открытое окно — no-op.
+        /// </summary>
+        private void OnMiracleDenied(MiracleDeniedEvent evt)
+        {
+            if (_isVisible) return;
+
+            ShowQuestion();
+        }
+
+        private void ShowQuestion()
         {
             _view.SetQuestionText(_localizationService.GetText(LocalizationKeys.LevelStalledQuestion));
             _view.Show();
+            _isVisible = true;
         }
 
         private void OnRefillClicked()
@@ -69,22 +102,30 @@ namespace BlackWhiteLike.Views.UI.Overlay
             // игрока) — мгновенное пополнение Faith, как если бы реклама досмотрена до конца.
             _faithService.RefillToCapacity();
             _view.Hide();
+            _isVisible = false;
         }
 
         /// <summary>
         /// Шаг 10: отказ — оверлей скрывается БЕЗ пополнения веры, игрок продолжает без Faith.
         /// Защёлка показа LevelFlowService сбрасывается с кулдауном (AcknowledgeStallDeclined) —
-        /// повторный сталл покажет окно снова, но не мгновенно на следующем кадре.
+        /// повторный АВТОМАТИЧЕСКИЙ сталл покажет окно снова, но не мгновенно на следующем кадре;
+        /// AcknowledgeStallDeclined — no-op, если сталла сейчас нет (например, окно было открыто
+        /// через MiracleDeniedEvent) — кулдаун путь MiracleDeniedEvent не затрагивает.
         /// </summary>
         private void OnDeclineClicked()
         {
             _levelFlowService.AcknowledgeStallDeclined();
             _view.Hide();
+            _isVisible = false;
         }
 
         private void OnFaithChanged(FaithChangedEvent evt)
         {
-            if (evt.NewValue > 0f) _view.Hide();
+            if (evt.NewValue > 0f)
+            {
+                _view.Hide();
+                _isVisible = false;
+            }
         }
     }
 }

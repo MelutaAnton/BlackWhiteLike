@@ -53,6 +53,16 @@ namespace BlackWhiteLike.Views.UI.Hud
         public void Start()
         {
             _tutorialService.StepChanged += OnStepChanged;
+
+            // Playtest-фикс (2026-09-12): плашка цели в префабе активна по умолчанию, а Refresh при
+            // неактивном туториале выходит ДО Hide() — без этого явного скрытия пустая тёмная
+            // панель висела бы весь уровень у игрока с пройденным туториалом.
+            if (!_tutorialService.IsActive)
+            {
+                _view.Hide();
+                return;
+            }
+
             Refresh();
         }
 
@@ -73,8 +83,8 @@ namespace BlackWhiteLike.Views.UI.Hud
         private void Refresh()
         {
             // ВАЖНО 4 (ревью шага 10): IsActive вычисляется один раз в конструкторе TutorialService
-            // и не меняется всю сессию — если он false, View уже скрыт первым вызовом Refresh() из
-            // Start(), гонять Hide()/SetHighlight(null) каждый Tick незачем.
+            // и не меняется всю сессию — при false View скрыт ЯВНЫМ Hide() в Start() (не здесь!),
+            // гонять Hide()/SetHighlight(null) каждый Tick незачем.
             if (!_tutorialService.IsActive) return;
 
             if (!_tutorialService.HasVisibleStep)

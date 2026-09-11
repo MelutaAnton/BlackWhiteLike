@@ -41,9 +41,11 @@ namespace BlackWhiteLike.Data.Configs.Alignment
     }
 
     /// <summary>
-    /// Палитра UI-тинта по alignment-стейджам (game-design §7, §11.1, шаг 6). Заведена как данные,
-    /// но пока НИКЕМ не читается — применение к HUD отложено (решение владельца 2026-09-01).
-    /// Дефолт каждого тона — Color.white (нейтрально, пока палитра не настроена художником).
+    /// Палитра UI-тинта по alignment-стейджам (game-design §7, §11.1, шаг 6; читается — шаг 10,
+    /// волна 2, <c>AlignmentUiTintPresenter</c>). Дефолт (playtest-фикс волны 2: реальный ассет был
+    /// сериализован всеми пятью тонами Color.white ещё с шага 6 — шкала Worship красилась в белый,
+    /// текст тонул) — Saint холодный голубой, Kind тёплый бело-голубой, Neutral жёлтый (совпадает с
+    /// текущим цветом шкалы Worship), Cruel оранжево-красный, Demon густой красный.
     /// </summary>
     [Serializable]
     public struct AlignmentUiPalette
@@ -62,11 +64,11 @@ namespace BlackWhiteLike.Data.Configs.Alignment
 
         public static AlignmentUiPalette Default => new AlignmentUiPalette
         {
-            _saintTint = Color.white,
-            _kindTint = Color.white,
-            _neutralTint = Color.white,
-            _cruelTint = Color.white,
-            _demonTint = Color.white
+            _saintTint = new Color(0.55f, 0.8f, 1f, 1f),
+            _kindTint = new Color(0.7f, 0.85f, 1f, 1f),
+            _neutralTint = new Color(1f, 0.82f, 0.35f, 1f),
+            _cruelTint = new Color(0.95f, 0.55f, 0.3f, 1f),
+            _demonTint = new Color(0.85f, 0.25f, 0.25f, 1f)
         };
     }
 

@@ -38,6 +38,27 @@ namespace BlackWhiteLike.Core.Events
         }
     }
 
+    /// <summary>
+    /// Публикуется <c>MiracleService.BeginCast</c> в момент отказа НЕХВАТКОЙ Faith (game-design §4,
+    /// §9, §13, шаг 10, волна 2, решение владельца) — ТОЛЬКО по этой причине, не по другим отказам
+    /// (уже идёт сессия, тип чуда вне каталога). Явное намерение игрока: тап по чуду, на которое не
+    /// хватает веры, показывает rewarded-окно немедленно, а не ждёт автоматического soft-fail
+    /// (<c>LevelStalledEvent</c>) — см. <c>LevelStalledPresenter</c>.
+    /// </summary>
+    public readonly struct MiracleDeniedEvent
+    {
+        public readonly MiracleType Type;
+        public readonly int Cost;
+        public readonly float FaithAvailable;
+
+        public MiracleDeniedEvent(MiracleType type, int cost, float faithAvailable)
+        {
+            Type = type;
+            Cost = cost;
+            FaithAvailable = faithAvailable;
+        }
+    }
+
     /// <summary>Публикуется <c>FaithService</c> при любом реальном изменении текущего значения Faith (game-design §4, §13).</summary>
     public readonly struct FaithChangedEvent
     {
