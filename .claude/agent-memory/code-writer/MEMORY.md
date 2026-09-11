@@ -2,3 +2,7 @@
 - [Шаг 5: Worship + win](project_step5_worship_win.md) — WorshipService/AlignmentService/LevelFlowService, FSM через IGameStateBinding, InputRouter, HUD/оверлеи уровня
 - [Шаг 6: Heal/Lightning + Alignment-визуал](project_step6_heal_lightning_alignment.md) — LightningStruck-стимул, Disease-despawn, AlignmentVisualConfig/Controller
 - [Шаг 8: Meta + idle](project_step8_meta_idle.md) — MetaProgressService/EconomyService/EffectiveStatsService/IdleIncomeService, Temple/WelcomeBack UI, гейт gameplay-регистраций по _initialState
+- [Шаг 10: Туториал + локализация](project_step10_tutorial_localization.md) — TutorialService/View/Presenter, ILocalizationService, NeedSiteRegistry, фикс дыры IPlayerProfile в DI при root != null
+- [Шаг 10: Событийная цепочка таймлайна](project_step10_level_event_chain.md) — NeedTriggerMode, VillagerTossRules (общий предикат "брошен рукой"), LevelEventService теперь IDisposable/подписан на шину
+- [Шаг 10: Двойная активация + soft-fail + rewarded-согласие](project_step10_double_activation_softfail_rewarded.md) — EntryStatus.Armed, ILevelEventService.HasBlockingNeeds, ILevelFlowService.AcknowledgeStallDeclined + кулдаун, LevelStalledView вопрос/отказ
+- [Шаг 10: Off-screen-индикатор указателя](project_step10_tutorial_pointer_offscreen.md) — TutorialPointerRules (клампинг к краю + разворот, зеркалирование при z<=0), прецедент для любого world-space UI-индикатора

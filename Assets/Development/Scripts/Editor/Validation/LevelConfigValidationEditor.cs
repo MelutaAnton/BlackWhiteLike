@@ -13,12 +13,21 @@ namespace BlackWhiteLike.Editor.Validation
     /// Шаг 7 — Кампания из 5 уровней (game-design.md, шаг 7). Только чтение (никаких правок ассетов/
     /// сцены, без модальных диалогов — безопасно вызывать автоматизацией, тот же принцип, что
     /// <see cref="ThirdPartyPrefabInstanceValidator"/>): по каждому LevelConfig каталога проверяет
-    /// target/coinsReward &gt; 0, прошитость <c>_layout</c>, что таймлайн отсортирован по времени и
-    /// каждая запись имеет duration &gt; 0 и targetSiteIndex в пределах числа фактических NeedSite-
-    /// сайтов деревни (единственный источник — <see cref="VillageStructurePrefabSetupEditor.Structures"/>,
+    /// target/coinsReward &gt; 0, прошитость <c>_layout</c> и targetSiteIndex в пределах числа фактических
+    /// NeedSite-сайтов деревни (единственный источник — <see cref="VillageStructurePrefabSetupEditor.Structures"/>,
     /// та же таблица, из которой строится Village_Base.unity — не нужно открывать сцену). Каталог —
     /// без null-записей и без дублей LevelId. Читает через SerializedObject (не публичные свойства)
     /// — устойчиво к тому, что рантайм-класс может не выставлять наружу все поля.
+    /// <c>NeedTriggerMode</c> (добавлен параллельно этому скрипту, code-writer): <c>duration &lt;= 0</c>
+    /// легален для событийных режимов (AfterVillagerTossed/AfterPreviousResolved — бесконечная нужда,
+    /// истекает только по ручному разрешению игроком), но остаётся ошибкой для <c>AtTime</c> —
+    /// на таймерном уровне нужда без duration никогда не истечёт, почти наверняка опечатка (ревью шага 10).
+    /// Сортировка <c>triggerTime</c> проверяется ТОЛЬКО для записей с <c>_triggerMode == AtTime</c> — у
+    /// AfterVillagerTossed/AfterPreviousResolved triggerTime не задаёт момент срабатывания (событийный
+    /// триггер). Для AfterPreviousResolved, оказавшейся ПЕРВОЙ записью таймлайна (нет предыдущей нужды),
+    /// выдаётся предупреждение, не ошибка. Больше одной записи AfterVillagerTossed в одном таймлайне
+    /// (или единственная такая запись не первая) — тоже предупреждение (ревью шага 10): все они взводятся
+    /// ОДНОВРЕМЕННО первым броском, обычно нужна ровно одна и первой.
     /// </summary>
     public static class LevelConfigValidationEditor
     {
@@ -147,25 +156,57 @@ namespace BlackWhiteLike.Editor.Validation
             }
 
             float previousTime = float.NegativeInfinity;
+            int afterVillagerTossedCount = 0;
+            int afterVillagerTossedFirstIndex = -1;
             for (int i = 0; i < timelineProp.arraySize; i++)
             {
                 var element = timelineProp.GetArrayElementAtIndex(i);
                 float triggerTime = element.FindPropertyRelative("triggerTime").floatValue;
+
+                var triggerModeProp = element.FindPropertyRelative("_triggerMode");
+                if (triggerModeProp == null)
+                {
+                    // Ревью шага 10: null-guard — раньше падало NRE, если поле переименуют в будущем
+                    // (сейчас _triggerMode на диске всегда есть, включая немигрированные LevelConfig_02..05
+                    // со значением дефолта enum'а AtTime=0, но полагаться на это без проверки нельзя).
+                    Debug.LogError($"[Editor] {label}: EventTimeline[{i}]: поле \"_triggerMode\" не найдено на NeedEventEntry — проверьте актуальность имени поля.");
+                    errors++;
+                    continue;
+                }
+
+                var triggerMode = (NeedTriggerMode)triggerModeProp.intValue;
                 float duration = element.FindPropertyRelative("duration").floatValue;
                 int targetSiteIndex = element.FindPropertyRelative("targetSiteIndex").intValue;
 
-                if (triggerTime < previousTime)
+                // Сортировка по triggerTime и duration > 0 проверяются ТОЛЬКО для AtTime-записей — у
+                // AfterVillagerTossed/AfterPreviousResolved triggerTime не задаёт момент срабатывания
+                // (событийный триггер), а duration <= 0 (бесконечная нужда) для них легален (ревью шага 10).
+                if (triggerMode == NeedTriggerMode.AtTime)
                 {
-                    Debug.LogError($"[Editor] {label}: EventTimeline[{i}] triggerTime={triggerTime} меньше предыдущего " +
-                                    $"({previousTime}) — таймлайн не отсортирован по времени.");
-                    errors++;
-                }
-                previousTime = triggerTime;
+                    if (triggerTime < previousTime)
+                    {
+                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] triggerTime={triggerTime} меньше предыдущего " +
+                                        $"({previousTime}) — таймлайн не отсортирован по времени.");
+                        errors++;
+                    }
+                    previousTime = triggerTime;
 
-                if (duration <= 0f)
+                    if (duration <= 0f)
+                    {
+                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] (_triggerMode=AtTime) duration={duration} <= 0 — " +
+                                        "нужда никогда не истечёт по таймеру, вероятная опечатка.");
+                        errors++;
+                    }
+                }
+                else if (triggerMode == NeedTriggerMode.AfterPreviousResolved && i == 0)
                 {
-                    Debug.LogError($"[Editor] {label}: EventTimeline[{i}] duration должен быть > 0 (сейчас {duration}).");
-                    errors++;
+                    Debug.LogWarning($"[Editor] {label}: EventTimeline[0] имеет _triggerMode=AfterPreviousResolved, но это первая " +
+                                      "запись таймлайна — предыдущей нужды не существует, срабатывание неопределено.");
+                }
+                else if (triggerMode == NeedTriggerMode.AfterVillagerTossed)
+                {
+                    afterVillagerTossedCount++;
+                    if (afterVillagerTossedFirstIndex < 0) afterVillagerTossedFirstIndex = i;
                 }
 
                 if (targetSiteIndex < 0 || targetSiteIndex >= siteCount)
@@ -174,6 +215,15 @@ namespace BlackWhiteLike.Editor.Validation
                                     $"[0..{siteCount - 1}] фактических NeedSite-сайтов деревни.");
                     errors++;
                 }
+            }
+
+            // Ревью шага 10: предупреждение (не ошибка) — все записи AfterVillagerTossed взводятся
+            // ОДНОВРЕМЕННО первым броском жителя рукой, обычно дизайн подразумевает ровно одну и первой.
+            if (afterVillagerTossedCount > 1 || (afterVillagerTossedCount == 1 && afterVillagerTossedFirstIndex != 0))
+            {
+                Debug.LogWarning($"[Editor] {label}: найдено {afterVillagerTossedCount} запис(ей) с _triggerMode=AfterVillagerTossed " +
+                                  "— все записи AfterVillagerTossed взводятся ОДНОВРЕМЕННО на первом броске жителя рукой, обычно " +
+                                  "нужна ровно одна, и первой в таймлайне.");
             }
 
             return errors;

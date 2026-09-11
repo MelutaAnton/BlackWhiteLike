@@ -27,6 +27,7 @@ namespace BlackWhiteLike.Services.Meta
         private readonly Dictionary<UpgradeCategory, int> _upgradeLevels = new Dictionary<UpgradeCategory, int>();
         private float _alignmentScore;
         private DateTime _lastSeenUtc;
+        private bool _tutorialCompleted;
 
         public PlayerProfile(IProfileStorage storage)
         {
@@ -36,6 +37,7 @@ namespace BlackWhiteLike.Services.Meta
             _completedLevels = LoadCompletedLevels(_storage);
             _alignmentScore = _storage.GetFloat(ProfileKeys.AlignmentScore, 0f);
             _lastSeenUtc = LoadLastSeenUtc(_storage);
+            _tutorialCompleted = _storage.GetInt(ProfileKeys.TutorialCompleted, 0) != 0;
         }
 
         public int Coins => _coins;
@@ -89,6 +91,17 @@ namespace BlackWhiteLike.Services.Meta
         {
             _lastSeenUtc = value;
             _storage.SetString(ProfileKeys.LastSeenUtc, value.ToString(DateTimeFormat, CultureInfo.InvariantCulture));
+            _storage.Flush();
+        }
+
+        public bool TutorialCompleted => _tutorialCompleted;
+
+        public void MarkTutorialCompleted()
+        {
+            if (_tutorialCompleted) return; // уже отмечен — повторно на диск не пишем
+
+            _tutorialCompleted = true;
+            _storage.SetInt(ProfileKeys.TutorialCompleted, 1);
             _storage.Flush();
         }
 

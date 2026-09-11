@@ -1023,9 +1023,17 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 669092892}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _tutorialView
+      value: 
+      objectReference: {fileID: 1442663386}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _worshipConfig
       value: 
       objectReference: {fileID: 11400000, guid: 2aaec91ba5a6336488cb291a47a413a2, type: 2}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _tutorialConfig
+      value: 
+      objectReference: {fileID: 11400000, guid: 95af447fb4ca5e34d83b42c301a9c251, type: 2}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _villagerConfig
       value: 
@@ -1379,6 +1387,17 @@ MonoBehaviour:
       BarrelClipping: 0.25
       Anamorphism: 0
   BlendHint: 0
+--- !u!114 &1442663386 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6482101686729450903, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 669092891}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 63b04373ca8b7954fae4ce31b778a117, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Hud.TutorialView
 --- !u!1001 &1527917413
 PrefabInstance:
   m_ObjectHideFlags: 0

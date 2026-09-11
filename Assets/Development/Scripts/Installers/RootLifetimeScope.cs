@@ -60,6 +60,15 @@ namespace BlackWhiteLike.Installers
         /// <summary>Мета-прогресс (coins, апгрейды, alignment, lastSeenUtc) — game-design §8, шаг 8.</summary>
         public IMetaProgressService MetaProgress => Container.Resolve<IMetaProgressService>();
 
+        /// <summary>
+        /// Профиль игрока напрямую (шаг 10 «Polish») — до сих пор сценовые потребители читали
+        /// только через <see cref="MetaProgress"/>/<see cref="LevelProgress"/> (та же
+        /// <c>MetaProgressService</c>), но <c>TutorialService</c> нужен именно
+        /// <see cref="IPlayerProfile"/> (флаг <c>TutorialCompleted</c>). Резолвит тот же root-инстанс
+        /// <see cref="PlayerProfile"/>, что и остальные свойства выше.
+        /// </summary>
+        public IPlayerProfile PlayerProfile => Container.Resolve<IPlayerProfile>();
+
         /// <summary>Загрузчик сцен (имена — только SceneNames).</summary>
         public ISceneLoaderService SceneLoader => Container.Resolve<ISceneLoaderService>();
 

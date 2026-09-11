@@ -21,5 +21,13 @@ namespace BlackWhiteLike.Services.Level
 
         /// <summary>Продвигает Elapsed и пересчитывает stall. Вне <see cref="IsRunning"/> — no-op.</summary>
         void Tick(float dt);
+
+        /// <summary>
+        /// Шаг 10 (окно rewarded-согласия): игрок отказался пополнить веру за рекламу — сбрасывает
+        /// защёлку показа <c>LevelStalledEvent</c> с кулдауном (см. реализацию), чтобы повторный
+        /// сталл снова показал окно, но не мгновенно на следующем кадре. Не в состоянии stall —
+        /// безопасный no-op.
+        /// </summary>
+        void AcknowledgeStallDeclined();
     }
 }

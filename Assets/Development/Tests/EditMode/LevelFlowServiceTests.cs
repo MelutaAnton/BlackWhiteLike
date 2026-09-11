@@ -37,8 +37,8 @@ namespace BlackWhiteLike.Tests
 
         private sealed class FakeLevelEventService : ILevelEventService
         {
-            public bool HasActiveNeeds { get; set; }
-            public bool HasPendingNeeds { get; set; }
+            /// <summary>Единственное поле, которое реально читает LevelFlowService.Tick для stall.</summary>
+            public bool HasBlockingNeeds { get; set; }
 
             public void ResolveNeed(NeedType type, int siteIndex, bool byPlayer, MiracleType causeMiracle)
             {
@@ -207,8 +207,7 @@ namespace BlackWhiteLike.Tests
 
             var elapsedBefore = service.Elapsed;
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
 
             service.Tick(10f);
 
@@ -224,8 +223,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
             worship.Current = 10;
             worship.Target = 100;
 
@@ -242,8 +240,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 5f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
             worship.Current = 10;
             worship.Target = 100;
 
@@ -252,32 +249,17 @@ namespace BlackWhiteLike.Tests
             Assert.IsFalse(service.IsStalled);
         }
 
+        // Шаг 10: LevelFlowService.Tick читает HasBlockingNeeds (единый флаг), не HasActiveNeeds/
+        // HasPendingNeeds — тонкая семантика (какая именно нужда блокирует) тестируется на реальном
+        // LevelEventService в LevelEventServiceTests, эта Fake-версия проверяет только факт чтения.
         [Test]
-        public void Tick_HasActiveNeeds_DoesNotStall()
+        public void Tick_HasBlockingNeeds_DoesNotStall()
         {
             var eventBus = new FakeEventBus();
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = true;
-            levelEvents.HasPendingNeeds = false;
-            worship.Current = 10;
-            worship.Target = 100;
-
-            service.Tick(1f);
-
-            Assert.IsFalse(service.IsStalled);
-        }
-
-        [Test]
-        public void Tick_HasPendingNeeds_DoesNotStall()
-        {
-            var eventBus = new FakeEventBus();
-            var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
-            service.StartLevel();
-            faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = true;
+            levelEvents.HasBlockingNeeds = true;
             worship.Current = 10;
             worship.Target = 100;
 
@@ -293,8 +275,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
             worship.Current = 100;
             worship.Target = 100;
 
@@ -310,8 +291,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
             worship.Current = 10;
             worship.Target = 100;
 
@@ -329,8 +309,7 @@ namespace BlackWhiteLike.Tests
             var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
             service.StartLevel();
             faith.Current = 0f;
-            levelEvents.HasActiveNeeds = false;
-            levelEvents.HasPendingNeeds = false;
+            levelEvents.HasBlockingNeeds = false;
             worship.Current = 10;
             worship.Target = 100;
 
@@ -347,6 +326,78 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsTrue(service.IsStalled);
             Assert.AreEqual(1, eventBus.PublishedEvents.OfType<LevelStalledEvent>().Count());
+        }
+
+        // --- Шаг 10: AcknowledgeStallDeclined — окно rewarded-согласия, отказ игрока ---
+
+        [Test]
+        public void AcknowledgeStallDeclined_WhileStalled_ResetsIsStalled()
+        {
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
+            service.StartLevel();
+            faith.Current = 0f;
+            levelEvents.HasBlockingNeeds = false;
+            worship.Current = 10;
+            worship.Target = 100;
+            service.Tick(1f); // stall
+            Assert.IsTrue(service.IsStalled);
+
+            service.AcknowledgeStallDeclined();
+
+            Assert.IsFalse(service.IsStalled);
+        }
+
+        [Test]
+        public void AcknowledgeStallDeclined_ConditionStillTrue_DoesNotRepublishBeforeCooldownElapses()
+        {
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
+            service.StartLevel();
+            faith.Current = 0f;
+            levelEvents.HasBlockingNeeds = false;
+            worship.Current = 10;
+            worship.Target = 100;
+            service.Tick(1f); // stall, LevelStalledEvent #1
+            service.AcknowledgeStallDeclined();
+            eventBus.PublishedEvents.Clear();
+
+            // Faith по-прежнему 0 — условие сталла остаётся истинным каждый кадр, но кулдаун не даёт
+            // мгновенно переоткрыть окно раньше отведённого времени.
+            service.Tick(LevelFlowService.StallReshowCooldownAfterDecline - 0.5f);
+
+            Assert.IsEmpty(eventBus.PublishedEvents.OfType<LevelStalledEvent>());
+            Assert.IsFalse(service.IsStalled);
+        }
+
+        [Test]
+        public void AcknowledgeStallDeclined_AfterCooldownElapses_RepublishesLevelStalledEvent()
+        {
+            var eventBus = new FakeEventBus();
+            var service = CreateService(eventBus, out var worship, out var faith, out var levelEvents);
+            service.StartLevel();
+            faith.Current = 0f;
+            levelEvents.HasBlockingNeeds = false;
+            worship.Current = 10;
+            worship.Target = 100;
+            service.Tick(1f); // stall, LevelStalledEvent #1
+            service.AcknowledgeStallDeclined();
+            eventBus.PublishedEvents.Clear();
+
+            service.Tick(LevelFlowService.StallReshowCooldownAfterDecline + 1f); // кулдаун истёк — условие всё ещё истинно (Faith == 0)
+
+            Assert.IsTrue(service.IsStalled);
+            Assert.AreEqual(1, eventBus.PublishedEvents.OfType<LevelStalledEvent>().Count());
+        }
+
+        [Test]
+        public void AcknowledgeStallDeclined_WhileNotStalled_IsNoOp()
+        {
+            var service = CreateService(new FakeEventBus(), out _, out _, out _);
+            service.StartLevel();
+
+            Assert.DoesNotThrow(() => service.AcknowledgeStallDeclined());
+            Assert.IsFalse(service.IsStalled);
         }
     }
 }

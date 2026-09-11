@@ -51,6 +51,7 @@ namespace BlackWhiteLike.Controllers.Village
         private ILevelEventService _levelEventService;
         private MiracleCatalogConfig _miracleCatalog;
         private IVillagerFactory _villagerFactory;
+        private INeedSiteRegistry _needSiteRegistry;
         private bool _initialized;
 
         // Шаг 4: true между Triggered и Resolved/Expired — читается обработчиком MiracleCastEvent,
@@ -72,7 +73,8 @@ namespace BlackWhiteLike.Controllers.Village
             VillagerConfig villagerConfig,
             ILevelEventService levelEventService,
             MiracleCatalogConfig miracleCatalog,
-            IVillagerFactory villagerFactory)
+            IVillagerFactory villagerFactory,
+            INeedSiteRegistry needSiteRegistry)
         {
             _eventBus = eventBus;
             _stateService = stateService;
@@ -80,6 +82,13 @@ namespace BlackWhiteLike.Controllers.Village
             _levelEventService = levelEventService;
             _miracleCatalog = miracleCatalog;
             _villagerFactory = villagerFactory;
+            _needSiteRegistry = needSiteRegistry;
+
+            // Шаг 10 (Polish): реестр мировых позиций NeedSite. Регистрация здесь покрывает самый
+            // первый Construct (до первого OnEnable — тот пропускает Register веткой
+            // "!_initialized return"); повторные SetActive(false→true) регистрируют точку заново в
+            // OnEnable (ВАЖНО 3, ревью шага 10, см. ниже).
+            _needSiteRegistry.Register(_siteIndex, transform);
 
             // Триггеры требуют Rigidbody (CLAUDE.md, "Известные нюансы Unity Physics") — без него
             // OnTriggerEnter молчит, если ни у одного участника нет Rigidbody. Kinematic + без
@@ -119,11 +128,22 @@ namespace BlackWhiteLike.Controllers.Village
             // путь безопасно пропускается (_initialized ещё false).
             if (!_initialized) return;
             Subscribe();
+
+            // ВАЖНО 3 (ревью шага 10): симметрично Unregister в OnDisable ниже — раньше повторный
+            // SetActive(false→true) навсегда терял точку в реестре (Register был только в
+            // Construct, который при простом toggle не вызывается повторно). Register
+            // идемпотентен (перезаписывает ту же пару siteIndex/Transform).
+            _needSiteRegistry.Register(_siteIndex, transform);
         }
 
         private void OnDisable()
         {
             Unsubscribe();
+
+            // Шаг 10 (Polish): симметрично Register в Construct/OnEnable выше — точка больше не
+            // отвечает на запрос мировой позиции (например, указателем туториала) до следующего
+            // OnEnable, который зарегистрирует её заново.
+            if (_needSiteRegistry != null) _needSiteRegistry.Unregister(_siteIndex);
 
             // Незначительное (ревью шага 4): сайт выключен — дальнейшее состояние нужды неизвестно
             // (пока подписки сняты, LevelEventService мог бы разрешить/просрочить её без участия

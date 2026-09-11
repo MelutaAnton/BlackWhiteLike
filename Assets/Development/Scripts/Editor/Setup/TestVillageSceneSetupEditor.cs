@@ -11,6 +11,7 @@ using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
+using BlackWhiteLike.Data.Configs.Tutorial;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
 using BlackWhiteLike.Data.Configs.Worship;
@@ -74,6 +75,9 @@ namespace BlackWhiteLike.Editor.Setup
 
         // Шаг 5 — Worship + win (game-design.md §19.5).
         private const string WorshipConfigPath = "Assets/Development/Data/Configs/Worship/WorshipConfig.asset";
+
+        // Tutorial — обучение первого уровня (TutorialConfig/TutorialView, Editor/UI/TutorialConfigSetupEditor.cs).
+        private const string TutorialConfigPath = "Assets/Development/Data/Configs/Tutorial/TutorialConfig_Level01.asset";
 
         /// <summary>
         /// Позиции структур на сцене. Имя ← ThirdParty-источник ← масштаб ← NeedType — теперь
@@ -189,6 +193,7 @@ namespace BlackWhiteLike.Editor.Setup
             var faithConfig = AssetDatabase.LoadAssetAtPath<FaithConfig>(FaithConfigPath);
             var vfxConfig = AssetDatabase.LoadAssetAtPath<VfxConfig>(VfxConfigPath);
             var worshipConfig = AssetDatabase.LoadAssetAtPath<WorshipConfig>(WorshipConfigPath);
+            var tutorialConfig = AssetDatabase.LoadAssetAtPath<TutorialConfig>(TutorialConfigPath);
             WarnIfMissing(handConfig, HandConfigPath);
             WarnIfMissing(cameraConfig, CameraConfigPath);
             WarnIfMissing(villagerConfig, VillagerConfigPath);
@@ -199,6 +204,7 @@ namespace BlackWhiteLike.Editor.Setup
             WarnIfMissing(faithConfig, FaithConfigPath);
             WarnIfMissing(vfxConfig, VfxConfigPath);
             WarnIfMissing(worshipConfig, WorshipConfigPath);
+            WarnIfMissing(tutorialConfig, TutorialConfigPath);
 
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Test Village Scene");
@@ -217,6 +223,7 @@ namespace BlackWhiteLike.Editor.Setup
             // эта сцена больше не расставляет статически).
             PopulateVillageLayout(levelConfig, villageLayoutConfig);
             PopulateEventTimeline(levelConfig, needSiteObjects.Count);
+            MigrateLevelConfig01TriggerModes(levelConfig);
 
             // Рука и камера — переиспользуем код TestHandSceneSetupEditor (не дублируем).
             var godHand = TestHandSceneSetupEditor.EnsureGodHand();
@@ -245,9 +252,13 @@ namespace BlackWhiteLike.Editor.Setup
             var levelStalledView = hudRootTransform != null ? hudRootTransform.GetComponentInChildren<LevelStalledView>(true) : null;
             var pauseOverlayView = hudRootTransform != null ? hudRootTransform.GetComponentInChildren<PauseOverlayView>(true) : null;
 
+            // TutorialView — на корне того же HUD-канваса, что LevelHudView/MiraclePanelView (см. Editor/UI/LevelHudSetupEditor).
+            var tutorialView = Object.FindAnyObjectByType<TutorialView>(FindObjectsInactive.Include);
+
             WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
                 miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView,
-                worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView, initialState);
+                worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView, initialState,
+                tutorialConfig, tutorialView);
 
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10): материалы/конфиг/[AlignmentVisual] +
             // прошивка _handRenderers/_templeRenderers и ссылок на GameLifetimeScope. Вызывается
@@ -906,6 +917,93 @@ namespace BlackWhiteLike.Editor.Setup
                       "(Fire@0 t=3 dur=15, Disease@1 t=8 dur=15, Hunger@2 t=12 dur=15).");
         }
 
+        /// <summary>
+        /// Правка таймлайна ТОЛЬКО LevelConfig_01 (новая семантика <c>NeedTriggerMode</c>, ТЗ владельца):
+        /// запись 0 (Fire, site 0) — AfterVillagerTossed, записи 1 (Disease, site 1) и 2 (Hunger, site 2) —
+        /// AfterPreviousResolved, все три с duration=0 (нужда не истекает — <see cref="NeedEventEntry.duration"/>
+        /// &lt;= 0 означает бесконечную нужду). Уровни 2-5 НЕ трогаем — у них <c>_triggerMode</c> остаётся
+        /// AtTime по дефолту enum'а. Сопоставление записи — по индексу с проверкой ожидаемого NeedType
+        /// (порядок задаёт <see cref="DefaultEventTimeline"/>/<see cref="PopulateEventTimeline"/> выше:
+        /// Fire@0, Disease@1, Hunger@2) — расхождение логируется и пропускается, а не пишется вслепую.
+        /// Идемпотентен: совпадающие значения не перезаписываются и не логируются, изменение — "старое -&gt; новое".
+        /// </summary>
+        private static readonly (int Index, NeedType ExpectedType, NeedTriggerMode Mode, float Duration)[] LevelConfig01TriggerModeOverrides =
+        {
+            (0, NeedType.Fire, NeedTriggerMode.AfterVillagerTossed, 0f),
+            (1, NeedType.Disease, NeedTriggerMode.AfterPreviousResolved, 0f),
+            (2, NeedType.Hunger, NeedTriggerMode.AfterPreviousResolved, 0f),
+        };
+
+        private static void MigrateLevelConfig01TriggerModes(LevelConfig levelConfig)
+        {
+            if (levelConfig == null) return;
+
+            var so = new SerializedObject(levelConfig);
+            var timelineProp = so.FindProperty("_eventTimeline");
+            if (timelineProp == null)
+            {
+                Debug.LogError("[Editor] Поле \"_eventTimeline\" не найдено на LevelConfig — триггер-моды LevelConfig_01 не прошиты.");
+                return;
+            }
+
+            int changed = 0;
+            foreach (var (index, expectedType, mode, duration) in LevelConfig01TriggerModeOverrides)
+            {
+                if (index >= timelineProp.arraySize)
+                {
+                    Debug.LogWarning($"[Editor] LevelConfig_01.EventTimeline[{index}] отсутствует (arraySize={timelineProp.arraySize}) — триггер-мод не прошит.");
+                    continue;
+                }
+
+                var element = timelineProp.GetArrayElementAtIndex(index);
+                var typeProp = element.FindPropertyRelative("type");
+                if ((NeedType)typeProp.intValue != expectedType)
+                {
+                    Debug.LogWarning($"[Editor] LevelConfig_01.EventTimeline[{index}]: тип {(NeedType)typeProp.intValue} не совпадает " +
+                                      $"с ожидаемым {expectedType} — триггер-мод не прошит (проверьте порядок записей таймлайна).");
+                    continue;
+                }
+
+                var modeProp = element.FindPropertyRelative("_triggerMode");
+                if (modeProp == null)
+                {
+                    Debug.LogError("[Editor] Поле \"_triggerMode\" не найдено на NeedEventEntry — проверьте, что code-writer добавил его.");
+                    continue;
+                }
+
+                var durationProp = element.FindPropertyRelative("duration");
+
+                var oldMode = (NeedTriggerMode)modeProp.intValue;
+
+                // Ревью шага 10: если _triggerMode уже НЕ AtTime — миграция для этой записи уже была
+                // применена (этим же скриптом ранее, или руками владельцем на что-то ещё, не обязательно
+                // совпадающее с целевым mode ниже) — пропускаем ВЕСЬ блок (mode И duration), ручные правки
+                // владельца не откатываем повторным прогоном.
+                if (oldMode != NeedTriggerMode.AtTime) continue;
+
+                if (oldMode != mode)
+                {
+                    Debug.Log($"[Editor] LevelConfig_01.EventTimeline[{index}]._triggerMode: {oldMode} -> {mode}.");
+                    modeProp.intValue = (int)mode;
+                    changed++;
+                }
+
+                var oldDuration = durationProp.floatValue;
+                if (!Mathf.Approximately(oldDuration, duration))
+                {
+                    Debug.Log($"[Editor] LevelConfig_01.EventTimeline[{index}].duration: {oldDuration} -> {duration}.");
+                    durationProp.floatValue = duration;
+                    changed++;
+                }
+            }
+
+            if (changed == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(levelConfig);
+            Debug.Log($"[Editor] LevelConfig_01.EventTimeline: обновлено {changed} значени(й) триггер-модов/duration.");
+        }
+
         // ------------------------------------------------------------------------------------
         // Прошивка ссылок на Composition Root
         // ------------------------------------------------------------------------------------
@@ -917,7 +1015,8 @@ namespace BlackWhiteLike.Editor.Setup
             MiracleTargetingController miracleTargeting, MiracleImpactController miracleImpact, MiracleVfxController miracleVfx,
             MiraclePanelView miraclePanelView, FaithBarView faithBarView,
             WorshipConfig worshipConfig, LevelHudView levelHudView, LevelCompleteView levelCompleteView,
-            LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView, GameState initialState)
+            LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView, GameState initialState,
+            TutorialConfig tutorialConfig, TutorialView tutorialView)
         {
             if (scope == null)
             {
@@ -925,7 +1024,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 21;
+            const int expected = 23;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -953,6 +1052,9 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetRef(so, "_levelCompleteView", levelCompleteView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_levelStalledView", levelStalledView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_pauseOverlayView", pauseOverlayView, ownerLabel) ? 1 : 0;
+            // Tutorial — обучение первого уровня (TutorialConfig/TutorialView).
+            wired += SetRef(so, "_tutorialConfig", tutorialConfig, ownerLabel) ? 1 : 0;
+            wired += SetRef(so, "_tutorialView", tutorialView, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)

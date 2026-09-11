@@ -32,6 +32,7 @@ namespace BlackWhiteLike.Editor.Tools
             deleted += DeleteIfExists(ProfileKeys.Coins);
             deleted += DeleteIfExists(ProfileKeys.AlignmentScore);
             deleted += DeleteIfExists(ProfileKeys.LastSeenUtc);
+            deleted += DeleteIfExists(ProfileKeys.TutorialCompleted);
 
             // Ключи апгрейдов — по всем значениям UpgradeCategory (тот же способ сборки ключа,
             // что PlayerProfile.GetUpgradeLevel: префикс + имя enum-значения).

@@ -19,6 +19,7 @@ using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Rewards;
 using BlackWhiteLike.Data.Configs.Throwable;
+using BlackWhiteLike.Data.Configs.Tutorial;
 using BlackWhiteLike.Data.Configs.Upgrades;
 using BlackWhiteLike.Data.Configs.Villagers;
 using BlackWhiteLike.Data.Configs.Vfx;
@@ -34,8 +35,10 @@ using BlackWhiteLike.Services.Hand;
 using BlackWhiteLike.Services.Haptics;
 using BlackWhiteLike.Services.Idle;
 using BlackWhiteLike.Services.Level;
+using BlackWhiteLike.Services.Localization;
 using BlackWhiteLike.Services.Meta;
 using BlackWhiteLike.Services.Miracles;
+using BlackWhiteLike.Services.Tutorial;
 using BlackWhiteLike.Services.Village;
 using BlackWhiteLike.Services.Worship;
 using BlackWhiteLike.Views.UI.Hud;
@@ -97,6 +100,10 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private TempleView _templeView;
         [SerializeField] private WelcomeBackView _welcomeBackView;
 
+        [Header("Шаг 10 — Polish (туториал)")]
+        [SerializeField] private TutorialConfig _tutorialConfig;
+        [SerializeField] private TutorialView _tutorialView;
+
         protected override void Configure(IContainerBuilder builder)
         {
             // Шаг 7: root-scope (Bootstrap, DontDestroyOnLoad) — может отсутствовать (тестовые
@@ -122,6 +129,10 @@ namespace BlackWhiteLike.Installers
             // Temple). NullHapticsService — no-op контрактная точка, реализация с вибрацией
             // добавляется позже без изменения точек вызова.
             builder.Register<NullHapticsService>(Lifetime.Singleton).As<IHapticsService>();
+
+            // Шаг 10 (Polish): локаль — во ВСЕХ сценах безусловно (тот же принцип, что
+            // NullHapticsService выше), пригодится мета-сценам в следующей волне локализации.
+            builder.Register<SystemLanguageLocalizationService>(Lifetime.Singleton).As<ILocalizationService>();
 
             // Input — ITickable, тикается VContainer'ом каждый кадр без MonoBehaviour.
             // RegisterEntryPoint делает AsImplementedInterfaces() сам по себе — доп. .As<>() после него
@@ -169,6 +180,9 @@ namespace BlackWhiteLike.Installers
 
                 // Шаг 4 — Чудеса + Faith.
                 RegisterMiracleSystems(builder);
+
+                // Шаг 10 — Polish (туториал уровня 1).
+                RegisterTutorial(builder);
             }
             else
             {
@@ -334,7 +348,15 @@ namespace BlackWhiteLike.Installers
             builder.Register<PoolManager>(Lifetime.Singleton).As<IPoolManager, IDisposable>();
 
             builder.Register<VillagerStateService>(Lifetime.Singleton).As<IVillagerStateService, ITickable>();
-            builder.Register<LevelEventService>(Lifetime.Singleton).As<ILevelEventService, ITickable>();
+            // Шаг 10: IDisposable — сервис теперь подписан на шину (VillagerStateChangedEvent/
+            // NeedResolvedEvent, событийная цепочка таймлайна), контейнер отписывает при закрытии
+            // scope (тот же механизм, что PoolManager/WorshipService выше).
+            builder.Register<LevelEventService>(Lifetime.Singleton).As<ILevelEventService, ITickable, IDisposable>();
+
+            // Шаг 10 (Polish): реестр мировых позиций NeedSite — нужен NeedSiteController
+            // безусловно в этой сцене (сам Construct вызывает Register), поэтому регистрируется
+            // здесь же, а не под отдельным гейтом туториала (RegisterTutorial).
+            builder.Register<NeedSiteRegistry>(Lifetime.Singleton).As<INeedSiteRegistry>();
 
             builder.Register<VillagerFactory>(Lifetime.Singleton).As<IVillagerFactory>();
 
@@ -651,6 +673,12 @@ namespace BlackWhiteLike.Installers
                 // а не двумя RegisterInstance с двумя отдельными Registration на один объект.
                 builder.RegisterInstance(root.MetaProgress).As<IMetaProgressService, ILevelProgressService>();
 
+                // Шаг 10 (Polish): TutorialService нужен именно IPlayerProfile (TutorialCompleted),
+                // не через MetaProgress/LevelProgress — раньше сценовый контейнер вообще не
+                // регистрировал IPlayerProfile при root != null (только производные интерфейсы
+                // MetaProgressService), см. remarks RootLifetimeScope.PlayerProfile.
+                builder.RegisterInstance(root.PlayerProfile);
+
                 builder.RegisterInstance(root.SceneLoader);
 
                 // Мост LevelCompletedEvent -> прогресс нужен только игровой сцене (симметрично
@@ -782,6 +810,29 @@ namespace BlackWhiteLike.Installers
             else
             {
                 Debug.Log("[GameLifetimeScope] _templeView не прошит (ожидаемо для сцен без Temple) — экран Temple не будет работать в этой сцене.");
+            }
+        }
+
+        /// <summary>
+        /// Онбординг-туториал уровня 1 (шаг 10 «Polish»). Условная регистрация по прошитости ОБОИХ
+        /// полей (тот же паттерн, что MiraclePanelView/FaithBarView/AlignmentVisual) — без view
+        /// показывать туториал некому, без конфига сервису нечего активировать.
+        /// <c>TutorialService</c> сам решает, актуален ли туториал для текущего уровня
+        /// (<c>TutorialConfig.TargetLevel</c>) и не пройден ли он уже (<c>IPlayerProfile.TutorialCompleted</c>) —
+        /// регистрация здесь не завязана на это решение, только на наличие UI/данных в сцене.
+        /// </summary>
+        private void RegisterTutorial(IContainerBuilder builder)
+        {
+            if (_tutorialConfig != null && _tutorialView != null)
+            {
+                builder.RegisterInstance(_tutorialConfig);
+                builder.RegisterComponent(_tutorialView);
+                builder.Register<TutorialService>(Lifetime.Singleton).As<ITutorialService, IDisposable>();
+                builder.RegisterEntryPoint<TutorialPresenter>();
+            }
+            else
+            {
+                Debug.Log("[GameLifetimeScope] _tutorialConfig и/или _tutorialView не прошиты — туториал не будет работать в этой сцене.");
             }
         }
     }

@@ -119,6 +119,44 @@ Defect classes that have appeared across steps and are worth checking first on e
     reparent; anything full-stretch and opaque (backgrounds, `Dim` blockers) must stay outside the fitted
     node, only content goes inside.
 
+13. **A state machine gated on live events, driven by data whose events fire only ONCE.** Step 10
+    (tutorial): `TutorialService.ProcessTrigger` compares an incoming event only against the CURRENT
+    step's activation/completion trigger — an event that arrives while an earlier step is still
+    pending is dropped, and there is no latched world state to re-check when the next step becomes
+    current. `TutorialConfig_Level01` step 2 activates on `NeedTriggered(Fire)`, but
+    `LevelConfig_01._eventTimeline` fires Fire exactly once at t=3 s (`LevelEventService.cs:87`
+    publishes once per entry), so unless the player finishes step 1 within 3 s the tutorial stalls
+    forever. Same class, second path: step 3 waits for `NeedResolvedByPlayer(Fire)` while the need
+    `duration: 15` expires into `NeedExpiredEvent` with no fallback. **Check:** for any
+    event-gated sequencer, cross-read the *data asset* that produces those events — count how many
+    times each awaited event can fire and whether it can fire before the waiting state is reached;
+    a once-per-level event behind a player-paced gate is a deadlock, not a race.
+
+14. **"Last event of any kind" used where the feature means "the one of THIS kind".** Step 10:
+    `TutorialService.OnNeedTriggered` latches `_activeNeedSiteIndex` for ANY `NeedType`, and its
+    xml-remarks assert "on level 1 this is effectively always the same Fire need" — but
+    `LevelConfig_01` has three overlapping needs (Fire t=3, Disease t=8, Hunger t=12, each
+    `duration: 15`), so the "point at the burning house" pointer aims at the Disease/Hunger site.
+    **Check:** any single-slot `_activeX` field fed by a typed event stream — verify against the
+    level/timeline data that only one instance can be live at a time; a claim in a comment is not
+    evidence.
+
+15. **A runtime rotation/offset constant and the sprite it compensates for are chosen by two different
+    agents and never cross-checked.** Step 10 (pointer polish): `TutorialView._pointerRotationOffsetDeg`
+    defaults to `-90f` with a comment reasoning "если спрайт нарисован смотрящим ВВЕРХ" (correct for an
+    up-arrow), while `EditorSpriteUtility.HudIconPaths.TutorialPointer` wires `03_Arrow_bot.png` — a
+    chevron pointing DOWN, its own comment saying so. A down-arrow sits at −90° in math convention, so the
+    correct compensation is **+90**; with −90 the indicator points exactly 180° away from the target on
+    every clamped frame. Nine EditMode tests covered the pure-math half (`TutorialPointerRules` angle) and
+    none covered the composition `angleDeg + offset` in the View, which is where the sign lives. Made worse
+    because the field is a `[SerializeField]` the editor script does **not** stamp: the prefab froze `-90`
+    at `AddComponent` time, so fixing the C# initializer alone changes nothing (defect class 2, second
+    instance). **Check:** whenever a diff adds a rotation/flip/offset constant whose only justification is
+    "the art points direction D", open the actual asset the editor script wires (`Read` the PNG — it
+    renders) and verify D; then verify the constant is either stamped by the builder or matches what is
+    already serialized in the prefab YAML. A derived constant that the builder does not stamp violates
+    `.claude/rules/editor-files.md` ("derived-значения между ассетами штампуются сборкой").
+
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 
 **How to apply:** for any new MonoBehaviour in a diff, grep every `[SerializeField]` name against the editor scripts that instantiate it, and grep every physics property the runtime *reads* (`isKinematic`, `useGravity`, `constraints`, `collisionDetectionMode`) against what the editor script *writes*. Report mismatches as blockers — both defect classes are invisible until playtest. For material-swapping controllers, also compare renderer **count and material heterogeneity** in the source prefab YAML against what the config's per-stage array can express: step 6's Synty church has 2 MeshRenderers with 2 *different* materials, but `AlignmentStage._templeMaterials` is a slot array, so a 1-element stage silently repaints both.

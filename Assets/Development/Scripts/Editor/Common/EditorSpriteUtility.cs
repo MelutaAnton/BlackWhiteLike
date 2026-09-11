@@ -37,7 +37,17 @@ namespace BlackWhiteLike.Editor.Common
         {
             public const string Pause = BlueIconsFolder + "15_pause.png";
             // Шаг 8 (Meta + idle) — иконка монеты для Temple/WelcomeBack (найдено на диске: .../Flat/Blue/101_Coin.png).
+            // Playtest шага 10: та же иконка переиспользуется в LevelCompleteOverlay (CoinsLabel) —
+            // единственный источник, второй константы не заводим.
             public const string Coin = BlueIconsFolder + "101_Coin.png";
+            // Tutorial — указатель на активную цель (TutorialView._pointer). Стрелка "вниз" — естественно
+            // читается как "смотри сюда" над целевым элементом; позицию/поворот двигает рантайм.
+            public const string TutorialPointer = BlueIconsFolder + "03_Arrow_bot.png";
+            // Playtest шага 10: LevelCompleteOverlay — четыре числа без подписей были нечитаемы владельцу.
+            // Иконки подписывают Worship-итог/Awe/Fear/Coins (Coins переиспользует HudIconPaths.Coin).
+            public const string Worship = BlueIconsFolder + "252_crown.png"; // корона — общий итог поклонения
+            public const string Awe = BlueIconsFolder + "85_sun.png";        // солнце — светлое почитание
+            public const string Fear = BlueIconsFolder + "82_demon.png";     // демон — тёмное почитание/страх
         }
 
         // Шаг 7 (Кампания из 5 уровней) — иконки экрана выбора уровня. Colored-иконка (не Blue) для

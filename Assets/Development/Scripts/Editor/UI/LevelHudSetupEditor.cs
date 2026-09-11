@@ -130,6 +130,9 @@ namespace BlackWhiteLike.Editor.UI
 
             Debug.Log("[Editor] Build Level HUD завершён: " + PrefabPath +
                       (sceneInstance != null ? ", инстанс в сцене готов." : "."));
+            Debug.Log("[Editor] Напоминание: после Build Level HUD обязателен повторный прогон " +
+                      "BlackWhiteLike/UI/Apply Safe Area To Canvases и BlackWhiteLike/UI/Enforce Touch Hit Zones " +
+                      "(ревью — билд затирает их правки, hit-зоны схлопываются 88 -> 72).");
         }
 
         /// <summary>
@@ -294,6 +297,51 @@ namespace BlackWhiteLike.Editor.UI
             BuildLevelCompleteOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
             BuildLevelStalledOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
             BuildPauseOverlay(root.transform, fontAsset, ref totalWired, ref totalExpected);
+
+            // Tutorial — обучение первого уровня (game-design §19 шаг 10, TutorialConfig/TutorialView).
+            // Панель цели — сиблинг остальных панелей (не потомок гасимых оверлеев); оба узла — ПОВЕРХ
+            // игрового HUD, но ПОД оверлеями (ревью: TutorialPresenter тикает при timeScale=0, без
+            // этого плашка и стрелка висели бы над затемнением паузы/итогов).
+            BuildTutorialObjectivePanel(root.transform, fontAsset, out var objectivePanelGo,
+                out var objectiveText, out var objectiveProgressText);
+            var tutorialPointerRt = BuildTutorialPointer(root.transform);
+            PlaceBeforeOverlays(objectivePanelGo.transform);
+            PlaceBeforeOverlays(tutorialPointerRt.transform);
+
+            var tutorialView = root.GetComponent<TutorialView>();
+            if (tutorialView == null) tutorialView = root.AddComponent<TutorialView>();
+
+            // Кнопки чудес и WorshipBar уже собраны выше в этом методе — переиспользуем те же узлы
+            // (FindOrCreateUIChild без создания дублей, панели существуют).
+            var miraclePanelGo = FindOrCreateUIChild(root.transform, "MiraclePanel");
+            var worshipBarGo = FindOrCreateUIChild(root.transform, "WorshipBar");
+
+            var tutorialSo = new SerializedObject(tutorialView);
+            int tutorialWired = 0;
+            tutorialWired += SetRef(tutorialSo, "_objectivePanel", objectivePanelGo, "TutorialView") ? 1 : 0;
+            tutorialWired += SetRef(tutorialSo, "_objectiveText", objectiveText, "TutorialView") ? 1 : 0;
+            tutorialWired += SetRef(tutorialSo, "_objectiveProgressText", objectiveProgressText, "TutorialView") ? 1 : 0;
+            tutorialWired += SetRef(tutorialSo, "_pointer", tutorialPointerRt, "TutorialView") ? 1 : 0;
+            tutorialWired += SetChildRef(tutorialSo, "_rainButtonTarget", miraclePanelGo.transform, "MiracleButton_" + MiracleType.Rain, "TutorialView") ? 1 : 0;
+            tutorialWired += SetChildRef(tutorialSo, "_healButtonTarget", miraclePanelGo.transform, "MiracleButton_" + MiracleType.Heal, "TutorialView") ? 1 : 0;
+            tutorialWired += SetChildRef(tutorialSo, "_fireballButtonTarget", miraclePanelGo.transform, "MiracleButton_" + MiracleType.Fireball, "TutorialView") ? 1 : 0;
+            tutorialWired += SetChildRef(tutorialSo, "_lightningButtonTarget", miraclePanelGo.transform, "MiracleButton_" + MiracleType.Lightning, "TutorialView") ? 1 : 0;
+            tutorialWired += SetRef(tutorialSo, "_worshipBarTarget", (RectTransform)worshipBarGo.transform, "TutorialView") ? 1 : 0;
+
+            // Derived-значение (editor-files.md): поправка поворота стрелки на 100% определяется
+            // выбранным спрайтом (HudIconPaths.TutorialPointer = 03_Arrow_bot, "смотрит" вниз →
+            // +90°) — штампуется сборкой рядом со спрайтом, а не правится руками в инспекторе.
+            var offsetProp = tutorialSo.FindProperty("_pointerRotationOffsetDeg");
+            if (offsetProp != null && !Mathf.Approximately(offsetProp.floatValue, TutorialPointerRotationOffsetDeg))
+            {
+                Debug.Log($"[Editor] TutorialView._pointerRotationOffsetDeg: {offsetProp.floatValue} -> {TutorialPointerRotationOffsetDeg} (спрайт 03_Arrow_bot).");
+                offsetProp.floatValue = TutorialPointerRotationOffsetDeg;
+            }
+
+            tutorialSo.ApplyModifiedProperties();
+            LogWireResult("TutorialView", tutorialWired, 9);
+            totalWired += tutorialWired;
+            totalExpected += 9;
 
             Debug.Log($"[Editor] LevelHudCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
 
@@ -767,6 +815,118 @@ namespace BlackWhiteLike.Editor.UI
         }
 
         // ------------------------------------------------------------------------------------
+        // Tutorial — обучение первого уровня (TutorialConfig/TutorialView)
+        // ------------------------------------------------------------------------------------
+
+        /// <summary>
+        /// Верх-центр канваса, под AlignmentIndicator (который занимает y от -64 до -80) — панель
+        /// текущей цели туториала: полупрозрачный тёмный фон + заголовок (до 2 строк) + строка
+        /// прогресса помельче под ним. Активна по умолчанию — рантайм (<c>TutorialView</c>) сам
+        /// скрывает панель вне активного туториала/шага.
+        /// </summary>
+        private static void BuildTutorialObjectivePanel(Transform canvasRoot, TMP_FontAsset fontAsset,
+            out GameObject panelGo, out TextMeshProUGUI objectiveText, out TextMeshProUGUI objectiveProgressText)
+        {
+            panelGo = FindOrCreateUIChild(canvasRoot, "TutorialObjectivePanel");
+            var panelRt = (RectTransform)panelGo.transform;
+            SetAnchor(panelRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -120f), new Vector2(720f, 130f));
+
+            var backgroundImage = panelGo.GetComponent<Image>();
+            if (backgroundImage == null) backgroundImage = panelGo.AddComponent<Image>();
+            backgroundImage.raycastTarget = false;
+            backgroundImage.maskable = false;
+            backgroundImage.color = new Color(0.05f, 0.05f, 0.07f, 0.75f);
+
+            var textGo = FindOrCreateUIChild(panelGo.transform, "ObjectiveText");
+            var textRt = (RectTransform)textGo.transform;
+            SetAnchor(textRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0f, -16f), new Vector2(680f, 76f));
+            objectiveText = textGo.GetComponent<TextMeshProUGUI>();
+            if (objectiveText == null) objectiveText = textGo.AddComponent<TextMeshProUGUI>();
+            objectiveText.raycastTarget = false;
+            objectiveText.maskable = false;
+            objectiveText.font = fontAsset;
+            objectiveText.fontSize = 30f;
+            objectiveText.alignment = TextAlignmentOptions.Center;
+            objectiveText.textWrappingMode = TextWrappingModes.Normal;
+
+            var progressGo = FindOrCreateUIChild(panelGo.transform, "ObjectiveProgressText");
+            var progressRt = (RectTransform)progressGo.transform;
+            SetAnchor(progressRt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(0f, 10f), new Vector2(680f, 30f));
+            objectiveProgressText = progressGo.GetComponent<TextMeshProUGUI>();
+            if (objectiveProgressText == null) objectiveProgressText = progressGo.AddComponent<TextMeshProUGUI>();
+            objectiveProgressText.raycastTarget = false;
+            objectiveProgressText.maskable = false;
+            objectiveProgressText.font = fontAsset;
+            objectiveProgressText.fontSize = 22f;
+            objectiveProgressText.alignment = TextAlignmentOptions.Center;
+
+            if (!panelGo.activeSelf)
+            {
+                panelGo.SetActive(true); // по умолчанию активна — рантайм скрывает вне туториала.
+                Debug.Log("[Editor] TutorialObjectivePanel: выключена -> включена (по умолчанию активна).");
+            }
+        }
+
+        /// <summary>
+        /// Указатель-стрелка на активную цель туториала (кнопка чуда / активный NeedSite / WorshipBar).
+        /// Порядок сиблингов задаёт вызывающий через <see cref="PlaceBeforeOverlays"/> — поверх HUD,
+        /// но под оверлеями. Позицию в рантайме двигает <c>TutorialView</c> (RectTransform.position),
+        /// стартовое значение — в центре, неактивен по умолчанию. Поправка поворота под этот спрайт
+        /// (+90° для 03_Arrow_bot) — <see cref="TutorialPointerRotationOffsetDeg"/>, штампуется в поле
+        /// TutorialView при прошивке.
+        /// </summary>
+        private static RectTransform BuildTutorialPointer(Transform canvasRoot)
+        {
+            var go = FindOrCreateUIChild(canvasRoot, "TutorialPointer");
+            var rt = (RectTransform)go.transform;
+            SetAnchor(rt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                Vector2.zero, new Vector2(48f, 48f));
+
+            var image = go.GetComponent<Image>();
+            if (image == null) image = go.AddComponent<Image>();
+            image.raycastTarget = false;
+            image.maskable = false;
+            image.color = Color.white;
+            image.preserveAspect = true;
+            var arrowSprite = EditorSpriteUtility.EnsureSpriteAtPath(EditorSpriteUtility.HudIconPaths.TutorialPointer);
+            if (arrowSprite != null) image.sprite = arrowSprite;
+
+            if (go.activeSelf)
+            {
+                go.SetActive(false);
+                Debug.Log("[Editor] TutorialPointer: активен по умолчанию -> выключен.");
+            }
+
+            return rt;
+        }
+
+        // Derived от спрайта HudIconPaths.TutorialPointer (03_Arrow_bot смотрит вниз = -90° в
+        // математической системе) — стрелку доворачивает до направления на цель поправка +90°.
+        // Меняешь спрайт — меняй и константу (штампуется в TutorialView._pointerRotationOffsetDeg).
+        private const float TutorialPointerRotationOffsetDeg = 90f;
+
+        /// <summary>
+        /// Ставит узел ПЕРЕД первым оверлеем среди его сиблингов: туториол-узлы рисуются поверх
+        /// игрового HUD, но под затемнением паузы/итогов/сталла (ревью шага 10, незначительное 6).
+        /// Идемпотентно: узел уже ниже первого оверлея — не трогаем (без ложных "изменений" сцены).
+        /// </summary>
+        private static void PlaceBeforeOverlays(Transform node)
+        {
+            var parent = node.parent;
+            if (parent == null) return;
+
+            var firstOverlay = parent.Find("LevelCompleteOverlay");
+            if (firstOverlay == null) return;
+
+            var overlayIndex = firstOverlay.GetSiblingIndex();
+            if (node.GetSiblingIndex() > overlayIndex)
+                node.SetSiblingIndex(overlayIndex);
+        }
+
+        // ------------------------------------------------------------------------------------
         // Шаг 5 — Оверлеи (Level Complete / Level Stalled / Pause)
         // ------------------------------------------------------------------------------------
 
@@ -814,13 +974,22 @@ namespace BlackWhiteLike.Editor.UI
             return panelGo.transform;
         }
 
-        /// <summary>Заголовок/строка текста внутри панели оверлея, якорь верх-центр панели.</summary>
+        /// <summary>
+        /// Заголовок/строка текста внутри панели оверлея, якорь верх-центр панели.
+        /// <paramref name="anchoredX"/> — горизонтальное смещение от центра панели (0 — по центру, как
+        /// раньше); <paramref name="alignment"/> — выравнивание текста внутри своего блока (playtest шага 10:
+        /// строки Worship/Awe/Fear/Coins сдвигаются вправо под иконку и выравниваются по левому краю).
+        /// Pivot по X подстраивается под alignment: Center — пивот в центре блока (старое поведение,
+        /// координата anchoredX — это центр), Left/иначе — пивот у левого края блока (anchoredX — левый край).
+        /// </summary>
         private static TextMeshProUGUI BuildOverlayLabel(Transform panel, string name, TMP_FontAsset fontAsset,
-            float fontSize, string defaultText, float anchoredY, Vector2 size, bool bold = false)
+            float fontSize, string defaultText, float anchoredY, Vector2 size, bool bold = false,
+            float anchoredX = 0f, TextAlignmentOptions alignment = TextAlignmentOptions.Center)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
-            SetAnchor(rt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, anchoredY), size);
+            var pivotX = alignment == TextAlignmentOptions.Center ? 0.5f : 0f;
+            SetAnchor(rt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(pivotX, 1f), new Vector2(anchoredX, anchoredY), size);
             var label = go.GetComponent<TextMeshProUGUI>();
             if (label == null) label = go.AddComponent<TextMeshProUGUI>();
             label.raycastTarget = false;
@@ -828,24 +997,67 @@ namespace BlackWhiteLike.Editor.UI
             label.font = fontAsset;
             label.fontSize = fontSize;
             label.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
-            label.alignment = TextAlignmentOptions.Center;
+            label.alignment = alignment;
             if (string.IsNullOrEmpty(label.text)) label.text = defaultText;
             return label;
         }
 
-        /// <summary>Кнопка внутри панели оверлея, якорь низ-центр панели.</summary>
+        /// <summary>
+        /// Декоративная иконка-подпись строки оверлея (playtest шага 10: голые числа Worship/Awe/Fear/Coins
+        /// на LevelCompleteOverlay были нечитаемы владельцу без подписи). Иконка — РЕБЁНОК своего
+        /// текстового лейбла (решение владельца по второму playtest'у: панельные иконки с ручным Y
+        /// разъезжались со строками — знак полвысоты + размер больше шага строк): якорь и пивот у
+        /// левого-центра лейбла, иконка висит слева от текста и двигается вместе со строкой
+        /// автоматически. Размер — под высоту строки, а не фиксированные 48. Раскастинг выключен —
+        /// чисто декоративный узел, в LevelCompleteView не прошивается. Если спрайт не найден по
+        /// константному пути — LogWarning и узел остаётся без картинки (не присваиваем null поверх
+        /// уже настроенного спрайта на повторном прогоне).
+        /// </summary>
+        private static Image BuildRowIcon(RectTransform label, string name, string spritePath, float size, float gap)
+        {
+            // Миграция со старой раскладки: иконка лежала прямым ребёнком панели с ручным Y —
+            // сносим, узел пересоздаётся под лейблом (декоративный, терять нечего).
+            var panel = label.parent;
+            var legacy = panel.Find(name);
+            if (legacy != null && legacy.parent == panel)
+            {
+                Undo.DestroyObjectImmediate(legacy.gameObject);
+                Debug.Log($"[Editor] {name}: панельная иконка старой раскладки удалена — пересоздаётся ребёнком {label.name}.");
+            }
+
+            var go = FindOrCreateUIChild(label, name);
+            var rt = (RectTransform)go.transform;
+            // Якорь — левый-центр лейбла; пивот справа: правый край иконки в gap слева от текста.
+            SetAnchor(rt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(1f, 0.5f),
+                new Vector2(-gap, 0f), new Vector2(size, size));
+            var image = go.GetComponent<Image>();
+            if (image == null) image = go.AddComponent<Image>();
+            image.raycastTarget = false;
+            image.maskable = false;
+            image.preserveAspect = true;
+            var sprite = EditorSpriteUtility.EnsureSpriteAtPath(spritePath);
+            if (sprite != null) image.sprite = sprite;
+            else Debug.LogWarning($"[Editor] {name}: спрайт не найден по пути {spritePath}, иконка пропущена.");
+            return image;
+        }
+
+        /// <summary>
+        /// Кнопка внутри панели оверлея, якорь низ-центр панели. <paramref name="anchoredX"/> —
+        /// горизонтальное смещение от центра панели (0 — по центру, как раньше); <paramref name="backgroundColor"/> —
+        /// цвет фона (по умолчанию — акцентный зелёный, как у исходных Continue/Resume).
+        /// </summary>
         private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
-            string caption, float anchoredY, Vector2 size)
+            string caption, float anchoredY, Vector2 size, float anchoredX = 0f, Color? backgroundColor = null)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
-            SetAnchor(rt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, anchoredY), size);
+            SetAnchor(rt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(anchoredX, anchoredY), size);
 
             var bg = go.GetComponent<Image>();
             if (bg == null) bg = go.AddComponent<Image>();
             bg.raycastTarget = true;
             bg.maskable = false;
-            bg.color = new Color(0.25f, 0.55f, 0.35f, 1f);
+            bg.color = backgroundColor ?? new Color(0.25f, 0.55f, 0.35f, 1f);
 
             var button = go.GetComponent<Button>();
             if (button == null) button = go.AddComponent<Button>();
@@ -871,16 +1083,48 @@ namespace BlackWhiteLike.Editor.UI
             return button;
         }
 
+        /// <summary>
+        /// Playtest шага 10: панель Level Complete увеличена по высоте (360 -> 420) под четыре строки
+        /// с иконками (Worship/Awe/Fear/Coins). При 360 наложения ещё не было (зазор до ContinueButton
+        /// ~26px, ревью пересчитало) — рост даёт воздух ~86px, чисто визуальный запас.
+        /// </summary>
+        private const float LevelCompleteOverlayHeight = 420f;
+
         private static void BuildLevelCompleteOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
         {
-            var panel = BuildOverlayContainer(canvasRoot, "LevelCompleteOverlay", new Vector2(DefaultOverlayPanelWidth, DefaultOverlayPanelHeight));
+            var panel = BuildOverlayContainer(canvasRoot, "LevelCompleteOverlay", new Vector2(DefaultOverlayPanelWidth, LevelCompleteOverlayHeight));
             var containerGo = panel.parent.gameObject;
 
             BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Level Complete", -24f, new Vector2(500f, 50f), bold: true);
-            var worshipLabel = BuildOverlayLabel(panel, "WorshipLabel", fontAsset, 24f, "Worship 0 / 100", -88f, new Vector2(480f, 32f));
-            var aweLabel = BuildOverlayLabel(panel, "AweLabel", fontAsset, 22f, "Awe 0", -124f, new Vector2(480f, 28f));
-            var fearLabel = BuildOverlayLabel(panel, "FearLabel", fontAsset, 22f, "Fear 0", -154f, new Vector2(480f, 28f));
-            var coinsLabel = BuildOverlayLabel(panel, "CoinsLabel", fontAsset, 22f, "+0 coins", -184f, new Vector2(480f, 28f));
+
+            // Строка "иконка + число": текст с левым выравниванием, иконка — РЕБЁНОК лейбла
+            // (BuildRowIcon, решение владельца по второму playtest'у) слева от него, по центру
+            // строки автоматически. Авторские позиции без LayoutGroup, как принято в этом файле.
+            const float iconGap = 8f;
+            const float textWidth = 380f;
+            const float textLeftX = -160f; // левый край текста; иконки уходят влево от него детьми лейблов
+
+            const float worshipY = -100f, worshipH = 34f;
+            const float aweY = -148f, aweH = 28f;
+            const float fearY = -192f, fearH = 28f;
+            const float coinsY = -228f, coinsH = 28f;
+
+            var worshipLabel = BuildOverlayLabel(panel, "WorshipLabel", fontAsset, 24f, "Worship 0 / 100", worshipY,
+                new Vector2(textWidth, worshipH), anchoredX: textLeftX, alignment: TextAlignmentOptions.Left);
+            BuildRowIcon(worshipLabel.rectTransform, "WorshipIcon", EditorSpriteUtility.HudIconPaths.Worship, worshipH, iconGap);
+
+            var aweLabel = BuildOverlayLabel(panel, "AweLabel", fontAsset, 22f, "Awe 0", aweY,
+                new Vector2(textWidth, aweH), anchoredX: textLeftX, alignment: TextAlignmentOptions.Left);
+            BuildRowIcon(aweLabel.rectTransform, "AweIcon", EditorSpriteUtility.HudIconPaths.Awe, aweH, iconGap);
+
+            var fearLabel = BuildOverlayLabel(panel, "FearLabel", fontAsset, 22f, "Fear 0", fearY,
+                new Vector2(textWidth, fearH), anchoredX: textLeftX, alignment: TextAlignmentOptions.Left);
+            BuildRowIcon(fearLabel.rectTransform, "FearIcon", EditorSpriteUtility.HudIconPaths.Fear, fearH, iconGap);
+
+            var coinsLabel = BuildOverlayLabel(panel, "CoinsLabel", fontAsset, 22f, "+0 coins", coinsY,
+                new Vector2(textWidth, coinsH), anchoredX: textLeftX, alignment: TextAlignmentOptions.Left);
+            BuildRowIcon(coinsLabel.rectTransform, "CoinsIcon", EditorSpriteUtility.HudIconPaths.Coin, coinsH, iconGap);
+
             var continueButton = BuildOverlayButton(panel, "ContinueButton", fontAsset, "Continue", 24f, new Vector2(280f, 72f));
 
             var view = containerGo.GetComponent<LevelCompleteView>();
@@ -902,14 +1146,44 @@ namespace BlackWhiteLike.Editor.UI
 
         private static void BuildLevelStalledOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
         {
-            var panel = BuildOverlayContainer(canvasRoot, "LevelStalledOverlay", new Vector2(DefaultOverlayPanelWidth, 260f));
+            // Зачистка ревью (решение владельца-оркестратора): Subtitle-узел упразднён — QuestionText
+            // (рантайм-текст презентера) закрывает ту же роль. Панель ужата обратно с 340 до 300 —
+            // высота, оставшаяся после удаления Subtitle и подъёма QuestionText на его место.
+            var panel = BuildOverlayContainer(canvasRoot, "LevelStalledOverlay", new Vector2(DefaultOverlayPanelWidth, 300f));
             var containerGo = panel.parent.gameObject;
 
             BuildOverlayLabel(panel, "Title", fontAsset, 36f, "Вера иссякла", -24f, new Vector2(480f, 50f), bold: true);
-            BuildOverlayLabel(panel, "Subtitle", fontAsset, 22f, "Пополнить веру, чтобы продолжить", -84f, new Vector2(480f, 40f));
+
+            // Миграция: узел Subtitle, собиравшийся прежней версией скрипта, больше не нужен —
+            // QuestionText целиком закрывает его роль (см. .claude/rules/editor-files.md, "смена
+            // «чем объект должен быть» требует миграции"). Удаляем, если существует, не пересоздавая
+            // остальную панель.
+            var obsoleteSubtitle = panel.Find("Subtitle");
+            if (obsoleteSubtitle != null)
+            {
+                Undo.DestroyObjectImmediate(obsoleteSubtitle.gameObject);
+                Debug.Log("[Editor] LevelStalledOverlay/Panel/Subtitle: удалён (миграция — роль перешла к QuestionText).");
+            }
+
+            // QuestionText — placeholder-текст: реальный вопрос ставит LevelStalledPresenter через
+            // ILocalizationService (не дублируем локализованную строку здесь). Текст форсируется
+            // безусловно (не пользовательские данные — как подписи кнопок в BuildOverlayButton), иначе
+            // сцены, собранные до этой правки, сохранили бы старый хардкод-вопрос как "дефолт".
+            var questionText = BuildOverlayLabel(panel, "QuestionText", fontAsset, 24f,
+                "—", -84f, new Vector2(480f, 64f));
+            if (questionText.text != "—")
+            {
+                Debug.Log("[Editor] QuestionText: \"" + questionText.text + "\" -> \"—\" (текст задаёт презентер рантаймом).");
+                questionText.text = "—";
+            }
+
             // Пополнение веры — заглушка rewarded-рекламы (ADS_STUB реализуется в рантайм-сервисе,
             // вызываемом по клику RefillButton; сам Editor-скрипт не содержит бизнес-логики).
-            var refillButton = BuildOverlayButton(panel, "RefillButton", fontAsset, "Пополнить веру", 24f, new Vector2(320f, 72f));
+            // RefillButton — акцент (слева, зелёный, как раньше), DeclineButton — нейтральная (справа, серая).
+            var refillButton = BuildOverlayButton(panel, "RefillButton", fontAsset, "Смотреть рекламу",
+                24f, new Vector2(260f, 72f), anchoredX: -140f);
+            var declineButton = BuildOverlayButton(panel, "DeclineButton", fontAsset, "Позже",
+                24f, new Vector2(200f, 72f), anchoredX: 140f, backgroundColor: new Color(0.3f, 0.3f, 0.33f, 1f));
 
             var view = containerGo.GetComponent<LevelStalledView>();
             if (view == null) view = containerGo.AddComponent<LevelStalledView>();
@@ -918,10 +1192,12 @@ namespace BlackWhiteLike.Editor.UI
             int wired = 0;
             wired += SetRef(so, "_root", containerGo, "LevelStalledView") ? 1 : 0;
             wired += SetRef(so, "_refillButton", refillButton, "LevelStalledView") ? 1 : 0;
+            wired += SetRef(so, "_questionText", questionText, "LevelStalledView") ? 1 : 0;
+            wired += SetRef(so, "_declineButton", declineButton, "LevelStalledView") ? 1 : 0;
             so.ApplyModifiedProperties();
-            LogWireResult("LevelStalledView", wired, 2);
+            LogWireResult("LevelStalledView", wired, 4);
             totalWired += wired;
-            totalExpected += 2;
+            totalExpected += 4;
         }
 
         private static void BuildPauseOverlay(Transform canvasRoot, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
@@ -993,12 +1269,29 @@ namespace BlackWhiteLike.Editor.UI
             }
         }
 
-        /// <summary>Инстанс HUD-канваса в текущей сцене — по наличию MiraclePanelView (включая неактивные объекты).</summary>
+        // Игровой HUD живёт только в уровневых сценах — гейт против засорения мета-сцен: реальный
+        // случай (playtest шага 10) — Build Level HUD исполнился при открытом Bootstrap (первый
+        // прогон вообще пришёлся на Play Mode) и оставил в нём dirty-инстанс канваса.
+        private static readonly string[] LevelSceneNames = { "Village_Base", "_TestVillage" };
+
+        /// <summary>
+        /// Инстанс HUD-канваса в текущей сцене — по наличию MiraclePanelView (включая неактивные
+        /// объекты). Создаёт инстанс ТОЛЬКО в уровневых сценах (<see cref="LevelSceneNames"/>);
+        /// в остальных пересборка префаба легальна (инстансы-connected обновятся сами), а сценовый
+        /// инстанс не нужен и не создаётся.
+        /// </summary>
         public static GameObject EnsureSceneInstance(GameObject prefab)
         {
             var existingView = Object.FindAnyObjectByType<MiraclePanelView>(FindObjectsInactive.Include);
             if (existingView != null)
                 return existingView.transform.root.gameObject;
+
+            var activeSceneName = SceneManager.GetActiveScene().name;
+            if (System.Array.IndexOf(LevelSceneNames, activeSceneName) < 0)
+            {
+                Debug.Log($"[Editor] Сцена \"{activeSceneName}\" не уровневая — префаб LevelHudCanvas обновлён, сценовый инстанс пропущен.");
+                return null;
+            }
 
             if (prefab == null)
             {
@@ -1059,6 +1352,22 @@ namespace BlackWhiteLike.Editor.UI
 
             prop.objectReferenceValue = value;
             return true;
+        }
+
+        /// <summary>
+        /// Прошивает ссылку на RectTransform ИМЕНОВАННОГО прямого ребёнка узла (кнопки чудес — прямые
+        /// дети MiraclePanel). Ребёнок не найден — предупреждение и поле не трогаем (не присваиваем null).
+        /// </summary>
+        private static bool SetChildRef(SerializedObject so, string propertyName, Transform parent, string childName, string ownerLabel)
+        {
+            var child = parent.Find(childName);
+            if (child == null)
+            {
+                Debug.LogWarning($"[Editor] Дочерний узел \"{childName}\" не найден под {parent.name} — \"{propertyName}\" на {ownerLabel} не прошито.");
+                return false;
+            }
+
+            return SetRef(so, propertyName, (RectTransform)child, ownerLabel);
         }
 
         private static bool SetEnumProp(SerializedObject so, string propertyName, int enumIndex, string ownerLabel)

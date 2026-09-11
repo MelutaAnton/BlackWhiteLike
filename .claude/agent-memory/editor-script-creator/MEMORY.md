@@ -8,3 +8,5 @@
 - [Nested serializable array wiring](nested_serializable_array_wiring.md) — FindPropertyRelative pattern for SO arrays of [Serializable] structs (WorshipConfig)
 - [Hovl VFX wrapper pattern](hovl_vfx_wrapper_pattern.md) — wrapping Hovl Studio VFX prefabs, HS_EffectSound/HS_ParticleCollisionInstance to disable
 - [Alignment visual material pattern](alignment_visual_material_pattern.md) — tinted CopyAsset materials + nested-array-of-arrays SerializedProperty wiring for AlignmentVisualConfig stages
+- [Wire scope — level scenes only](wire_scope_level_scenes_only.md) — no dedicated "Wire All Scenes" script; GameLifetimeScope wired via TestVillageSceneSetupEditor.WireScope, called once from two MenuItems
+- [Tutorial pointer icon path](tutorial_pointer_icon_path.md) — EditorSpriteUtility.HudIconPaths.TutorialPointer = 03_Arrow_bot.png

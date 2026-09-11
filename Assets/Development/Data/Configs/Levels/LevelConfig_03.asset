@@ -21,22 +21,27 @@ MonoBehaviour:
     triggerTime: 5
     targetSiteIndex: 0
     duration: 15
+    _triggerMode: 0
   - type: 1
     triggerTime: 26
     targetSiteIndex: 1
     duration: 15
+    _triggerMode: 0
   - type: 2
     triggerTime: 47
     targetSiteIndex: 2
     duration: 15
+    _triggerMode: 0
   - type: 0
     triggerTime: 68
     targetSiteIndex: 0
     duration: 15
+    _triggerMode: 0
   - type: 1
     triggerTime: 89
     targetSiteIndex: 1
     duration: 15
+    _triggerMode: 0
   _optionalTimerSeconds: 0
   _coinsReward: 20
   _hasCreatureSpawn: 0

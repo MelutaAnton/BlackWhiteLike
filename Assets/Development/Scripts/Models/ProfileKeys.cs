@@ -13,6 +13,9 @@ namespace BlackWhiteLike.Models
         public const string AlignmentScore = "alignment_score";
         public const string LastSeenUtc = "last_seen_utc";
 
+        /// <summary>Шаг 10 «Polish»: флаг "туториал уровня 1 пройден" (int 0/1) — см. <c>PlayerProfile.TutorialCompleted</c>.</summary>
+        public const string TutorialCompleted = "tutorial_completed";
+
         /// <summary>
         /// Префикс ключа уровня апгрейда категории (game-design §8, шаг 8) — полный ключ строится
         /// конкатенацией с именем значения <see cref="UpgradeCategory"/> (например

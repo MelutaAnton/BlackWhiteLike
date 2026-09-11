@@ -50,6 +50,7 @@ namespace BlackWhiteLike.Editor.UI
             "PauseButton",
             "LevelCompleteOverlay/Panel/ContinueButton",
             "LevelStalledOverlay/Panel/RefillButton",
+            "LevelStalledOverlay/Panel/DeclineButton",
             "PauseOverlay/Panel/ResumeButton",
         };
 

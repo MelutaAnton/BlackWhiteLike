@@ -12,7 +12,8 @@ namespace BlackWhiteLike.Services.Level
     /// Реализация <see cref="ILevelFlowService"/>. Pure C# — win подписывается на
     /// <c>WorshipChangedEvent</c> (game-design §9, шаг 5) вместо опроса <c>IWorshipService.Current</c>
     /// каждый Tick; stall пересчитывается в <see cref="Tick"/> по решению владельца (game-design,
-    /// "Soft-fail"): Faith ≈ 0 ∧ нет активных ∧ нет ожидающих нужд ∧ Worship ниже порога.
+    /// "Soft-fail"): Faith ≈ 0 ∧ нет блокирующих нужд (<c>ILevelEventService.HasBlockingNeeds</c>,
+    /// шаг 10 — только те, что способны разрешиться сами по времени) ∧ Worship ниже порога.
     /// </summary>
     /// <remarks>
     /// Шаг 5 (аудит после первого Play Mode): сервис НЕ зависит от <c>IGameFlowService</c> — раньше
@@ -27,6 +28,18 @@ namespace BlackWhiteLike.Services.Level
     {
         private const float StallFaithEpsilon = 0.01f;
 
+        /// <summary>
+        /// Шаг 10 (ревью, решение владельца — добивка): после отказа игрока
+        /// (<see cref="AcknowledgeStallDeclined"/>) повторный показ <c>LevelStalledEvent</c>
+        /// блокируется на это время, даже если условие сталла остаётся истинным каждый кадр — иначе
+        /// защёлка сбрасывалась бы и тут же взводилась заново в СЛЕДУЮЩЕМ же Tick (Faith чаще всего
+        /// не меняется мгновенно после отказа), окно мигало бы/переоткрывалось мгновенно. Поднято с
+        /// 5 до 30 секунд: оверлей закрывает экран dim-блокером, переспрос каждые 5с назойлив — а
+        /// игрок в этом окне может продолжать играть БЕЗ веры (например, добивать уровень Fear-путём),
+        /// так что частый повторный показ не даёт ему ничего, кроме раздражения.
+        /// </summary>
+        public const float StallReshowCooldownAfterDecline = 30f;
+
         private readonly IEventBus _eventBus;
         private readonly IWorshipService _worshipService;
         private readonly IFaithService _faithService;
@@ -37,6 +50,9 @@ namespace BlackWhiteLike.Services.Level
         private bool _isRunning;
         private bool _isCompleted;
         private bool _isStalled;
+
+        /// <summary>Шаг 10: остаток кулдауна после <see cref="AcknowledgeStallDeclined"/> (см. <see cref="StallReshowCooldownAfterDecline"/>).</summary>
+        private float _stallReshowCooldownRemaining;
 
         private readonly IDisposable _worshipChangedSubscription;
 
@@ -66,6 +82,7 @@ namespace BlackWhiteLike.Services.Level
             _isRunning = true;
             _isCompleted = false;
             _isStalled = false;
+            _stallReshowCooldownRemaining = 0f;
         }
 
         private void OnWorshipChanged(WorshipChangedEvent evt)
@@ -84,12 +101,16 @@ namespace BlackWhiteLike.Services.Level
 
             _elapsed += dt;
 
+            if (_stallReshowCooldownRemaining > 0f) _stallReshowCooldownRemaining -= dt;
+
+            // Шаг 10 (решение владельца, soft-fail достижим на L01): stall блокируют только нужды,
+            // способные разрешиться сами (по времени) — HasBlockingNeeds, не HasActiveNeeds/
+            // HasPendingNeeds (вечная нужда/событийные Pending-записи блокировали бы сталл навсегда).
             var isStalledNow = _faithService.Current <= StallFaithEpsilon
-                && !_levelEvents.HasActiveNeeds
-                && !_levelEvents.HasPendingNeeds
+                && !_levelEvents.HasBlockingNeeds
                 && _worshipService.Current < _worshipService.Target;
 
-            if (isStalledNow && !_isStalled)
+            if (isStalledNow && !_isStalled && _stallReshowCooldownRemaining <= 0f)
             {
                 _isStalled = true;
                 _eventBus.Publish(new LevelStalledEvent());
@@ -99,6 +120,21 @@ namespace BlackWhiteLike.Services.Level
                 // Faith снова выше эпсилона (например, "Пополнить веру") — повторный stall возможен.
                 _isStalled = false;
             }
+        }
+
+        /// <summary>
+        /// Шаг 10 (решение владельца — окно rewarded-согласия): игрок отказался пополнить веру
+        /// (<c>DeclineClicked</c>) — сбрасывает защёлку показа так, чтобы повторный сталл снова
+        /// опубликовал <c>LevelStalledEvent</c>, но не раньше чем через
+        /// <see cref="StallReshowCooldownAfterDecline"/> секунд (см. поле). Не в состоянии stall —
+        /// безопасный no-op (нечего подтверждать).
+        /// </summary>
+        public void AcknowledgeStallDeclined()
+        {
+            if (!_isStalled) return;
+
+            _isStalled = false;
+            _stallReshowCooldownRemaining = StallReshowCooldownAfterDecline;
         }
 
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time.</summary>

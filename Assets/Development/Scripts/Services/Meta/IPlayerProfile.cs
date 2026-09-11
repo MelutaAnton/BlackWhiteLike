@@ -36,5 +36,9 @@ namespace BlackWhiteLike.Services.Meta
         /// <summary>default(DateTime) — профиль ещё ни разу не штамповался (первый запуск игры).</summary>
         DateTime LastSeenUtc { get; }
         void SetLastSeenUtc(DateTime value);
+
+        /// <summary>Шаг 10 «Polish»: туториал уровня 1 пройден — <c>ITutorialService</c> не активируется повторно.</summary>
+        bool TutorialCompleted { get; }
+        void MarkTutorialCompleted();
     }
 }
