@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -8,13 +9,44 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Worship;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Village;
 using BlackWhiteLike.Services.Worship;
 
 namespace BlackWhiteLike.Tests
 {
-    /// <summary>Тесты <see cref="WorshipService"/> (game-design §4, §7, §19, шаг 5).</summary>
+    /// <summary>Тесты <see cref="WorshipService"/> (game-design §4, §7, §19, шаг 5; §10 волна 2 — позиции попапов).</summary>
     public class WorshipServiceTests
     {
+        // --- Шаг 10 (волна 2): мировая позиция WorshipChangedEvent — TearDown/CreateTransform, тот же приём, что NeedSiteRegistryTests ---
+        private readonly List<GameObject> _spawned = new List<GameObject>();
+
+        [TearDown]
+        public void TearDown()
+        {
+            foreach (var go in _spawned)
+            {
+                if (go != null) Object.DestroyImmediate(go);
+            }
+
+            _spawned.Clear();
+        }
+
+        private Transform CreateTransform(string name, Vector3 position)
+        {
+            var go = new GameObject(name);
+            go.transform.position = position;
+            _spawned.Add(go);
+            return go.transform;
+        }
+
+        /// <summary>
+        /// Шаг 10 (волна 2): WorshipService теперь требует INeedSiteRegistry (позиция Awe/Fear
+        /// от нужды) — обёртка вместо правки полутора десятков прямых "new WorshipService(...)" в
+        /// этом файле; тесты позиций ниже используют реальный NeedSiteRegistry напрямую.
+        /// </summary>
+        private static WorshipService CreateWorshipService(IEventBus eventBus, WorshipConfig config, LevelConfig levelConfig, INeedSiteRegistry needSiteRegistry = null) =>
+            new WorshipService(eventBus, config, levelConfig, needSiteRegistry ?? new NeedSiteRegistry());
+
         private static WorshipConfig CreateConfig(
             (NeedType Type, int Awe)[] aweEntries = null,
             (TerrorAct Act, int Fear)[] fearEntries = null,
@@ -65,7 +97,7 @@ namespace BlackWhiteLike.Tests
         {
             eventBus = new FakeEventBus();
             if (config == null) config = CreateConfig();
-            return new WorshipService(eventBus, config, CreateLevelConfig(worshipTarget));
+            return CreateWorshipService(eventBus, config, CreateLevelConfig(worshipTarget));
         }
 
         // --- Awe (NeedResolvedEvent) ---
@@ -75,7 +107,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
             var eventBus = new EventBus(); // реальная шина — сервис подписан на неё
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
@@ -88,7 +120,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: false, default));
 
@@ -101,7 +133,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             // Подписываемся напрямую на реальную шину, чтобы прочитать опубликованное событие.
             WorshipChangedEvent? captured = null;
@@ -124,7 +156,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Fireball));
 
@@ -137,7 +169,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
@@ -150,7 +182,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 0, byPlayer: false, default));
 
@@ -164,7 +196,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerHardLanding, 8) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
@@ -181,7 +213,7 @@ namespace BlackWhiteLike.Tests
             // не задваивающая счёт с FireballOnStructure (поджог дома — отдельный акт).
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerBlasted, 5) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Blasted));
@@ -196,7 +228,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerHardLanding, 8) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Panic, VillagerState.Idle, VillagerStimulus.None));
@@ -213,7 +245,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerStruckByLightning, 6) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             // Lightning ведёт напрямую в Stunned, минуя Tossed (VillagerStateService.TryResolveTarget).
@@ -232,7 +264,7 @@ namespace BlackWhiteLike.Tests
             // публикуется вовсе) не приходит как отдельная транзакция начисления.
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerStruckByLightning, 6) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Stunned, VillagerStimulus.LightningStruck));
@@ -250,7 +282,7 @@ namespace BlackWhiteLike.Tests
                 (TerrorAct.VillagerStruckByLightning, 6)
             });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
@@ -269,7 +301,7 @@ namespace BlackWhiteLike.Tests
                 (TerrorAct.VillagerStruckByLightning, 6)
             });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             var id = VillagerId.FromInstanceId(1);
 
             eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Blasted));
@@ -286,7 +318,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 60) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 1, byPlayer: true, MiracleType.Rain));
@@ -303,7 +335,7 @@ namespace BlackWhiteLike.Tests
                 aweEntries: new[] { (NeedType.Fire, 20) },
                 fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(1000));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(1000));
 
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
             eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 1, byPlayer: true, MiracleType.Fireball));
@@ -319,7 +351,7 @@ namespace BlackWhiteLike.Tests
         public void MissingConfigEntry_ZeroAmount_DoesNotPublish()
         {
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, CreateConfig(), CreateLevelConfig(100)); // пустой WorshipConfig — GetAwe/GetFear = 0
+            var service = CreateWorshipService(eventBus, CreateConfig(), CreateLevelConfig(100)); // пустой WorshipConfig — GetAwe/GetFear = 0
 
             WorshipChangedEvent? captured = null;
             using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
@@ -337,7 +369,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) }, decayPerSecond: 0f);
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
             service.Tick(100f);
@@ -350,7 +382,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) }, decayPerSecond: 1f);
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
             WorshipChangedEvent? captured = null;
@@ -369,7 +401,7 @@ namespace BlackWhiteLike.Tests
         {
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 2) }, decayPerSecond: 1f);
             var eventBus = new EventBus();
-            var service = new WorshipService(eventBus, config, CreateLevelConfig(100));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 
             service.Tick(10f);
@@ -394,7 +426,7 @@ namespace BlackWhiteLike.Tests
             var eventBus = new FakeEventBus();
 
             LogAssert.Expect(LogType.Warning, new Regex("WorshipTarget"));
-            new WorshipService(eventBus, CreateConfig(), CreateLevelConfig(0));
+            CreateWorshipService(eventBus, CreateConfig(), CreateLevelConfig(0));
         }
 
         [Test]
@@ -402,8 +434,152 @@ namespace BlackWhiteLike.Tests
         {
             var eventBus = new FakeEventBus();
 
-            Assert.DoesNotThrow(() => new WorshipService(eventBus, CreateConfig(), CreateLevelConfig(100)));
+            Assert.DoesNotThrow(() => CreateWorshipService(eventBus, CreateConfig(), CreateLevelConfig(100)));
             LogAssert.NoUnexpectedReceived();
+        }
+
+        // --- Шаг 10 (волна 2): WorshipChangedEvent.WorldPosition/HasWorldPosition ---
+
+        [Test]
+        public void NeedResolved_RegisteredSite_PublishesWorldPosition()
+        {
+            var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
+            var eventBus = new EventBus();
+            var registry = new NeedSiteRegistry();
+            registry.Register(0, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsTrue(captured.Value.HasWorldPosition);
+            Assert.AreEqual(new Vector3(1f, 0f, 2f), captured.Value.WorldPosition);
+            Assert.AreEqual(20, service.Current);
+        }
+
+        [Test]
+        public void NeedResolved_UnregisteredSite_PublishesWithoutWorldPosition()
+        {
+            var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
+            var eventBus = new EventBus();
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), new NeedSiteRegistry());
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsFalse(captured.Value.HasWorldPosition);
+        }
+
+        [Test]
+        public void NeedTriggered_FireballCause_RegisteredSite_PublishesWorldPosition()
+        {
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
+            var eventBus = new EventBus();
+            var registry = new NeedSiteRegistry();
+            registry.Register(3, CreateTransform("Site3", new Vector3(4f, 0f, 5f)));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new NeedTriggeredEvent(NeedType.Fire, 3, byPlayer: true, MiracleType.Fireball));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsTrue(captured.Value.HasWorldPosition);
+            Assert.AreEqual(new Vector3(4f, 0f, 5f), captured.Value.WorldPosition);
+            Assert.AreEqual(25, service.Current);
+        }
+
+        [Test]
+        public void VillagerHardLanding_EventCarriesWorldPosition_PropagatesToWorshipChanged()
+        {
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerHardLanding, 8) });
+            var eventBus = new EventBus();
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
+                eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Tossed, VillagerState.Stunned, VillagerStimulus.HardLanded,
+                    new Vector3(7f, 0f, 8f), hasWorldPosition: true));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsTrue(captured.Value.HasWorldPosition);
+            Assert.AreEqual(new Vector3(7f, 0f, 8f), captured.Value.WorldPosition);
+            Assert.AreEqual(8, service.Current);
+        }
+
+        [Test]
+        public void VillagerHardLanding_EventWithoutWorldPosition_PublishesWithoutWorldPosition()
+        {
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerHardLanding, 8) });
+            var eventBus = new EventBus();
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Tossed, VillagerStimulus.Grabbed));
+                eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Tossed, VillagerState.Stunned, VillagerStimulus.HardLanded));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsFalse(captured.Value.HasWorldPosition);
+        }
+
+        [Test]
+        public void VillagerStruckByLightning_EventCarriesWorldPosition_PropagatesToWorshipChanged()
+        {
+            var config = CreateConfig(fearEntries: new[] { (TerrorAct.VillagerStruckByLightning, 6) });
+            var eventBus = new EventBus();
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100));
+            var id = VillagerId.FromInstanceId(1);
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                eventBus.Publish(new VillagerStateChangedEvent(id, VillagerState.Idle, VillagerState.Stunned, VillagerStimulus.LightningStruck,
+                    new Vector3(9f, 0f, 10f), hasWorldPosition: true));
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsTrue(captured.Value.HasWorldPosition);
+            Assert.AreEqual(new Vector3(9f, 0f, 10f), captured.Value.WorldPosition);
+            Assert.AreEqual(6, service.Current);
+        }
+
+        [Test]
+        public void Tick_Decay_PublishesLastRealWorldPosition()
+        {
+            var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) }, decayPerSecond: 1f);
+            var eventBus = new EventBus();
+            var registry = new NeedSiteRegistry();
+            registry.Register(0, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
+            var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
+            eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
+
+            WorshipChangedEvent? captured = null;
+            using (eventBus.Subscribe<WorshipChangedEvent>(e => captured = e))
+            {
+                service.Tick(3f);
+            }
+
+            Assert.IsTrue(captured.HasValue);
+            Assert.IsTrue(captured.Value.HasWorldPosition);
+            Assert.AreEqual(new Vector3(1f, 0f, 2f), captured.Value.WorldPosition);
         }
     }
 }

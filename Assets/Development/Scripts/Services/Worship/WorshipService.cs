@@ -4,6 +4,7 @@ using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Data.Configs.Worship;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Village;
 using UnityEngine;
 using VContainer.Unity;
 
@@ -36,6 +37,7 @@ namespace BlackWhiteLike.Services.Worship
         private readonly IEventBus _eventBus;
         private readonly WorshipConfig _config;
         private readonly LevelConfig _levelConfig;
+        private readonly INeedSiteRegistry _needSiteRegistry;
 
         private int _current;
         private int _aweTotal;
@@ -52,15 +54,21 @@ namespace BlackWhiteLike.Services.Worship
         // реального прироста decay произойти не может (Current стартует с 0, Tick выходит рано).
         private WorshipSource _lastSource = WorshipSource.Awe;
 
+        // Шаг 10 (волна 2): та же логика "последний реальный прирост" — decay-событие якорит попап
+        // туда же, куда ушёл предыдущий реальный прирост, а не в никуда.
+        private Vector3 _lastWorldPosition;
+        private bool _lastHasWorldPosition;
+
         private readonly IDisposable _needResolvedSubscription;
         private readonly IDisposable _needTriggeredSubscription;
         private readonly IDisposable _villagerStateChangedSubscription;
 
-        public WorshipService(IEventBus eventBus, WorshipConfig config, LevelConfig levelConfig)
+        public WorshipService(IEventBus eventBus, WorshipConfig config, LevelConfig levelConfig, INeedSiteRegistry needSiteRegistry)
         {
             _eventBus = eventBus;
             _config = config;
             _levelConfig = levelConfig;
+            _needSiteRegistry = needSiteRegistry;
 
             _needResolvedSubscription = _eventBus.Subscribe<NeedResolvedEvent>(OnNeedResolved);
             _needTriggeredSubscription = _eventBus.Subscribe<NeedTriggeredEvent>(OnNeedTriggered);
@@ -83,14 +91,16 @@ namespace BlackWhiteLike.Services.Worship
         private void OnNeedResolved(NeedResolvedEvent evt)
         {
             if (!evt.ByPlayer) return; // CauseMiracle валиден только при ByPlayer (см. Events.Village.cs)
-            ApplyAwe(_config.GetAwe(evt.Type));
+            var hasPosition = _needSiteRegistry.TryGetSitePosition(evt.SiteIndex, out var position);
+            ApplyAwe(_config.GetAwe(evt.Type), hasPosition, position);
         }
 
         private void OnNeedTriggered(NeedTriggeredEvent evt)
         {
             if (!evt.ByPlayer) return;
             if (!TerrorActRules.TryFromMiracle(evt.CauseMiracle, out var act)) return; // Rain/Heal не акты террора
-            ApplyFear(_config.GetFear(act));
+            var hasPosition = _needSiteRegistry.TryGetSitePosition(evt.SiteIndex, out var position);
+            ApplyFear(_config.GetFear(act), hasPosition, position);
         }
 
         private void OnVillagerStateChanged(VillagerStateChangedEvent evt)
@@ -107,7 +117,7 @@ namespace BlackWhiteLike.Services.Worship
             // не публикует событие для target == current, то есть Fear не фармится повторным ударом.
             if (evt.To == VillagerState.Stunned && evt.Cause == VillagerStimulus.LightningStruck)
             {
-                ApplyFear(_config.GetFear(TerrorAct.VillagerStruckByLightning));
+                ApplyFear(_config.GetFear(TerrorAct.VillagerStruckByLightning), evt.HasWorldPosition, evt.WorldPosition);
                 return;
             }
 
@@ -124,11 +134,11 @@ namespace BlackWhiteLike.Services.Worship
                 // (см. remarks класса, решение владельца 2026-08-29).
                 if (cause == VillagerStimulus.Grabbed)
                 {
-                    ApplyFear(_config.GetFear(TerrorAct.VillagerHardLanding));
+                    ApplyFear(_config.GetFear(TerrorAct.VillagerHardLanding), evt.HasWorldPosition, evt.WorldPosition);
                 }
                 else if (cause == VillagerStimulus.Blasted)
                 {
-                    ApplyFear(_config.GetFear(TerrorAct.VillagerBlasted));
+                    ApplyFear(_config.GetFear(TerrorAct.VillagerBlasted), evt.HasWorldPosition, evt.WorldPosition);
                 }
             }
             else
@@ -139,25 +149,27 @@ namespace BlackWhiteLike.Services.Worship
             }
         }
 
-        private void ApplyAwe(int amount)
+        private void ApplyAwe(int amount, bool hasPosition, Vector3 position)
         {
             if (amount <= 0) return; // отсутствующая запись WorshipConfig (0) — не публикуем впустую
             _aweTotal += amount; // некламплённая сумма — для LevelCompletedEvent/экрана итогов
-            IncreaseCurrent(amount, WorshipSource.Awe);
+            IncreaseCurrent(amount, WorshipSource.Awe, hasPosition, position);
         }
 
-        private void ApplyFear(int amount)
+        private void ApplyFear(int amount, bool hasPosition, Vector3 position)
         {
             if (amount <= 0) return;
             _fearTotal += amount;
-            IncreaseCurrent(amount, WorshipSource.Fear);
+            IncreaseCurrent(amount, WorshipSource.Fear, hasPosition, position);
         }
 
-        private void IncreaseCurrent(int amount, WorshipSource source)
+        private void IncreaseCurrent(int amount, WorshipSource source, bool hasPosition, Vector3 position)
         {
             _lastSource = source;
+            _lastHasWorldPosition = hasPosition;
+            _lastWorldPosition = position;
             var clamped = Mathf.Min(_current + amount, Target);
-            SetCurrent(clamped, source);
+            SetCurrent(clamped, source, hasPosition, position);
         }
 
         public void Tick(float dt)
@@ -171,19 +183,19 @@ namespace BlackWhiteLike.Services.Worship
 
             _decayAccumulator -= whole;
             var newValue = Mathf.Max(0, _current - whole);
-            SetCurrent(newValue, _lastSource);
+            SetCurrent(newValue, _lastSource, _lastHasWorldPosition, _lastWorldPosition);
         }
 
         /// <summary>Мост для VContainer ITickable — единственное место сервиса, читающее UnityEngine.Time.</summary>
         public void Tick() => Tick(UnityEngine.Time.deltaTime);
 
-        private void SetCurrent(int value, WorshipSource source)
+        private void SetCurrent(int value, WorshipSource source, bool hasPosition, Vector3 position)
         {
             if (value == _current) return; // реального изменения нет — событие не публикуем
 
             var old = _current;
             _current = value;
-            _eventBus.Publish(new WorshipChangedEvent(old, _current, Target, source));
+            _eventBus.Publish(new WorshipChangedEvent(old, _current, Target, source, position, hasPosition));
         }
 
         public void Dispose()

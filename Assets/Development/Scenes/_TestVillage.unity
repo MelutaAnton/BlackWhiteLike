@@ -469,6 +469,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 989118001}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _localizationConfig
+      value: 
+      objectReference: {fileID: 11400000, guid: 281c20ae661ecfe4fb8de25977d1965b, type: 2}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _miracleCatalogConfig
       value: 
       objectReference: {fileID: 11400000, guid: d34518821647bf04b8c4cf6172bcef5b, type: 2}
@@ -501,6 +505,10 @@ PrefabInstance:
       value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _localizedTextRegistries.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: 'autoInjectGameObjects.Array.data[0]'
       value: 
       objectReference: {fileID: 1338221586}
@@ -516,6 +524,10 @@ PrefabInstance:
       propertyPath: 'autoInjectGameObjects.Array.data[3]'
       value: 
       objectReference: {fileID: 283240475}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: '_localizedTextRegistries.Array.data[0]'
+      value: 
+      objectReference: {fileID: 998783963}
     - target: {fileID: 7756572630295305983, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: m_Name
       value: SystemsRoot
@@ -1090,6 +1102,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c3def19d1f569a49bfeac3b24d59a0c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Overlay.LevelCompleteView
+--- !u!114 &998783963 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6524402092039333811, guid: 124d8cc87653d2949b5d07157959b375, type: 3}
+  m_PrefabInstance: {fileID: 989117995}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8a7d60c941dace4884507f7ad54a8bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextRegistry
 --- !u!1 &1049410751
 GameObject:
   m_ObjectHideFlags: 0

@@ -487,6 +487,93 @@ namespace BlackWhiteLike.Editor.Configs
             Debug.Log($"[Editor] LevelCatalog._entries: дозаполнено {changed} значени(й), всего записей {entries.arraySize}.");
         }
 
+        // Локализация уровней (LevelSelect/LevelCard UI) — единственный источник для
+        // StampLevelCatalogDisplayNames. Порядок — тот же, что levelPaths в InitLevelCatalog/
+        // MigrateLevelCatalogEntries (0..4 = Level01..05, по позиции записи в каталоге).
+        private static readonly (string Ru, string En)[] LevelDisplayNames =
+        {
+            ("Первые шаги", "First Steps"),
+            ("Растущая вера", "Growing Faith"),
+            ("Расколотая деревня", "Divided Village"),
+            ("Испытание сомнением", "Trial of Doubt"),
+            ("Час расплаты", "The Reckoning"),
+        };
+
+        /// <summary>
+        /// Штампует LevelCatalogEntry._displayName (LocalizedString) для всех записей каталога —
+        /// вызывается безусловно из CreateAll (не только при создании ассета, в отличие от
+        /// остальных Init*/Migrate* в этом файле): контракт задачи — владелец правит названия
+        /// уровней через этот же пункт меню, а не руками в Inspector. Пустое поле заполняется,
+        /// непустое с ДРУГИМ текстом — тоже перезаписывается (с логом "старое -> новое"); совпадающее
+        /// значение не трогается и не логируется (идемпотентный no-op на повторном прогоне).
+        /// </summary>
+        private static void StampLevelCatalogDisplayNames()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<LevelCatalogConfig>(LevelCatalogPath);
+            if (catalog == null) return; // ещё не создан — следующий прогон CreateAll застанет его уже с записями.
+
+            var so = new SerializedObject(catalog);
+            var entries = so.FindProperty("_entries");
+            if (entries == null)
+            {
+                Debug.LogError("[Editor] LevelCatalogConfig: поле \"_entries\" не найдено — StampLevelCatalogDisplayNames пропущен.");
+                return;
+            }
+
+            int changed = 0;
+
+            for (int i = 0; i < LevelDisplayNames.Length && i < entries.arraySize; i++)
+            {
+                var displayNameProp = entries.GetArrayElementAtIndex(i).FindPropertyRelative("_displayName");
+                if (displayNameProp == null)
+                {
+                    Debug.LogWarning($"[Editor] LevelCatalog._entries[{i}]: поле \"_displayName\" не найдено — " +
+                                      "проверьте, что code-writer добавил его в LevelCatalogEntry.");
+                    continue;
+                }
+
+                changed += StampLocalizedStringIfChanged(displayNameProp, $"LevelCatalog._entries[{i}]._displayName",
+                    LevelDisplayNames[i].Ru, LevelDisplayNames[i].En);
+            }
+
+            if (changed == 0) return;
+
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(catalog);
+            Debug.Log($"[Editor] LevelCatalog._entries: обновлено {changed} значени(й) _displayName.");
+        }
+
+        /// <summary>
+        /// Прошивает вложенный LocalizedString (_ru/_en), только если значение отличается от текущего
+        /// на диске. Возвращает 1, если что-то изменено (лог "старое -> новое" пишется на каждое
+        /// изменённое под-поле отдельно).
+        /// </summary>
+        private static int StampLocalizedStringIfChanged(SerializedProperty localizedStringProp, string label, string ru, string en)
+        {
+            var ruProp = localizedStringProp.FindPropertyRelative("_ru");
+            var enProp = localizedStringProp.FindPropertyRelative("_en");
+            if (ruProp == null || enProp == null)
+            {
+                Debug.LogWarning($"[Editor] {label}: LocalizedString._ru/_en не найдены — прошивка пропущена.");
+                return 0;
+            }
+
+            int changed = 0;
+            if (ruProp.stringValue != ru)
+            {
+                Debug.Log($"[Editor] {label}.ru: \"{ruProp.stringValue}\" -> \"{ru}\".");
+                ruProp.stringValue = ru;
+                changed = 1;
+            }
+            if (enProp.stringValue != en)
+            {
+                Debug.Log($"[Editor] {label}.en: \"{enProp.stringValue}\" -> \"{en}\".");
+                enProp.stringValue = en;
+                changed = 1;
+            }
+            return changed;
+        }
+
         /// <summary>Дождь (game-design.md §19.4): исцеляет Fire/Hunger, без удержания-накопления вреда.</summary>
         private static void InitRainMiracle(SerializedObject so)
         {
@@ -927,6 +1014,11 @@ namespace BlackWhiteLike.Editor.Configs
             MigrateAlignmentVisualStages();
             // Шаг 7 — Кампания из 5 уровней.
             MigrateLevelCatalogEntries();
+            // Локализация — названия уровней (LevelCatalogEntry._displayName, добавлено параллельно
+            // code-writer'ом). Штампуется ВСЕГДА (не только при создании ассета) — контракт задачи:
+            // владелец правит названия через этот же скрипт, непустое поле с другим текстом тоже
+            // перезаписывается (с логом "старое -> новое").
+            StampLevelCatalogDisplayNames();
             // Шаг 8 — Meta + idle. MigrateRewardConfig() удалена (мелочь ревью шага 8) — см.
             // комментарий на месте бывшего метода, недостижимая ветка "если 0".
             MigrateUpgradeCatalogEntries();

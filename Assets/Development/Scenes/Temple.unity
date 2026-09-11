@@ -286,6 +286,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1898318746}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _localizationConfig
+      value: 
+      objectReference: {fileID: 11400000, guid: 281c20ae661ecfe4fb8de25977d1965b, type: 2}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _alignmentVisualConfig
       value: 
       objectReference: {fileID: 11400000, guid: d23f7b5aa4d7b6b4da95d6b9040f6335, type: 2}
@@ -293,6 +297,14 @@ PrefabInstance:
       propertyPath: _alignmentVisualController
       value: 
       objectReference: {fileID: 1805505839}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: _localizedTextRegistries.Array.size
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
+      propertyPath: '_localizedTextRegistries.Array.data[0]'
+      value: 
+      objectReference: {fileID: 1898318748}
     - target: {fileID: 7756572630295305983, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: m_Name
       value: SystemsRoot
@@ -888,6 +900,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 181b3c5241e94ba46a209711d9520c4b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Temple.TempleView
+--- !u!114 &1898318748 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 7203214748361831995, guid: aa0afd88ba74e6b45ab1d63eda29d740, type: 3}
+  m_PrefabInstance: {fileID: 1898318745}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8a7d60c941dace4884507f7ad54a8bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextRegistry
 --- !u!1 &2031651834
 GameObject:
   m_ObjectHideFlags: 0

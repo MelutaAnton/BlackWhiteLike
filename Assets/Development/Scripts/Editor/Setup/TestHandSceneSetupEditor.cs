@@ -5,6 +5,7 @@ using BlackWhiteLike.Controllers.Hand;
 using BlackWhiteLike.Controllers.Village;
 using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Hand;
+using BlackWhiteLike.Data.Configs.Localization;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Installers;
@@ -32,6 +33,7 @@ namespace BlackWhiteLike.Editor.Setup
         private const string HandConfigPath = "Assets/Development/Data/Configs/Hand/HandConfig.asset";
         private const string CameraConfigPath = "Assets/Development/Data/Configs/Camera/IsometricCameraConfig.asset";
         private const string ThrowableConfigPath = "Assets/Development/Data/Configs/Throwable/ThrowableConfig.asset";
+        private const string LocalizationConfigPath = "Assets/Development/Data/Configs/Localization/LocalizationConfig.asset";
         private const string GodHandPrefabPath = "Assets/Development/Prefabs/Hand/GodHand.prefab";
         private const string SystemsPrefabPath = "Assets/Development/Prefabs/Systems/SystemsRoot.prefab";
 
@@ -88,6 +90,7 @@ namespace BlackWhiteLike.Editor.Setup
             var handConfig = AssetDatabase.LoadAssetAtPath<HandConfig>(HandConfigPath);
             var cameraConfig = AssetDatabase.LoadAssetAtPath<IsometricCameraConfig>(CameraConfigPath);
             var throwableConfig = AssetDatabase.LoadAssetAtPath<ThrowableConfig>(ThrowableConfigPath);
+            var localizationConfig = AssetDatabase.LoadAssetAtPath<LocalizationConfig>(LocalizationConfigPath);
             if (handConfig == null)
                 Debug.LogWarning("[Editor] HandConfig не найден по пути " + HandConfigPath + " — сначала прогоните " +
                                   "\"BlackWhiteLike/Configs/Create Empty SO Set\".");
@@ -113,7 +116,7 @@ namespace BlackWhiteLike.Editor.Setup
             EnsureMainCameraAndListener();
             var systemsScope = EnsureSystemsInstance();
 
-            WireScope(systemsScope, handConfig, cameraConfig, godHand, cameraRig);
+            WireScope(systemsScope, handConfig, cameraConfig, godHand, cameraRig, localizationConfig);
             EnsureAutoInjectGameObjects(systemsScope, barrels);
 
             Undo.CollapseUndoOperations(undoGroup);
@@ -515,7 +518,7 @@ namespace BlackWhiteLike.Editor.Setup
         // ------------------------------------------------------------------------------------
 
         private static void WireScope(GameLifetimeScope scope, HandConfig handConfig, IsometricCameraConfig cameraConfig,
-            GodHandController godHand, CameraRig cameraRig)
+            GodHandController godHand, CameraRig cameraRig, LocalizationConfig localizationConfig)
         {
             if (scope == null)
             {
@@ -528,9 +531,25 @@ namespace BlackWhiteLike.Editor.Setup
             SetRef(so, "_isometricCameraConfig", cameraConfig);
             SetRef(so, "_godHandController", godHand);
             SetRef(so, "_cameraRig", cameraRig);
+            // Локализация — единый ассет LocalizationConfig.asset (Editor/UI/LocalizationConfigSetupEditor.cs).
+            SetRef(so, "_localizationConfig", localizationConfig);
             // Шаг 5 — без этого InputRouter не пускает ввод в мир (пускает только в LevelPlaying),
             // и рука в этой тестовой сцене (HUD здесь нет — некому иначе прошить состояние) перестаёт работать.
             SetEnumProp(so, "_initialState", (int)GameState.LevelPlaying);
+            // Зачистка ревью волны 2 шага 10 (задача 2): _TestHand — тестовая песочница руки, без
+            // HUD/MainMenu/Temple канваса — прошивается ПУСТЫМ массивом, без LogWarning (контракт
+            // задачи: в сценах без канвасов пустой массив ожидаем, не сообщаем как о пропуске).
+            var registriesProp = so.FindProperty("_localizedTextRegistries");
+            if (registriesProp == null)
+            {
+                Debug.LogWarning("[Editor] Поле \"_localizedTextRegistries\" не найдено на GameLifetimeScope — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+            }
+            else
+            {
+                registriesProp.arraySize = 0;
+                Debug.Log("[Editor] GameLifetimeScope._localizedTextRegistries прошито пустым массивом (в _TestHand нет HUD-канваса).");
+            }
             so.ApplyModifiedProperties();
         }
 

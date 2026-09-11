@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Hud;
 using BlackWhiteLike.Views.UI.Overlay;
 using TMPro;
@@ -274,7 +275,8 @@ namespace BlackWhiteLike.Editor.UI
 
             // Шаг 5 — Worship + win (game-design.md §19.5).
             BuildWorshipBar(root.transform, fontAsset, out var worshipFill, out var worshipLabel);
-            BuildAlignmentIndicator(root.transform, fontAsset, out var alignmentTrack, out var alignmentKnob);
+            BuildAlignmentIndicator(root.transform, fontAsset, out var alignmentTrack, out var alignmentKnob,
+                out var evilLabel, out var goodLabel);
             BuildPauseButton(root.transform, fontAsset, out var pauseButton);
             var popupRoot = BuildPopupRoot(root.transform);
 
@@ -287,10 +289,15 @@ namespace BlackWhiteLike.Editor.UI
             hudWired += SetRef(hudSo, "_pauseButton", pauseButton, "LevelHudView") ? 1 : 0;
             hudWired += SetRef(hudSo, "_popupPrefab", popupPrefabView, "LevelHudView") ? 1 : 0;
             hudWired += SetRef(hudSo, "_popupRoot", popupRoot, "LevelHudView") ? 1 : 0;
+            // Зачистка ревью волны 2 шага 10 (блокер): BuildAlignmentIndicator уже создавал узлы
+            // EvilLabel/GoodLabel, но не отдавал их наружу — LevelHudView._evilLabel/_goodLabel
+            // оставались {fileID: 0}.
+            hudWired += SetRef(hudSo, "_evilLabel", evilLabel, "LevelHudView") ? 1 : 0;
+            hudWired += SetRef(hudSo, "_goodLabel", goodLabel, "LevelHudView") ? 1 : 0;
             hudSo.ApplyModifiedProperties();
-            LogWireResult("LevelHudView", hudWired, 7);
+            LogWireResult("LevelHudView", hudWired, 9);
             totalWired += hudWired;
-            totalExpected += 7;
+            totalExpected += 9;
 
             // Оверлеи — сиблинги MiraclePanel/FaithBar под тем же канвасом (CLAUDE.md п.7: оверлей не
             // потомок гасимого узла), выключены по умолчанию, последними сиблингами (поверх HUD).
@@ -344,6 +351,11 @@ namespace BlackWhiteLike.Editor.UI
             totalExpected += 9;
 
             Debug.Log($"[Editor] LevelHudCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
+
+            // Зачистка ревью волны 2 шага 10 (мелочь 2): LocalizedTextRegistry на корне канваса —
+            // замена рантайм-скану сцены (GameLifetimeScope._localizedTextRegistries читает готовые
+            // списки вместо FindObjectsByType в проде).
+            EditorLocalizationUtility.EnsureLocalizedTextRegistry(root);
 
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             if (existed)
@@ -626,7 +638,9 @@ namespace BlackWhiteLike.Editor.UI
         }
 
         /// <summary>Под WorshipBar — трек Evil/Good с ползунком текущего Alignment.</summary>
-        private static void BuildAlignmentIndicator(Transform canvasRoot, TMP_FontAsset fontAsset, out RectTransform trackRt, out RectTransform knobRt)
+        private static void BuildAlignmentIndicator(Transform canvasRoot, TMP_FontAsset fontAsset,
+            out RectTransform trackRt, out RectTransform knobRt,
+            out TextMeshProUGUI evilLabel, out TextMeshProUGUI goodLabel)
         {
             var containerGo = FindOrCreateUIChild(canvasRoot, "AlignmentIndicator");
             var containerRt = (RectTransform)containerGo.transform;
@@ -666,7 +680,7 @@ namespace BlackWhiteLike.Editor.UI
             var evilRt = (RectTransform)evilGo.transform;
             SetAnchor(evilRt, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(1f, 0.5f),
                 new Vector2(-8f, 0f), new Vector2(60f, 24f));
-            var evilLabel = evilGo.GetComponent<TextMeshProUGUI>();
+            evilLabel = evilGo.GetComponent<TextMeshProUGUI>();
             if (evilLabel == null) evilLabel = evilGo.AddComponent<TextMeshProUGUI>();
             evilLabel.raycastTarget = false;
             evilLabel.maskable = false;
@@ -674,12 +688,13 @@ namespace BlackWhiteLike.Editor.UI
             evilLabel.fontSize = 18f;
             evilLabel.alignment = TextAlignmentOptions.MidlineRight;
             if (string.IsNullOrEmpty(evilLabel.text)) evilLabel.text = "Evil";
+            EditorLocalizationUtility.SetLocalizationKey(evilLabel, LocalizationKeys.Evil);
 
             var goodGo = FindOrCreateUIChild(containerGo.transform, "GoodLabel");
             var goodRt = (RectTransform)goodGo.transform;
             SetAnchor(goodRt, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(0f, 0.5f),
                 new Vector2(8f, 0f), new Vector2(60f, 24f));
-            var goodLabel = goodGo.GetComponent<TextMeshProUGUI>();
+            goodLabel = goodGo.GetComponent<TextMeshProUGUI>();
             if (goodLabel == null) goodLabel = goodGo.AddComponent<TextMeshProUGUI>();
             goodLabel.raycastTarget = false;
             goodLabel.maskable = false;
@@ -687,6 +702,7 @@ namespace BlackWhiteLike.Editor.UI
             goodLabel.fontSize = 18f;
             goodLabel.alignment = TextAlignmentOptions.MidlineLeft;
             if (string.IsNullOrEmpty(goodLabel.text)) goodLabel.text = "Good";
+            EditorLocalizationUtility.SetLocalizationKey(goodLabel, LocalizationKeys.Good);
         }
 
         /// <summary>Верхний правый угол — кнопка паузы с иконкой из ThirdParty-пака (фоллбэк — текст "II").</summary>
@@ -984,7 +1000,8 @@ namespace BlackWhiteLike.Editor.UI
         /// </summary>
         private static TextMeshProUGUI BuildOverlayLabel(Transform panel, string name, TMP_FontAsset fontAsset,
             float fontSize, string defaultText, float anchoredY, Vector2 size, bool bold = false,
-            float anchoredX = 0f, TextAlignmentOptions alignment = TextAlignmentOptions.Center)
+            float anchoredX = 0f, TextAlignmentOptions alignment = TextAlignmentOptions.Center,
+            string localizationKey = null)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
@@ -999,6 +1016,7 @@ namespace BlackWhiteLike.Editor.UI
             label.fontStyle = bold ? FontStyles.Bold : FontStyles.Normal;
             label.alignment = alignment;
             if (string.IsNullOrEmpty(label.text)) label.text = defaultText;
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(label, localizationKey);
             return label;
         }
 
@@ -1047,7 +1065,8 @@ namespace BlackWhiteLike.Editor.UI
         /// цвет фона (по умолчанию — акцентный зелёный, как у исходных Continue/Resume).
         /// </summary>
         private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
-            string caption, float anchoredY, Vector2 size, float anchoredX = 0f, Color? backgroundColor = null)
+            string caption, float anchoredY, Vector2 size, float anchoredX = 0f, Color? backgroundColor = null,
+            string localizationKey = null)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
@@ -1079,6 +1098,7 @@ namespace BlackWhiteLike.Editor.UI
             tmp.fontSize = 28f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = caption; // статичная подпись кнопки — не пользовательские данные, перезаписываем всегда
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(tmp, localizationKey);
 
             return button;
         }
@@ -1095,7 +1115,8 @@ namespace BlackWhiteLike.Editor.UI
             var panel = BuildOverlayContainer(canvasRoot, "LevelCompleteOverlay", new Vector2(DefaultOverlayPanelWidth, LevelCompleteOverlayHeight));
             var containerGo = panel.parent.gameObject;
 
-            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Level Complete", -24f, new Vector2(500f, 50f), bold: true);
+            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Level Complete", -24f, new Vector2(500f, 50f), bold: true,
+                localizationKey: LocalizationKeys.LevelComplete);
 
             // Строка "иконка + число": текст с левым выравниванием, иконка — РЕБЁНОК лейбла
             // (BuildRowIcon, решение владельца по второму playtest'у) слева от него, по центру
@@ -1125,7 +1146,8 @@ namespace BlackWhiteLike.Editor.UI
                 new Vector2(textWidth, coinsH), anchoredX: textLeftX, alignment: TextAlignmentOptions.Left);
             BuildRowIcon(coinsLabel.rectTransform, "CoinsIcon", EditorSpriteUtility.HudIconPaths.Coin, coinsH, iconGap);
 
-            var continueButton = BuildOverlayButton(panel, "ContinueButton", fontAsset, "Continue", 24f, new Vector2(280f, 72f));
+            var continueButton = BuildOverlayButton(panel, "ContinueButton", fontAsset, "Continue", 24f, new Vector2(280f, 72f),
+                localizationKey: LocalizationKeys.Continue);
 
             var view = containerGo.GetComponent<LevelCompleteView>();
             if (view == null) view = containerGo.AddComponent<LevelCompleteView>();
@@ -1152,7 +1174,8 @@ namespace BlackWhiteLike.Editor.UI
             var panel = BuildOverlayContainer(canvasRoot, "LevelStalledOverlay", new Vector2(DefaultOverlayPanelWidth, 300f));
             var containerGo = panel.parent.gameObject;
 
-            BuildOverlayLabel(panel, "Title", fontAsset, 36f, "Вера иссякла", -24f, new Vector2(480f, 50f), bold: true);
+            BuildOverlayLabel(panel, "Title", fontAsset, 36f, "Вера иссякла", -24f, new Vector2(480f, 50f), bold: true,
+                localizationKey: LocalizationKeys.FaithRanOut);
 
             // Миграция: узел Subtitle, собиравшийся прежней версией скрипта, больше не нужен —
             // QuestionText целиком закрывает его роль (см. .claude/rules/editor-files.md, "смена
@@ -1181,9 +1204,10 @@ namespace BlackWhiteLike.Editor.UI
             // вызываемом по клику RefillButton; сам Editor-скрипт не содержит бизнес-логики).
             // RefillButton — акцент (слева, зелёный, как раньше), DeclineButton — нейтральная (справа, серая).
             var refillButton = BuildOverlayButton(panel, "RefillButton", fontAsset, "Смотреть рекламу",
-                24f, new Vector2(260f, 72f), anchoredX: -140f);
+                24f, new Vector2(260f, 72f), anchoredX: -140f, localizationKey: LocalizationKeys.WatchAd);
             var declineButton = BuildOverlayButton(panel, "DeclineButton", fontAsset, "Позже",
-                24f, new Vector2(200f, 72f), anchoredX: 140f, backgroundColor: new Color(0.3f, 0.3f, 0.33f, 1f));
+                24f, new Vector2(200f, 72f), anchoredX: 140f, backgroundColor: new Color(0.3f, 0.3f, 0.33f, 1f),
+                localizationKey: LocalizationKeys.Later);
 
             var view = containerGo.GetComponent<LevelStalledView>();
             if (view == null) view = containerGo.AddComponent<LevelStalledView>();
@@ -1205,8 +1229,10 @@ namespace BlackWhiteLike.Editor.UI
             var panel = BuildOverlayContainer(canvasRoot, "PauseOverlay", new Vector2(DefaultOverlayPanelWidth, DefaultOverlayPanelHeight));
             var containerGo = panel.parent.gameObject;
 
-            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Пауза", -40f, new Vector2(300f, 60f), bold: true);
-            var resumeButton = BuildOverlayButton(panel, "ResumeButton", fontAsset, "Продолжить", 24f, new Vector2(280f, 72f));
+            BuildOverlayLabel(panel, "Title", fontAsset, 44f, "Пауза", -40f, new Vector2(300f, 60f), bold: true,
+                localizationKey: LocalizationKeys.Pause);
+            var resumeButton = BuildOverlayButton(panel, "ResumeButton", fontAsset, "Продолжить", 24f, new Vector2(280f, 72f),
+                localizationKey: LocalizationKeys.Resume);
 
             var view = containerGo.GetComponent<PauseOverlayView>();
             if (view == null) view = containerGo.AddComponent<PauseOverlayView>();
@@ -1353,6 +1379,9 @@ namespace BlackWhiteLike.Editor.UI
             prop.objectReferenceValue = value;
             return true;
         }
+
+        // SetLocalizationKey вынесен в EditorLocalizationUtility.SetLocalizationKey (дедуп ревью
+        // волны 2 шага 10, мелочь 3 — реализация была дословно продублирована в трёх Canvas-билдерах).
 
         /// <summary>
         /// Прошивает ссылку на RectTransform ИМЕНОВАННОГО прямого ребёнка узла (кнопки чудес — прямые

@@ -157,6 +157,16 @@ Defect classes that have appeared across steps and are worth checking first on e
     already serialized in the prefab YAML. A derived constant that the builder does not stamp violates
     `.claude/rules/editor-files.md` ("derived-значения между ассетами штампуются сборкой").
 
+16. **Defect class 2, third instance — a new `[SerializeField]` pair added for a NEW feature, left at
+    `{fileID: 0}` by the builder that creates the very nodes it should point at.** Step 10 wave 2:
+    `LevelHudView._evilLabel`/`_goodLabel` exist only to be tinted by `AlignmentUiTintPresenter`, and
+    `LevelHudSetupEditor.BuildAlignmentIndicator` creates `EvilLabel`/`GoodLabel` (and even hangs
+    `LocalizedTextView` on them) but never `out`s them — the wiring block still stamps 7 fields with
+    `LogWireResult(..., 7)`, so the counter reads "7/7 OK" while the feature is half-dead, and the
+    View's null-guards make it silent. **Check:** count `[SerializeField]` on the touched View against
+    the builder's `expected` constant — a diff that adds fields without bumping `expected` is the
+    tell; then confirm numerically in the prefab YAML (`grep '_fieldName:'` → `{fileID: 0}`).
+
 **Why:** `code-writer` and `editor-script-creator` run in parallel (CLAUDE.md workflow), so the contract between prefab/scene state and runtime state has no single owner.
 
 **How to apply:** for any new MonoBehaviour in a diff, grep every `[SerializeField]` name against the editor scripts that instantiate it, and grep every physics property the runtime *reads* (`isKinematic`, `useGravity`, `constraints`, `collisionDetectionMode`) against what the editor script *writes*. Report mismatches as blockers — both defect classes are invisible until playtest. For material-swapping controllers, also compare renderer **count and material heterogeneity** in the source prefab YAML against what the config's per-stage array can express: step 6's Synty church has 2 MeshRenderers with 2 *different* materials, but `AlignmentStage._templeMaterials` is a slot array, so a 1-element stage silently repaints both.

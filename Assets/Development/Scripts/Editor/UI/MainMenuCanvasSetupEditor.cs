@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
 using BlackWhiteLike.Editor.Common;
+using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.LevelSelect;
 using BlackWhiteLike.Views.UI.MainMenu;
 using BlackWhiteLike.Views.UI.Overlay;
@@ -86,6 +88,10 @@ namespace BlackWhiteLike.Editor.UI
 
             Debug.Log($"[Editor] MainMenuCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
 
+            // Зачистка ревью волны 2 шага 10 (мелочь 2): LocalizedTextRegistry на корне канваса —
+            // замена рантайм-скану сцены.
+            EditorLocalizationUtility.EnsureLocalizedTextRegistry(root);
+
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             if (existed)
                 PrefabUtility.UnloadPrefabContents(root);
@@ -125,10 +131,12 @@ namespace BlackWhiteLike.Editor.UI
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(title.text)) title.text = "BlackWhiteLike";
+            // Заголовок игры — бренд/лого, не переводимая фраза (LocalizationConfigSetupEditor,
+            // решение оркестратора шага локализации) — LocalizedTextView намеренно не вешаем.
 
-            var playButton = BuildMenuButton(panelGo.transform, "PlayButton", fontAsset, "Play", new Vector2(0f, -80f), new Vector2(320f, 88f));
+            var playButton = BuildMenuButton(panelGo.transform, "PlayButton", fontAsset, "Play", new Vector2(0f, -80f), new Vector2(320f, 88f), LocalizationKeys.Play);
             // Шаг 8 (Meta + idle) — вход в Temple.unity, ниже Play.
-            var templeButton = BuildMenuButton(panelGo.transform, "TempleButton", fontAsset, "Temple", new Vector2(0f, -184f), new Vector2(320f, 88f));
+            var templeButton = BuildMenuButton(panelGo.transform, "TempleButton", fontAsset, "Temple", new Vector2(0f, -184f), new Vector2(320f, 88f), LocalizationKeys.Temple);
 
             var view = panelGo.GetComponent<MainMenuView>();
             if (view == null) view = panelGo.AddComponent<MainMenuView>();
@@ -174,6 +182,7 @@ namespace BlackWhiteLike.Editor.UI
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(title.text)) title.text = "Select Level";
+            EditorLocalizationUtility.SetLocalizationKey(title, LocalizationKeys.SelectLevel);
 
             var gridGo = FindOrCreateUIChild(panelGo.transform, "CardsGrid");
             var gridRt = (RectTransform)gridGo.transform;
@@ -193,7 +202,7 @@ namespace BlackWhiteLike.Editor.UI
             for (int i = 0; i < LevelCardCount; i++)
                 cards.Add(BuildLevelCard(gridGo.transform, i + 1, fontAsset, ref totalWired, ref totalExpected));
 
-            var backButton = BuildMenuButton(panelGo.transform, "BackButton", fontAsset, "Back", new Vector2(0f, 60f), new Vector2(240f, 72f));
+            var backButton = BuildMenuButton(panelGo.transform, "BackButton", fontAsset, "Back", new Vector2(0f, 60f), new Vector2(240f, 72f), LocalizationKeys.Back);
             // Back — нижний левый угол.
             var backRt = (RectTransform)backButton.transform;
             SetAnchor(backRt, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(48f, 48f), new Vector2(240f, 72f));
@@ -381,6 +390,7 @@ namespace BlackWhiteLike.Editor.UI
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(title.text)) title.text = "Welcome back!";
+            EditorLocalizationUtility.SetLocalizationKey(title, LocalizationKeys.WelcomeBack);
 
             var coinsGo = FindOrCreateUIChild(panelGo.transform, "CoinsText");
             var coinsRt = (RectTransform)coinsGo.transform;
@@ -395,9 +405,9 @@ namespace BlackWhiteLike.Editor.UI
             coinsText.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(coinsText.text)) coinsText.text = "+0 coins";
 
-            var collectButton = BuildOverlayButton(panelGo.transform, "CollectButton", fontAsset, "Collect", 24f, new Vector2(280f, 72f));
+            var collectButton = BuildOverlayButton(panelGo.transform, "CollectButton", fontAsset, "Collect", 24f, new Vector2(280f, 72f), LocalizationKeys.Collect);
 
-            var closeButton = BuildOverlayButton(panelGo.transform, "CloseButton", fontAsset, "Close", -24f, new Vector2(180f, 56f));
+            var closeButton = BuildOverlayButton(panelGo.transform, "CloseButton", fontAsset, "Close", -24f, new Vector2(180f, 56f), LocalizationKeys.Close);
             var closeRt = (RectTransform)closeButton.transform;
             closeRt.anchoredPosition = new Vector2(0f, -96f);
 
@@ -427,7 +437,7 @@ namespace BlackWhiteLike.Editor.UI
         }
 
         private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
-            string caption, float anchoredY, Vector2 size)
+            string caption, float anchoredY, Vector2 size, string localizationKey = null)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
@@ -459,6 +469,7 @@ namespace BlackWhiteLike.Editor.UI
             tmp.fontSize = 28f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = caption;
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(tmp, localizationKey);
 
             return button;
         }
@@ -468,7 +479,7 @@ namespace BlackWhiteLike.Editor.UI
         // ------------------------------------------------------------------------------------
 
         private static Button BuildMenuButton(Transform parent, string name, TMP_FontAsset fontAsset, string caption,
-            Vector2 anchoredPosition, Vector2 size)
+            Vector2 anchoredPosition, Vector2 size, string localizationKey = null)
         {
             var go = FindOrCreateUIChild(parent, name);
             var rt = (RectTransform)go.transform;
@@ -500,6 +511,7 @@ namespace BlackWhiteLike.Editor.UI
             tmp.fontSize = 32f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = caption; // статичная подпись — перезаписываем всегда.
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(tmp, localizationKey);
 
             return button;
         }
@@ -561,6 +573,9 @@ namespace BlackWhiteLike.Editor.UI
             prop.objectReferenceValue = value;
             return true;
         }
+
+        // SetLocalizationKey вынесен в EditorLocalizationUtility.SetLocalizationKey (дедуп ревью
+        // волны 2 шага 10, мелочь 3 — реализация была дословно продублирована в трёх Canvas-билдерах).
 
         private static void EnsureFolder(string folderPath)
         {

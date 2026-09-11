@@ -225,7 +225,7 @@ namespace BlackWhiteLike.Controllers.Village
             // ReportStimulus публикует VillagerStateChangedEvent синхронно (Idle/Panic/Worship →
             // Tossed) — OnVillagerStateChanged тут же вызовет ApplyPhysicsForState(Tossed), который
             // и выставит constraints/collisionDetectionMode для полёта. Дублировать здесь не нужно.
-            _stateService.ReportStimulus(_villagerId, VillagerStimulus.Grabbed);
+            _stateService.ReportStimulus(_villagerId, VillagerStimulus.Grabbed, transform.position);
         }
 
         public void OnReleased(Vector3 throwVelocity, bool isSoftPlacement)
@@ -269,7 +269,7 @@ namespace BlackWhiteLike.Controllers.Village
             // ReportStimulus публикует VillagerStateChangedEvent синхронно (тот же контракт, что в
             // OnGrabbed) — ApplyPhysicsForState(Tossed) снимает constraints/выставляет
             // CollisionDetectionMode ДО того, как ниже будет выставлена скорость разлёта.
-            _stateService.ReportStimulus(_villagerId, VillagerStimulus.Blasted);
+            _stateService.ReportStimulus(_villagerId, VillagerStimulus.Blasted, transform.position);
 
             // Playtest-фикс 2026-09-10: если взрыв застал жителя в мягком спуске (OnReleased
             // заморозил вращение, а self-loop Tossed -> Tossed события не публикует и
@@ -412,7 +412,9 @@ namespace BlackWhiteLike.Controllers.Village
             var stimulus = VillagerMovementRules.ResolveLandingStimulus(_softPlaced, impactSpeed, _config.HardLandingSpeedThreshold);
             _softPlaced = false;
 
-            _stateService.ReportStimulus(_villagerId, stimulus);
+            // Шаг 10 (волна 2): позиция — мировая точка приземления, WorshipService якорит к ней
+            // попап Fear жёсткого приземления (HardLanded -> Stunned, если Grabbed до этого).
+            _stateService.ReportStimulus(_villagerId, stimulus, transform.position);
             _eventBus.Publish(new ObjectLandedEvent(_grabbableId, impactSpeed, false));
         }
 

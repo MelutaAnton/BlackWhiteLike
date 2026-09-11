@@ -62,7 +62,7 @@ namespace BlackWhiteLike.Services.Village
             return VillagerState.Idle;
         }
 
-        public void ReportStimulus(VillagerId id, VillagerStimulus stimulus)
+        public void ReportStimulus(VillagerId id, VillagerStimulus stimulus, Vector3? worldPosition = null)
         {
             if (!_records.TryGetValue(id, out var record))
             {
@@ -80,7 +80,7 @@ namespace BlackWhiteLike.Services.Village
                 return;
             }
 
-            ApplyTransition(id, record, target, stimulus);
+            ApplyTransition(id, record, target, stimulus, worldPosition);
         }
 
         public void Tick(float deltaTime)
@@ -137,12 +137,13 @@ namespace BlackWhiteLike.Services.Village
             }
         }
 
-        private void ApplyTransition(VillagerId id, Record record, VillagerState target, VillagerStimulus cause)
+        private void ApplyTransition(VillagerId id, Record record, VillagerState target, VillagerStimulus cause, Vector3? worldPosition = null)
         {
             var from = record.State;
             record.State = target;
             record.Timer = DurationFor(target);
-            _eventBus.Publish(new VillagerStateChangedEvent(id, from, target, cause));
+            _eventBus.Publish(new VillagerStateChangedEvent(id, from, target, cause,
+                worldPosition ?? Vector3.zero, worldPosition.HasValue));
         }
 
         private float DurationFor(VillagerState state)

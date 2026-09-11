@@ -1,5 +1,6 @@
 using System;
 using NUnit.Framework;
+using UnityEngine;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Flow;
@@ -26,6 +27,9 @@ namespace BlackWhiteLike.Tests
             }
 
             public void SetAlignment(float score) => AlignmentScore = score;
+
+            public Color LastTint { get; private set; }
+            public void SetAlignmentTint(Color color) => LastTint = color;
 
             public void RaisePauseClicked() => PauseClicked?.Invoke();
         }

@@ -1,4 +1,5 @@
 using BlackWhiteLike.Models;
+using UnityEngine;
 
 namespace BlackWhiteLike.Services.Village
 {
@@ -25,7 +26,13 @@ namespace BlackWhiteLike.Services.Village
         /// Запрещённый для текущего состояния переход (например, стимул во время Tossed/Stunned,
         /// кроме тех, что явно разрешены) молча игнорируется.
         /// </summary>
-        void ReportStimulus(VillagerId id, VillagerStimulus stimulus);
+        /// <param name="worldPosition">
+        /// Мировая позиция жителя в момент стимула (шаг 10, волна 2) — издатель (контроллер) знает
+        /// <c>transform.position</c>, сервис её не вычисляет, только прокидывает в
+        /// <c>VillagerStateChangedEvent.WorldPosition</c> на реальном переходе. null — позиция
+        /// неизвестна (например, переход по таймеру внутри <see cref="Tick"/>).
+        /// </param>
+        void ReportStimulus(VillagerId id, VillagerStimulus stimulus, Vector3? worldPosition = null);
 
         /// <summary>Тикает таймеры состояний с истечением (Panic/Worship/Stunned) — по истечении возврат в Idle.</summary>
         void Tick(float deltaTime);

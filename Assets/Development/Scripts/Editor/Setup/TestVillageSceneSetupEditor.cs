@@ -9,6 +9,7 @@ using BlackWhiteLike.Data.Configs.Camera;
 using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Localization;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Throwable;
 using BlackWhiteLike.Data.Configs.Tutorial;
@@ -21,6 +22,7 @@ using BlackWhiteLike.Editor.Prefabs;
 using BlackWhiteLike.Editor.UI;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Hud;
 using BlackWhiteLike.Views.UI.Overlay;
 using UnityEditor;
@@ -78,6 +80,9 @@ namespace BlackWhiteLike.Editor.Setup
 
         // Tutorial — обучение первого уровня (TutorialConfig/TutorialView, Editor/UI/TutorialConfigSetupEditor.cs).
         private const string TutorialConfigPath = "Assets/Development/Data/Configs/Tutorial/TutorialConfig_Level01.asset";
+
+        // Локализация (Editor/UI/LocalizationConfigSetupEditor.cs) — единый ассет на все сцены.
+        private const string LocalizationConfigPath = "Assets/Development/Data/Configs/Localization/LocalizationConfig.asset";
 
         /// <summary>
         /// Позиции структур на сцене. Имя ← ThirdParty-источник ← масштаб ← NeedType — теперь
@@ -194,6 +199,7 @@ namespace BlackWhiteLike.Editor.Setup
             var vfxConfig = AssetDatabase.LoadAssetAtPath<VfxConfig>(VfxConfigPath);
             var worshipConfig = AssetDatabase.LoadAssetAtPath<WorshipConfig>(WorshipConfigPath);
             var tutorialConfig = AssetDatabase.LoadAssetAtPath<TutorialConfig>(TutorialConfigPath);
+            var localizationConfig = AssetDatabase.LoadAssetAtPath<LocalizationConfig>(LocalizationConfigPath);
             WarnIfMissing(handConfig, HandConfigPath);
             WarnIfMissing(cameraConfig, CameraConfigPath);
             WarnIfMissing(villagerConfig, VillagerConfigPath);
@@ -205,6 +211,7 @@ namespace BlackWhiteLike.Editor.Setup
             WarnIfMissing(vfxConfig, VfxConfigPath);
             WarnIfMissing(worshipConfig, WorshipConfigPath);
             WarnIfMissing(tutorialConfig, TutorialConfigPath);
+            WarnIfMissing(localizationConfig, LocalizationConfigPath);
 
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Test Village Scene");
@@ -255,10 +262,18 @@ namespace BlackWhiteLike.Editor.Setup
             // TutorialView — на корне того же HUD-канваса, что LevelHudView/MiraclePanelView (см. Editor/UI/LevelHudSetupEditor).
             var tutorialView = Object.FindAnyObjectByType<TutorialView>(FindObjectsInactive.Include);
 
+            // Зачистка ревью волны 2 шага 10 (задача 2): LocalizedTextRegistry живёт на том же корне
+            // канваса, что LevelHudView (LevelHudSetupEditor.EnsureLocalizedTextRegistry вешает её туда) —
+            // единственный реестр этой сцены, прошивается массивом из одного элемента.
+            var levelHudLocalizedTextRegistry = levelHudView != null ? levelHudView.GetComponent<LocalizedTextRegistry>() : null;
+            var localizedTextRegistries = levelHudLocalizedTextRegistry != null
+                ? new[] { levelHudLocalizedTextRegistry }
+                : System.Array.Empty<LocalizedTextRegistry>();
+
             WireScope(systemsScope, handConfig, cameraConfig, villagerConfig, levelConfig, throwableConfig, godHand, cameraRig,
                 miracleCatalogConfig, faithConfig, vfxConfig, miracleTargeting, miracleImpact, miracleVfx, miraclePanelView, faithBarView,
                 worshipConfig, levelHudView, levelCompleteView, levelStalledView, pauseOverlayView, initialState,
-                tutorialConfig, tutorialView);
+                tutorialConfig, tutorialView, localizationConfig, localizedTextRegistries);
 
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10): материалы/конфиг/[AlignmentVisual] +
             // прошивка _handRenderers/_templeRenderers и ссылок на GameLifetimeScope. Вызывается
@@ -1016,7 +1031,8 @@ namespace BlackWhiteLike.Editor.Setup
             MiraclePanelView miraclePanelView, FaithBarView faithBarView,
             WorshipConfig worshipConfig, LevelHudView levelHudView, LevelCompleteView levelCompleteView,
             LevelStalledView levelStalledView, PauseOverlayView pauseOverlayView, GameState initialState,
-            TutorialConfig tutorialConfig, TutorialView tutorialView)
+            TutorialConfig tutorialConfig, TutorialView tutorialView, LocalizationConfig localizationConfig,
+            LocalizedTextRegistry[] localizedTextRegistries)
         {
             if (scope == null)
             {
@@ -1024,7 +1040,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 23;
+            const int expected = 25;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -1055,6 +1071,10 @@ namespace BlackWhiteLike.Editor.Setup
             // Tutorial — обучение первого уровня (TutorialConfig/TutorialView).
             wired += SetRef(so, "_tutorialConfig", tutorialConfig, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_tutorialView", tutorialView, ownerLabel) ? 1 : 0;
+            // Локализация — единый ассет LocalizationConfig.asset (Editor/UI/LocalizationConfigSetupEditor.cs).
+            wired += SetRef(so, "_localizationConfig", localizationConfig, ownerLabel) ? 1 : 0;
+            // Зачистка ревью волны 2 шага 10 (задача 2) — замена рантайм-скану сцены.
+            wired += SetRefArray(so, "_localizedTextRegistries", localizedTextRegistries, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)
@@ -1062,6 +1082,35 @@ namespace BlackWhiteLike.Editor.Setup
             else
                 Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей — " +
                                 "сцена соберётся, но часть систем не заработает в Play Mode.");
+        }
+
+        /// <summary>
+        /// Прошивает массив ссылок (в отличие от <see cref="SetRef"/> — object reference поля).
+        /// Единица за "массив непустой и прошит", ноль — если поле не найдено или массив пуст
+        /// (с LogWarning), тем же приёмом, что и одиночные ссылки: не затираем существующую
+        /// прошивку пустым массивом на повторном прогоне при отсутствии источника.
+        /// </summary>
+        private static bool SetRefArray<T>(SerializedObject so, string propertyName, T[] values, string ownerLabel) where T : Object
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return false;
+            }
+
+            if (values == null || values.Length == 0)
+            {
+                Debug.LogWarning($"[Editor] Значения для массива \"{propertyName}\" на {ownerLabel} не найдены — оставлено как было (не затираем пустым массивом).");
+                return false;
+            }
+
+            prop.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+                prop.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+
+            return true;
         }
 
         /// <summary>Прошивает enum-поле по индексу значения. В отличие от SetRef — не бывает "не найдено значение", только "поле не найдено".</summary>

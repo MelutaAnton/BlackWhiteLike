@@ -4,6 +4,7 @@ using BlackWhiteLike.Data.Configs.Levels;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Flow;
 using BlackWhiteLike.Services.Level;
+using BlackWhiteLike.Services.Localization;
 using BlackWhiteLike.Services.Meta;
 using UnityEngine;
 using VContainer.Unity;
@@ -25,6 +26,7 @@ namespace BlackWhiteLike.Views.UI.LevelSelect
         private readonly ILevelProgressService _progress;
         private readonly ILevelSelectionService _selection;
         private readonly ISceneLoaderService _sceneLoader;
+        private readonly ILocalizationService _localization;
 
         private IDisposable _stateChangedSubscription;
 
@@ -35,7 +37,8 @@ namespace BlackWhiteLike.Views.UI.LevelSelect
             LevelCatalogConfig catalog,
             ILevelProgressService progress,
             ILevelSelectionService selection,
-            ISceneLoaderService sceneLoader)
+            ISceneLoaderService sceneLoader,
+            ILocalizationService localization)
         {
             _view = view;
             _gameFlow = gameFlow;
@@ -44,6 +47,7 @@ namespace BlackWhiteLike.Views.UI.LevelSelect
             _progress = progress;
             _selection = selection;
             _sceneLoader = sceneLoader;
+            _localization = localization;
         }
 
         public void Start()
@@ -94,13 +98,20 @@ namespace BlackWhiteLike.Views.UI.LevelSelect
 
                 var locked = !_progress.IsUnlocked(entry.Level.Id);
                 var completed = _progress.IsCompleted(entry.Level.Id);
-                _view.BindCard(i, entry.Level.Id.ToString(), entry.Preview, locked, completed);
+                _view.BindCard(i, ResolveDisplayName(entry), entry.Preview, locked, completed);
             }
 
             if (entries.Length > cardCount)
             {
                 Debug.LogWarning($"[LevelSelectPresenter] В каталоге {entries.Length} уровней, а в разметке {cardCount} карточек — лишние уровни не будут показаны.");
             }
+        }
+
+        /// <summary>Шаг 10 (волна 2): DisplayName из каталога, фоллбэк на LevelId.ToString() при пустой строке (незаполненный LocalizedString).</summary>
+        private string ResolveDisplayName(LevelCatalogEntry entry)
+        {
+            var resolved = entry.DisplayName.Resolve(_localization.CurrentLocale);
+            return string.IsNullOrEmpty(resolved) ? entry.Level.Id.ToString() : resolved;
         }
 
         private void OnCardClicked(int index)

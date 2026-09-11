@@ -88,6 +88,20 @@ namespace BlackWhiteLike.Tests
         private sealed class FakeLocalizationService : ILocalizationService
         {
             public GameLocale CurrentLocale { get; set; } = GameLocale.Ru;
+
+            // Тот же текст, что раньше был захардкожен в LevelStalledPresenter.QuestionText —
+            // презентер теперь резолвит его через GetText(LocalizationKeys.LevelStalledQuestion).
+            public string GetText(string key)
+            {
+                if (key == LocalizationKeys.LevelStalledQuestion)
+                {
+                    return CurrentLocale == GameLocale.En
+                        ? "Watch an ad to refill your faith?"
+                        : "Посмотреть рекламу, чтобы пополнить веру?";
+                }
+
+                return key;
+            }
         }
 
         private static LevelStalledPresenter CreatePresenter(

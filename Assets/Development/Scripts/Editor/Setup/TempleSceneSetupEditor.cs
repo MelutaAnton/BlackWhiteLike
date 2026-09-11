@@ -1,9 +1,11 @@
 using System.IO;
+using BlackWhiteLike.Data.Configs.Localization;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Editor.Prefabs;
 using BlackWhiteLike.Editor.UI;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Overlay;
 using BlackWhiteLike.Views.UI.Temple;
 using UnityEditor;
@@ -33,6 +35,7 @@ namespace BlackWhiteLike.Editor.Setup
         private const string ScenesFolder = "Assets/Development/Scenes";
         private const string ScenePath = BuildSettingsEditor.TempleScenePath;
         private const string CanvasPrefabPath = TempleCanvasSetupEditor.PrefabPath;
+        private const string LocalizationConfigPath = "Assets/Development/Data/Configs/Localization/LocalizationConfig.asset";
 
         private const string TempleStructureName = "Temple";
         private const string GroundName = "Ground";
@@ -99,6 +102,11 @@ namespace BlackWhiteLike.Editor.Setup
             if (canvasPrefab == null)
                 Debug.LogError("[Editor] TempleCanvas.prefab всё ещё не собран (см. лог выше) — TempleCanvas не размещён в сцене.");
 
+            var localizationConfig = AssetDatabase.LoadAssetAtPath<LocalizationConfig>(LocalizationConfigPath);
+            if (localizationConfig == null)
+                Debug.LogWarning("[Editor] LocalizationConfig не найден по пути " + LocalizationConfigPath + " — сначала прогоните " +
+                                  "\"BlackWhiteLike/Configs/Create Localization Config\".");
+
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Build Temple Scene");
             int undoGroup = Undo.GetCurrentGroup();
@@ -126,7 +134,15 @@ namespace BlackWhiteLike.Editor.Setup
                 welcomeBackView = canvasInstance.GetComponentInChildren<WelcomeBackView>(true);
             }
 
-            WireScope(systemsScope, templeView, welcomeBackView);
+            // Зачистка ревью волны 2 шага 10 (задача 2): LocalizedTextRegistry живёт на корне
+            // TempleCanvas (TempleCanvasSetupEditor.EnsureLocalizedTextRegistry) — прошивается
+            // массивом из одного элемента.
+            var templeLocalizedTextRegistry = canvasInstance != null ? canvasInstance.GetComponent<LocalizedTextRegistry>() : null;
+            var localizedTextRegistries = templeLocalizedTextRegistry != null
+                ? new[] { templeLocalizedTextRegistry }
+                : System.Array.Empty<LocalizedTextRegistry>();
+
+            WireScope(systemsScope, templeView, welcomeBackView, localizationConfig, localizedTextRegistries);
 
             AssertNoThirdPartyPrefabLinksInScene(scene);
 
@@ -282,7 +298,8 @@ namespace BlackWhiteLike.Editor.Setup
         // Прошивка ссылок на Composition Root
         // ------------------------------------------------------------------------------------
 
-        private static void WireScope(GameLifetimeScope scope, TempleView templeView, WelcomeBackView welcomeBackView)
+        private static void WireScope(GameLifetimeScope scope, TempleView templeView, WelcomeBackView welcomeBackView,
+            LocalizationConfig localizationConfig, LocalizedTextRegistry[] localizedTextRegistries)
         {
             if (scope == null)
             {
@@ -290,7 +307,7 @@ namespace BlackWhiteLike.Editor.Setup
                 return;
             }
 
-            const int expected = 3;
+            const int expected = 5;
             var so = new SerializedObject(scope);
             var ownerLabel = "GameLifetimeScope";
 
@@ -298,6 +315,10 @@ namespace BlackWhiteLike.Editor.Setup
             wired += SetEnumIntProp(so, "_initialState", (int)GameState.TempleMeta, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_templeView", templeView, ownerLabel) ? 1 : 0;
             wired += SetRef(so, "_welcomeBackView", welcomeBackView, ownerLabel) ? 1 : 0;
+            // Локализация — единый ассет LocalizationConfig.asset (Editor/UI/LocalizationConfigSetupEditor.cs).
+            wired += SetRef(so, "_localizationConfig", localizationConfig, ownerLabel) ? 1 : 0;
+            // Зачистка ревью волны 2 шага 10 (задача 2) — замена рантайм-скану сцены.
+            wired += SetRefArray(so, "_localizedTextRegistries", localizedTextRegistries, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
 
             if (wired == expected)
@@ -305,6 +326,30 @@ namespace BlackWhiteLike.Editor.Setup
             else
                 Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей — " +
                                 "сцена соберётся, но Temple-меню не будет работать в Play Mode.");
+        }
+
+        /// <summary>Прошивает массив ссылок — см. TestVillageSceneSetupEditor.SetRefArray (тот же приём).</summary>
+        private static bool SetRefArray<T>(SerializedObject so, string propertyName, T[] values, string ownerLabel) where T : Object
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogWarning($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — прошивка пропущена " +
+                                  "(проверьте, что code-writer добавил это SerializeField).");
+                return false;
+            }
+
+            if (values == null || values.Length == 0)
+            {
+                Debug.LogWarning($"[Editor] Значения для массива \"{propertyName}\" на {ownerLabel} не найдены — оставлено как было (не затираем пустым массивом).");
+                return false;
+            }
+
+            prop.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+                prop.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+
+            return true;
         }
 
         // enumValueIndex — индекс в отсортированном списке значений enum, а не само значение

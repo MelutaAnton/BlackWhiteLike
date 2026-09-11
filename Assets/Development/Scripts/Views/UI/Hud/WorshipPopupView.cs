@@ -19,7 +19,6 @@ namespace BlackWhiteLike.Views.UI.Hud
 
         private RectTransform _rectTransform;
         private Vector2 _startAnchoredPosition;
-        private bool _hasStartPosition;
 
         private Action<WorshipPopupView> _onFinished;
         private float _elapsed;
@@ -30,19 +29,17 @@ namespace BlackWhiteLike.Views.UI.Hud
         /// запоминает колбэк завершения. Вызывается фабрикой сразу после спавна — не из
         /// Awake/OnEnable (CLAUDE.md: запуск поведения — только явный Launch).
         /// </summary>
+        /// <remarks>
+        /// Шаг 10 (волна 2): стартовая позиция читается ЗАНОВО на КАЖДЫЙ Launch (раньше кэшировалась
+        /// один раз навсегда) — фабрика теперь может выставить <c>anchoredPosition</c> под мировую
+        /// проекцию (<c>WorshipPopupPresenter</c>) или дефолтную HUD-точку ДО вызова Launch, и это
+        /// должно быть именно то место, откуда попап поднимается.
+        /// </remarks>
         public void Launch(string text, Color color, Action<WorshipPopupView> onFinished)
         {
             if (_rectTransform == null) _rectTransform = GetComponent<RectTransform>();
 
-            if (!_hasStartPosition)
-            {
-                // Запоминается один раз при первом Launch — дальнейшие запуски (переиспользование
-                // из пула) сбрасываются к этой же исходной позиции, а не к позиции конца прошлой анимации.
-                _startAnchoredPosition = _rectTransform.anchoredPosition;
-                _hasStartPosition = true;
-            }
-
-            _rectTransform.anchoredPosition = _startAnchoredPosition;
+            _startAnchoredPosition = _rectTransform.anchoredPosition;
 
             if (_label != null)
             {
@@ -61,7 +58,9 @@ namespace BlackWhiteLike.Views.UI.Hud
         {
             if (!_isRunning) return;
 
-            _elapsed += Time.deltaTime;
+            // unscaledDeltaTime — LevelCompleteState/PausedState останавливают Time.timeScale = 0,
+            // попап Worship не должен замирать поверх замороженного мира/оверлея итогов.
+            _elapsed += Time.unscaledDeltaTime;
             var t = _lifetime > 0f ? Mathf.Clamp01(_elapsed / _lifetime) : 1f;
 
             if (_rectTransform != null)

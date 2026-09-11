@@ -1,4 +1,5 @@
 using BlackWhiteLike.Models;
+using UnityEngine;
 
 namespace BlackWhiteLike.Core.Events
 {
@@ -80,6 +81,12 @@ namespace BlackWhiteLike.Core.Events
     /// чуда Fireball — <c>Blasted</c>): без этого <c>WorshipService</c>/<c>AlignmentService</c>
     /// начисляли Fear/сдвиг за жёсткое приземление (Tossed → Stunned) дважды для Blasted — свой
     /// Fear/сдвиг уже даёт <c>NeedTriggeredEvent</c> самого Fireball'а.
+    /// <see cref="WorldPosition"/>/<see cref="HasWorldPosition"/> (шаг 10, волна 2) — мировая позиция
+    /// жителя в момент стимула, репортится издателем (<c>VillagerController</c>/
+    /// <c>MiracleImpactController</c> знают <c>transform.position</c>) через опциональный параметр
+    /// <c>IVillagerStateService.ReportStimulus</c>; переходы по таймеру (<c>VillagerStateService.Tick</c>)
+    /// позиции не несут (<c>HasWorldPosition</c> == false) — используется <c>WorshipService</c> для
+    /// якорения попапов Fear к месту жёсткого приземления/удара молнии.
     /// </summary>
     public readonly struct VillagerStateChangedEvent
     {
@@ -87,13 +94,18 @@ namespace BlackWhiteLike.Core.Events
         public readonly VillagerState From;
         public readonly VillagerState To;
         public readonly VillagerStimulus Cause;
+        public readonly Vector3 WorldPosition;
+        public readonly bool HasWorldPosition;
 
-        public VillagerStateChangedEvent(VillagerId id, VillagerState from, VillagerState to, VillagerStimulus cause)
+        public VillagerStateChangedEvent(VillagerId id, VillagerState from, VillagerState to, VillagerStimulus cause,
+            Vector3 worldPosition = default, bool hasWorldPosition = false)
         {
             Id = id;
             From = from;
             To = to;
             Cause = cause;
+            WorldPosition = worldPosition;
+            HasWorldPosition = hasWorldPosition;
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using BlackWhiteLike.Models;
 using UnityEngine;
 
 namespace BlackWhiteLike.Data.Configs.Levels
@@ -14,8 +15,12 @@ namespace BlackWhiteLike.Data.Configs.Levels
         [SerializeField] private LevelConfig _level;
         [SerializeField] private Sprite _preview;
 
+        [Tooltip("Название уровня для карточки LevelSelect/заголовков (шаг 10, волна 2). Пустое — фоллбэк на Level.Id.ToString().")]
+        [SerializeField] private LocalizedString _displayName;
+
         public LevelConfig Level => _level;
         public Sprite Preview => _preview;
+        public LocalizedString DisplayName => _displayName;
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Flow;
 using BlackWhiteLike.Services.Idle;
 using BlackWhiteLike.Services.Level;
+using BlackWhiteLike.Services.Localization;
 using BlackWhiteLike.Services.Meta;
 using VContainer.Unity;
 
@@ -29,6 +30,7 @@ namespace BlackWhiteLike.Views.UI.Temple
         private readonly IIdleIncomeService _idleIncome;
         private readonly ILevelSelectionService _selection;
         private readonly ISceneLoaderService _sceneLoader;
+        private readonly ILocalizationService _localization;
 
         private IDisposable _currencyChangedSubscription;
         private IDisposable _idleIncomeReadySubscription;
@@ -41,7 +43,8 @@ namespace BlackWhiteLike.Views.UI.Temple
             UpgradeCatalogConfig upgradeCatalog,
             IIdleIncomeService idleIncome,
             ILevelSelectionService selection,
-            ISceneLoaderService sceneLoader)
+            ISceneLoaderService sceneLoader,
+            ILocalizationService localization)
         {
             _view = view;
             _eventBus = eventBus;
@@ -51,6 +54,23 @@ namespace BlackWhiteLike.Views.UI.Temple
             _idleIncome = idleIncome;
             _selection = selection;
             _sceneLoader = sceneLoader;
+            _localization = localization;
+        }
+
+        /// <summary>
+        /// Ключ локализации названия апгрейда (playtest волны 2: строки светили именами enum —
+        /// "HandPower"). Новая категория без ключа — фоллбэк на имя enum-значения (читаемо в
+        /// логах/отладке, а ревью/плейтест такой хвост заметит).
+        /// </summary>
+        private static string GetUpgradeTitleKey(UpgradeCategory category)
+        {
+            switch (category)
+            {
+                case UpgradeCategory.HandPower: return LocalizationKeys.UpgradeHandPower;
+                case UpgradeCategory.FaithCapacity: return LocalizationKeys.UpgradeFaithCapacity;
+                case UpgradeCategory.MiraclePower: return LocalizationKeys.UpgradeMiraclePower;
+                default: return null;
+            }
         }
 
         public void Start()
@@ -126,7 +146,11 @@ namespace BlackWhiteLike.Views.UI.Temple
                 var price = hasNext ? nextEntry.Price : 0;
                 var effectText = hasNext ? $"+{nextEntry.EffectValue}" : string.Empty;
 
-                _view.ConfigureRow(i, category.ToString(), level, maxLevel, effectText, price, isMaxed: !hasNext);
+                // Название — локализованный ключ; категория без ключа — имя enum как фоллбэк.
+                var titleKey = GetUpgradeTitleKey(category);
+                var title = titleKey != null ? _localization.GetText(titleKey) : category.ToString();
+
+                _view.ConfigureRow(i, title, level, maxLevel, effectText, price, isMaxed: !hasNext);
             }
         }
     }

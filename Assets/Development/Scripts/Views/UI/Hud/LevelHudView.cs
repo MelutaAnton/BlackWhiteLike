@@ -23,6 +23,10 @@ namespace BlackWhiteLike.Views.UI.Hud
 
         [SerializeField] private RectTransform _alignmentTrack;
 
+        [Tooltip("Шаг 10 (волна 2, UI-тинт по alignment) — метки по краям трека Alignment.")]
+        [SerializeField] private TextMeshProUGUI _evilLabel;
+        [SerializeField] private TextMeshProUGUI _goodLabel;
+
         [SerializeField] private Button _pauseButton;
 
         [SerializeField] private WorshipPopupView _popupPrefab;
@@ -70,6 +74,18 @@ namespace BlackWhiteLike.Views.UI.Hud
             var pos = _alignmentKnob.anchoredPosition;
             pos.x = x;
             _alignmentKnob.anchoredPosition = pos;
+        }
+
+        /// <summary>
+        /// Тинт по alignment-стейджу (отложка шага 6, шаг 10 волна 2) — fill шкалы Worship + метки
+        /// Evil/Good. Null-гарды: сцена может не прошить какое-то из полей (например, старая
+        /// собранная версия HUD без меток) — тинт применяется к тому, что прошито.
+        /// </summary>
+        public void SetAlignmentTint(Color color)
+        {
+            if (_worshipFill != null) _worshipFill.color = color;
+            if (_evilLabel != null) _evilLabel.color = color;
+            if (_goodLabel != null) _goodLabel.color = color;
         }
     }
 }

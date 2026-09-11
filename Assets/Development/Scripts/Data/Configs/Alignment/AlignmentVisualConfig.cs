@@ -99,16 +99,37 @@ namespace BlackWhiteLike.Data.Configs.Alignment
         /// </summary>
         public AlignmentStage GetStageFor(float score)
         {
+            // GetStageIndex сам вызывает EnsureSorted и заполняет _sortedCache — повторный вызов
+            // здесь был бы избыточным (второй раз — дешёвый no-op благодаря _cacheValid, но сбивал
+            // с толку). Пустой массив — после GetStageIndex (вернёт 0), проверяем ПОСЛЕ вызова:
+            // на пустом _sortedCache индекс 0 был бы вне границ.
+            var index = GetStageIndex(score);
+            if (_sortedCache.Length == 0) return default;
+
+            return _sortedCache[index];
+        }
+
+        /// <summary>
+        /// Позиция стейджа для <paramref name="score"/> в отсортированном по убыванию ScoreThreshold
+        /// массиве (шаг 10, волна 2) — та же таблица переходов, что <see cref="GetStageFor"/>, но
+        /// возвращает индекс вместо значения. Нужна UI-тинту (<c>AlignmentUiTintPresenter</c>): пять
+        /// именованных тонов <see cref="AlignmentUiPalette"/> (Saint/Kind/Neutral/Cruel/Demon)
+        /// соответствуют позиции 0..4 среди стейджей текущего ассета (Saint — наивысший порог,
+        /// Demon — наинизший, см. AlignmentVisual.asset) — presenter переиспользует ЭТУ таблицу,
+        /// не дублирует сортировку. Пустой массив стейджей — 0.
+        /// </summary>
+        public int GetStageIndex(float score)
+        {
             EnsureSorted();
 
-            if (_sortedCache.Length == 0) return default;
+            if (_sortedCache.Length == 0) return 0;
 
             for (var i = 0; i < _sortedCache.Length; i++)
             {
-                if (score >= _sortedCache[i].ScoreThreshold) return _sortedCache[i];
+                if (score >= _sortedCache[i].ScoreThreshold) return i;
             }
 
-            return _sortedCache[_sortedCache.Length - 1];
+            return _sortedCache.Length - 1;
         }
 
         private void EnsureSorted()

@@ -15,11 +15,26 @@ MonoBehaviour:
   _entries:
   - _level: {fileID: 11400000, guid: 778a8ab916fac03469e99d2f05f0005c, type: 2}
     _preview: {fileID: 21300000, guid: bb5c87b87d209c34ebc671da3fda7f31, type: 3}
+    _displayName:
+      _ru: "\u041F\u0435\u0440\u0432\u044B\u0435 \u0448\u0430\u0433\u0438"
+      _en: First Steps
   - _level: {fileID: 11400000, guid: c373e95e4f3f37d49929db8feda51d17, type: 2}
     _preview: {fileID: 21300000, guid: bb5c87b87d209c34ebc671da3fda7f31, type: 3}
+    _displayName:
+      _ru: "\u0420\u0430\u0441\u0442\u0443\u0449\u0430\u044F \u0432\u0435\u0440\u0430"
+      _en: Growing Faith
   - _level: {fileID: 11400000, guid: eff952be8ec1672469792a1ae02e9b05, type: 2}
     _preview: {fileID: 21300000, guid: bb5c87b87d209c34ebc671da3fda7f31, type: 3}
+    _displayName:
+      _ru: "\u0420\u0430\u0441\u043A\u043E\u043B\u043E\u0442\u0430\u044F \u0434\u0435\u0440\u0435\u0432\u043D\u044F"
+      _en: Divided Village
   - _level: {fileID: 11400000, guid: d981d3355669fed4484e93ad2ec1af67, type: 2}
     _preview: {fileID: 21300000, guid: bb5c87b87d209c34ebc671da3fda7f31, type: 3}
+    _displayName:
+      _ru: "\u0418\u0441\u043F\u044B\u0442\u0430\u043D\u0438\u0435 \u0441\u043E\u043C\u043D\u0435\u043D\u0438\u0435\u043C"
+      _en: Trial of Doubt
   - _level: {fileID: 11400000, guid: 0026e58b85d59124ebd04df6620024b4, type: 2}
     _preview: {fileID: 21300000, guid: bb5c87b87d209c34ebc671da3fda7f31, type: 3}
+    _displayName:
+      _ru: "\u0427\u0430\u0441 \u0440\u0430\u0441\u043F\u043B\u0430\u0442\u044B"
+      _en: The Reckoning

@@ -11,16 +11,12 @@ namespace BlackWhiteLike.Views.UI.Overlay
     /// <summary>
     /// MVP-Presenter soft-fail оверлея (game-design §9, §10, §13, шаг 5). Pure C#. Шаг 10: окно —
     /// вопрос rewarded-согласия ("посмотреть рекламу за веру?"), не простой рефил одной кнопкой.
+    /// Волна 2: вопрос читается из общей таблицы локализации (<c>ILocalizationService.GetText</c>,
+    /// ключ <see cref="LocalizationKeys.LevelStalledQuestion"/>) — единственный источник текста,
+    /// локальный <c>LocalizedString</c> убран (был тем же приёмом, что <c>TutorialStep.Text</c>).
     /// </summary>
     public sealed class LevelStalledPresenter : IStartable, IDisposable
     {
-        // TODO: перенести в общую таблицу строк проекта следующей волной локализации (пока у каждого
-        // презентера, использующего ILocalizationService, своя локальная LocalizedString — тот же
-        // приём, что TutorialStep.Text).
-        private static readonly LocalizedString QuestionText = new LocalizedString(
-            "Посмотреть рекламу, чтобы пополнить веру?",
-            "Watch an ad to refill your faith?");
-
         private readonly ILevelStalledView _view;
         private readonly IEventBus _eventBus;
         private readonly IFaithService _faithService;
@@ -63,7 +59,7 @@ namespace BlackWhiteLike.Views.UI.Overlay
 
         private void OnLevelStalled(LevelStalledEvent evt)
         {
-            _view.SetQuestionText(QuestionText.Resolve(_localizationService.CurrentLocale));
+            _view.SetQuestionText(_localizationService.GetText(LocalizationKeys.LevelStalledQuestion));
             _view.Show();
         }
 

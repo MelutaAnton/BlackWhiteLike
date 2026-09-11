@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace BlackWhiteLike.Views.UI.Hud
 {
@@ -14,6 +15,13 @@ namespace BlackWhiteLike.Views.UI.Hud
         /// делает презентер, view диапазон Score не знает и не хардкодит.
         /// </summary>
         void SetAlignment(float normalized);
+
+        /// <summary>
+        /// Тинт по alignment-стейджу (game-design §7, §11.1, отложка шага 6, шаг 10 волна 2) —
+        /// применяется к fill'у шкалы Worship и меткам Evil/Good. Цвет уже выбран презентером
+        /// (<c>AlignmentUiTintPresenter</c>) из <c>AlignmentVisualConfig.UiPalette</c>.
+        /// </summary>
+        void SetAlignmentTint(Color color);
 
         /// <summary>Клик по кнопке паузы — презентер транслирует его в <c>IGameFlowService.PushState(Paused)</c>.</summary>
         event Action PauseClicked;

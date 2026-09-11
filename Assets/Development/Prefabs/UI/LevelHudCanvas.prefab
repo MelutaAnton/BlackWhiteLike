@@ -621,6 +621,7 @@ GameObject:
   - component: {fileID: 3279667265429318722}
   - component: {fileID: 6147109611324708838}
   - component: {fileID: 6527370704966631486}
+  - component: {fileID: 7544205832355050273}
   m_Layer: 0
   m_Name: Label
   m_TagString: Untagged
@@ -747,6 +748,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &7544205832355050273
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 844412993551624497}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: watch_ad
 --- !u!1 &871942003021877271
 GameObject:
   m_ObjectHideFlags: 0
@@ -1046,6 +1060,7 @@ GameObject:
   - component: {fileID: 6528070228335417288}
   - component: {fileID: 2399554978422213551}
   - component: {fileID: 219039825087310385}
+  - component: {fileID: 5816214567544828269}
   m_Layer: 0
   m_Name: Title
   m_TagString: Untagged
@@ -1172,6 +1187,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &5816214567544828269
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1185755309376536491}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: faith_ran_out
 --- !u!1 &1356401985162577991
 GameObject:
   m_ObjectHideFlags: 0
@@ -1414,6 +1442,7 @@ GameObject:
   - component: {fileID: 7123841282422006528}
   - component: {fileID: 7002747530661266004}
   - component: {fileID: 7902044270953190195}
+  - component: {fileID: 1960803174931495343}
   m_Layer: 0
   m_Name: Title
   m_TagString: Untagged
@@ -1540,6 +1569,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &1960803174931495343
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1624843835396859664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: level_complete
 --- !u!1 &1723705583425353838
 GameObject:
   m_ObjectHideFlags: 0
@@ -1551,6 +1593,7 @@ GameObject:
   - component: {fileID: 8816875364472182887}
   - component: {fileID: 7587310152826921133}
   - component: {fileID: 6855316565702644603}
+  - component: {fileID: 2876796558849040371}
   m_Layer: 0
   m_Name: Label
   m_TagString: Untagged
@@ -1677,6 +1720,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &2876796558849040371
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1723705583425353838}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: later
 --- !u!1 &2215550740870779163
 GameObject:
   m_ObjectHideFlags: 0
@@ -2175,6 +2231,7 @@ GameObject:
   - component: {fileID: 5127810077868675550}
   - component: {fileID: 4412539480306336969}
   - component: {fileID: 6019239658968846362}
+  - component: {fileID: 1059302347366987219}
   m_Layer: 0
   m_Name: Title
   m_TagString: Untagged
@@ -2301,6 +2358,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &1059302347366987219
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3092868734389968212}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: pause
 --- !u!1 &3175363243660602877
 GameObject:
   m_ObjectHideFlags: 0
@@ -2462,6 +2532,7 @@ GameObject:
   - component: {fileID: 5930085245716094228}
   - component: {fileID: 4148724929853629064}
   - component: {fileID: 5752746845950992853}
+  - component: {fileID: 1739090658872518113}
   m_Layer: 0
   m_Name: Label
   m_TagString: Untagged
@@ -2588,6 +2659,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &1739090658872518113
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3262680165791976864}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: continue
 --- !u!1 &3623707760731277561
 GameObject:
   m_ObjectHideFlags: 0
@@ -4607,6 +4691,7 @@ GameObject:
   - component: {fileID: 6331692346855781536}
   - component: {fileID: 475917202557451275}
   - component: {fileID: 4221812535871981348}
+  - component: {fileID: 1790977757141384424}
   m_Layer: 0
   m_Name: Label
   m_TagString: Untagged
@@ -4733,6 +4818,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &1790977757141384424
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6303651317473637247}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: resume
 --- !u!1 &6469163407934038341
 GameObject:
   m_ObjectHideFlags: 0
@@ -4821,6 +4919,7 @@ GameObject:
   - component: {fileID: 8866649263531487144}
   - component: {fileID: 3721886628569097737}
   - component: {fileID: 5252858359868483779}
+  - component: {fileID: 4089823859796887640}
   m_Layer: 0
   m_Name: EvilLabel
   m_TagString: Untagged
@@ -4947,6 +5046,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &4089823859796887640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6624677947213274202}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: evil
 --- !u!1 &6739154703395734711
 GameObject:
   m_ObjectHideFlags: 0
@@ -5543,6 +5655,7 @@ GameObject:
   - component: {fileID: 2967857716651831970}
   - component: {fileID: 1675076136387570086}
   - component: {fileID: 6482101686729450903}
+  - component: {fileID: 6524402092039333811}
   m_Layer: 0
   m_Name: LevelHudCanvas
   m_TagString: Untagged
@@ -5649,6 +5762,8 @@ MonoBehaviour:
   _worshipLabel: {fileID: 7067139512695552352}
   _alignmentKnob: {fileID: 6589026214148580228}
   _alignmentTrack: {fileID: 8432510996884231693}
+  _evilLabel: {fileID: 5252858359868483779}
+  _goodLabel: {fileID: 654572419836340272}
   _pauseButton: {fileID: 4116773105081134598}
   _popupPrefab: {fileID: 1880167257400281198, guid: 737278edee3fc4e4c8dd39fc94a9c46d, type: 3}
   _popupRoot: {fileID: 8697275653031417222}
@@ -5674,6 +5789,28 @@ MonoBehaviour:
   _fireballButtonTarget: {fileID: 5659977192369152763}
   _lightningButtonTarget: {fileID: 4292681676653116137}
   _worshipBarTarget: {fileID: 7858921526885251872}
+--- !u!114 &6524402092039333811
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7075132962322437250}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8a7d60c941dace4884507f7ad54a8bf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextRegistry
+  _views:
+  - {fileID: 4089823859796887640}
+  - {fileID: 3075902271432278104}
+  - {fileID: 1960803174931495343}
+  - {fileID: 1739090658872518113}
+  - {fileID: 5816214567544828269}
+  - {fileID: 7544205832355050273}
+  - {fileID: 2876796558849040371}
+  - {fileID: 1059302347366987219}
+  - {fileID: 1790977757141384424}
 --- !u!1 &7109446042249584812
 GameObject:
   m_ObjectHideFlags: 0
@@ -6570,6 +6707,7 @@ GameObject:
   - component: {fileID: 6830874740725972872}
   - component: {fileID: 5293776819370418091}
   - component: {fileID: 654572419836340272}
+  - component: {fileID: 3075902271432278104}
   m_Layer: 0
   m_Name: GoodLabel
   m_TagString: Untagged
@@ -6696,6 +6834,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!114 &3075902271432278104
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8549139483914192547}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c973855174412c40b86f1632a4d439a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: BlackWhiteLike::BlackWhiteLike.Views.UI.Common.LocalizedTextView
+  _key: good
 --- !u!1 &8726587470315756262
 GameObject:
   m_ObjectHideFlags: 0

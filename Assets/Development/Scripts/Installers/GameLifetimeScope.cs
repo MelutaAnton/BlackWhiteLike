@@ -16,6 +16,7 @@ using BlackWhiteLike.Data.Configs.Faith;
 using BlackWhiteLike.Data.Configs.Hand;
 using BlackWhiteLike.Data.Configs.Idle;
 using BlackWhiteLike.Data.Configs.Levels;
+using BlackWhiteLike.Data.Configs.Localization;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Rewards;
 using BlackWhiteLike.Data.Configs.Throwable;
@@ -41,6 +42,7 @@ using BlackWhiteLike.Services.Miracles;
 using BlackWhiteLike.Services.Tutorial;
 using BlackWhiteLike.Services.Village;
 using BlackWhiteLike.Services.Worship;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Hud;
 using BlackWhiteLike.Views.UI.LevelSelect;
 using BlackWhiteLike.Views.UI.MainMenu;
@@ -104,6 +106,12 @@ namespace BlackWhiteLike.Installers
         [SerializeField] private TutorialConfig _tutorialConfig;
         [SerializeField] private TutorialView _tutorialView;
 
+        [Header("Шаг 10 — Polish (волна 2, локализация)")]
+        [SerializeField] private LocalizationConfig _localizationConfig;
+
+        [Header("Шаг 10 — Polish (волна 2, зачистка)")]
+        [SerializeField] private LocalizedTextRegistry[] _localizedTextRegistries;
+
         protected override void Configure(IContainerBuilder builder)
         {
             // Шаг 7: root-scope (Bootstrap, DontDestroyOnLoad) — может отсутствовать (тестовые
@@ -130,9 +138,34 @@ namespace BlackWhiteLike.Installers
             // добавляется позже без изменения точек вызова.
             builder.Register<NullHapticsService>(Lifetime.Singleton).As<IHapticsService>();
 
-            // Шаг 10 (Polish): локаль — во ВСЕХ сценах безусловно (тот же принцип, что
-            // NullHapticsService выше), пригодится мета-сценам в следующей волне локализации.
+            // Шаг 10 (Polish, волна 2): таблица локализованных строк — во ВСЕХ сценах безусловно
+            // (тот же fallback-паттерн, что HandConfig/WorshipConfig — LogWarning + CreateInstance
+            // вместо RegisterInstance(null), мета-сцены без прошивки не падают; GetText на пустом
+            // конфиге просто вернёт сами ключи). Локаль — тоже во ВСЕХ сценах безусловно (было с
+            // шага 10 «туториал»).
+            var localizationConfig = _localizationConfig;
+            if (localizationConfig == null)
+            {
+                Debug.LogWarning("[GameLifetimeScope] _localizationConfig не прошит — используется fallback LocalizationConfig без записей (GetText будет возвращать сами ключи).");
+                localizationConfig = ScriptableObject.CreateInstance<LocalizationConfig>();
+            }
+
+            builder.RegisterInstance(localizationConfig);
             builder.Register<SystemLanguageLocalizationService>(Lifetime.Singleton).As<ILocalizationService>();
+
+            // Реестры LocalizedTextView (по одному на канвас, шаг 10 волна 2 — зачистка рантайм-скана
+            // сцены) — коллекция ОДНОЙ записью точного типа (грабли VContainer, CLAUDE.md: несколько
+            // Func-регистраций одного интерфейса НЕ собираются в коллекцию, но здесь регистрация
+            // ровно одна, точного типа IReadOnlyList<LocalizedTextRegistry> — безопасно). Поле
+            // _localizedTextRegistries само в DI не резолвится, это просто массив ссылок для чтения
+            // в фабричной лямбде; null-массив (сцена без прошитых реестров) — Array.Empty, а не null.
+            builder.Register<IReadOnlyList<LocalizedTextRegistry>>(
+                _ => _localizedTextRegistries ?? Array.Empty<LocalizedTextRegistry>(),
+                Lifetime.Singleton);
+
+            // LocalizedTextApplyEntryPoint — во ВСЕХ сценах безусловно: применяет текст ко всем
+            // LocalizedTextView сцены (включая неактивные) один раз на старте.
+            builder.RegisterEntryPoint<LocalizedTextApplyEntryPoint>();
 
             // Input — ITickable, тикается VContainer'ом каждый кадр без MonoBehaviour.
             // RegisterEntryPoint делает AsImplementedInterfaces() сам по себе — доп. .As<>() после него
@@ -581,6 +614,19 @@ namespace BlackWhiteLike.Installers
 
                 builder.Register<WorshipPopupFactory>(Lifetime.Singleton).As<IWorshipPopupFactory>();
                 builder.RegisterEntryPoint<WorshipPopupPresenter>();
+
+                // Шаг 10 (волна 2): UI-тинт по alignment (отложка шага 6) — читает
+                // AlignmentVisualConfig, который в контейнер кладёт RegisterAlignmentVisual ТОЛЬКО
+                // при прошитых ОБОИХ полях (_alignmentVisualConfig И _alignmentVisualController,
+                // Header "Шаг 6") — гейт здесь зеркалит тот же, иначе резолвер AlignmentVisualConfig
+                // не найдёт (гейт config-only без контроллера) или конфиг зарегистрируется дважды.
+                // IAlignmentService — уже зарегистрирован выше в этом же гейте (RegisterLevelFlow).
+                // Warning при непрошитых полях уже даёт RegisterAlignmentVisual (тот же гейт,
+                // ниже по Configure) — здесь второй Debug.LogWarning был бы дублем на каждую сцену.
+                if (_alignmentVisualConfig != null && _alignmentVisualController != null)
+                {
+                    builder.RegisterEntryPoint<AlignmentUiTintPresenter>();
+                }
             }
             else
             {

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using BlackWhiteLike.Editor.Common;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Overlay;
 using BlackWhiteLike.Views.UI.Temple;
 using TMPro;
@@ -31,12 +32,13 @@ namespace BlackWhiteLike.Editor.UI
         private const string FontAssetPath = "Assets/Development/Art/Fonts/Nunito-Regular SDF.asset";
 
         // Порядок категорий — колонка из 3 строк прокачки (ТЗ владельца, шаг 8). Единственный
-        // источник заголовков строк для этого файла.
-        private static readonly (UpgradeCategory Category, string Title)[] UpgradeRows =
+        // источник заголовков строк для этого файла (LocalizationKey — LocalizationConfigSetupEditor,
+        // единственный источник самого текста по ключу).
+        private static readonly (UpgradeCategory Category, string Title, string LocalizationKey)[] UpgradeRows =
         {
-            (UpgradeCategory.HandPower, "Hand Power"),
-            (UpgradeCategory.FaithCapacity, "Faith Capacity"),
-            (UpgradeCategory.MiraclePower, "Miracle Power"),
+            (UpgradeCategory.HandPower, "Hand Power", LocalizationKeys.HandPower),
+            (UpgradeCategory.FaithCapacity, "Faith Capacity", LocalizationKeys.FaithCapacity),
+            (UpgradeCategory.MiraclePower, "Miracle Power", LocalizationKeys.MiraclePower),
         };
 
         [MenuItem("BlackWhiteLike/UI/Build Temple Canvas")]
@@ -88,6 +90,10 @@ namespace BlackWhiteLike.Editor.UI
 
             Debug.Log($"[Editor] TempleCanvas: прошито {totalWired} из {totalExpected} полей суммарно.");
 
+            // Зачистка ревью волны 2 шага 10 (мелочь 2): LocalizedTextRegistry на корне канваса —
+            // замена рантайм-скану сцены.
+            EditorLocalizationUtility.EnsureLocalizedTextRegistry(root);
+
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             if (existed)
                 PrefabUtility.UnloadPrefabContents(root);
@@ -127,6 +133,7 @@ namespace BlackWhiteLike.Editor.UI
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(title.text)) title.text = "Temple";
+            EditorLocalizationUtility.SetLocalizationKey(title, LocalizationKeys.Temple);
 
             var coinsText = BuildCoinsRow(panelGo.transform, fontAsset);
             var collectButton = BuildCollectIdleButton(panelGo.transform, fontAsset);
@@ -147,8 +154,8 @@ namespace BlackWhiteLike.Editor.UI
             columnLayout.childForceExpandWidth = false;
             columnLayout.childForceExpandHeight = false;
 
-            foreach (var (category, rowTitle) in UpgradeRows)
-                rows.Add(BuildUpgradeRow(columnGo.transform, category, rowTitle, fontAsset, ref totalWired, ref totalExpected));
+            foreach (var (category, rowTitle, localizationKey) in UpgradeRows)
+                rows.Add(BuildUpgradeRow(columnGo.transform, category, rowTitle, localizationKey, fontAsset, ref totalWired, ref totalExpected));
 
             var creatureTeaser = BuildCreatureTeaser(panelGo.transform, fontAsset, ref totalWired, ref totalExpected);
             // Фикс ревью шага 9: раньше якоря были (0.98, 0.04)-(1, 0) — инвертированы по y
@@ -156,7 +163,7 @@ namespace BlackWhiteLike.Editor.UI
             // TouchHitZoneEditor такой узел чинить отказывается. Точечный якорь в правом нижнем
             // углу + центр-пивот: отступ 24 от краёв при размере 260x88 (сразу ≥ хит-зоны 88).
             var nextLevelButton = BuildTempleButton(panelGo.transform, "NextLevelButton", fontAsset, "Next level",
-                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-154f, 68f), new Vector2(260f, 88f));
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-154f, 68f), new Vector2(260f, 88f), LocalizationKeys.NextLevel);
 
             var view = panelGo.GetComponent<TempleView>();
             if (view == null) view = panelGo.AddComponent<TempleView>();
@@ -259,7 +266,7 @@ namespace BlackWhiteLike.Editor.UI
         private static Button BuildCollectIdleButton(Transform panelTransform, TMP_FontAsset fontAsset)
         {
             var button = BuildTempleButton(panelTransform, "CollectIdleButton", fontAsset, "Collect",
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-24f, -92f), new Vector2(220f, 64f));
+                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-24f, -92f), new Vector2(220f, 64f), LocalizationKeys.Collect);
 
             if (button.gameObject.activeSelf)
             {
@@ -271,7 +278,7 @@ namespace BlackWhiteLike.Editor.UI
         }
 
         private static UpgradeRowView BuildUpgradeRow(Transform columnTransform, UpgradeCategory category, string rowTitle,
-            TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
+            string localizationKey, TMP_FontAsset fontAsset, ref int totalWired, ref int totalExpected)
         {
             var rowGo = FindOrCreateUIChild(columnTransform, "UpgradeRow_" + category);
             var rowRt = (RectTransform)rowGo.transform;
@@ -295,6 +302,7 @@ namespace BlackWhiteLike.Editor.UI
             titleText.fontSize = 26f;
             titleText.alignment = TextAlignmentOptions.MidlineLeft;
             titleText.text = rowTitle; // статичная подпись категории — перезаписываем всегда.
+            EditorLocalizationUtility.SetLocalizationKey(titleText, localizationKey);
 
             var levelGo = FindOrCreateUIChild(rowGo.transform, "LevelText");
             var levelRt = (RectTransform)levelGo.transform;
@@ -336,7 +344,7 @@ namespace BlackWhiteLike.Editor.UI
             if (string.IsNullOrEmpty(priceText.text)) priceText.text = "0";
 
             var buyButton = BuildTempleButton(rowGo.transform, "BuyButton", fontAsset, "Buy",
-                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-20f, 0f), new Vector2(140f, 64f));
+                new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-20f, 0f), new Vector2(140f, 64f), LocalizationKeys.Buy);
 
             var rowView = rowGo.GetComponent<UpgradeRowView>();
             if (rowView == null) rowView = rowGo.AddComponent<UpgradeRowView>();
@@ -387,6 +395,7 @@ namespace BlackWhiteLike.Editor.UI
             label.fontSize = 24f;
             label.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(label.text)) label.text = "Creature — Coming soon";
+            EditorLocalizationUtility.SetLocalizationKey(label, LocalizationKeys.CreatureComingSoon);
 
             var view = cardGo.GetComponent<CreatureTeaserView>();
             if (view == null) view = cardGo.AddComponent<CreatureTeaserView>();
@@ -450,6 +459,7 @@ namespace BlackWhiteLike.Editor.UI
             title.fontStyle = FontStyles.Bold;
             title.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(title.text)) title.text = "Welcome back!";
+            EditorLocalizationUtility.SetLocalizationKey(title, LocalizationKeys.WelcomeBack);
 
             var coinsGo = FindOrCreateUIChild(panelGo.transform, "CoinsText");
             var coinsRt = (RectTransform)coinsGo.transform;
@@ -464,9 +474,9 @@ namespace BlackWhiteLike.Editor.UI
             coinsText.alignment = TextAlignmentOptions.Center;
             if (string.IsNullOrEmpty(coinsText.text)) coinsText.text = "+0 coins";
 
-            var collectButton = BuildOverlayButton(panelGo.transform, "CollectButton", fontAsset, "Collect", 24f, new Vector2(280f, 72f));
+            var collectButton = BuildOverlayButton(panelGo.transform, "CollectButton", fontAsset, "Collect", 24f, new Vector2(280f, 72f), LocalizationKeys.Collect);
 
-            var closeButton = BuildOverlayButton(panelGo.transform, "CloseButton", fontAsset, "Close", -24f, new Vector2(180f, 56f));
+            var closeButton = BuildOverlayButton(panelGo.transform, "CloseButton", fontAsset, "Close", -24f, new Vector2(180f, 56f), LocalizationKeys.Close);
             // Close — компактнее и ниже Collect (Collect якорится от низа панели, Close — тоже, но
             // c дополнительным отступом ниже, чтобы кнопки не перекрывались).
             var closeRt = (RectTransform)closeButton.transform;
@@ -502,7 +512,7 @@ namespace BlackWhiteLike.Editor.UI
         // ------------------------------------------------------------------------------------
 
         private static Button BuildTempleButton(Transform parent, string name, TMP_FontAsset fontAsset, string caption,
-            Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size)
+            Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, string localizationKey = null)
         {
             var go = FindOrCreateUIChild(parent, name);
             var rt = (RectTransform)go.transform;
@@ -534,12 +544,13 @@ namespace BlackWhiteLike.Editor.UI
             tmp.fontSize = 26f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = caption; // статичная подпись — перезаписываем всегда.
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(tmp, localizationKey);
 
             return button;
         }
 
         private static Button BuildOverlayButton(Transform panel, string name, TMP_FontAsset fontAsset,
-            string caption, float anchoredY, Vector2 size)
+            string caption, float anchoredY, Vector2 size, string localizationKey = null)
         {
             var go = FindOrCreateUIChild(panel, name);
             var rt = (RectTransform)go.transform;
@@ -571,6 +582,7 @@ namespace BlackWhiteLike.Editor.UI
             tmp.fontSize = 28f;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.text = caption;
+            if (localizationKey != null) EditorLocalizationUtility.SetLocalizationKey(tmp, localizationKey);
 
             return button;
         }
@@ -632,6 +644,9 @@ namespace BlackWhiteLike.Editor.UI
             prop.objectReferenceValue = value;
             return true;
         }
+
+        // SetLocalizationKey вынесен в EditorLocalizationUtility.SetLocalizationKey (дедуп ревью
+        // волны 2 шага 10, мелочь 3 — реализация была дословно продублирована в трёх Canvas-билдерах).
 
         private static void EnsureFolder(string folderPath)
         {

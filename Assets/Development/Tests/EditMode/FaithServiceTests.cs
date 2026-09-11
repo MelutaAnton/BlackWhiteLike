@@ -31,7 +31,7 @@ namespace BlackWhiteLike.Tests
 
             public VillagerState GetState(VillagerId id) => VillagerState.Idle;
 
-            public void ReportStimulus(VillagerId id, VillagerStimulus stimulus)
+            public void ReportStimulus(VillagerId id, VillagerStimulus stimulus, Vector3? worldPosition = null)
             {
             }
 

@@ -1,4 +1,5 @@
 using BlackWhiteLike.Models;
+using UnityEngine;
 
 namespace BlackWhiteLike.Factories.Ui
 {
@@ -8,7 +9,12 @@ namespace BlackWhiteLike.Factories.Ui
     /// </summary>
     public interface IWorshipPopupFactory
     {
-        /// <summary>Показывает попап "+N Awe/Fear", заякоренный к Worship-бару HUD (<see cref="Views.UI.Hud.IWorshipPopupHost"/>).</summary>
-        void Show(int amount, WorshipSource source);
+        /// <summary>
+        /// Показывает попап "+N Awe/Fear". Шаг 10 (волна 2): <paramref name="anchoredPosition"/> —
+        /// готовая (уже посчитанная <c>WorshipPopupPresenter</c> через world→screen→canvas проекцию)
+        /// позиция в системе координат <see cref="Views.UI.Hud.IWorshipPopupHost.PopupRoot"/>; null —
+        /// прежняя дефолтная HUD-точка (исходная позиция префаба под PopupRoot).
+        /// </summary>
+        void Show(int amount, WorshipSource source, Vector2? anchoredPosition = null);
     }
 }

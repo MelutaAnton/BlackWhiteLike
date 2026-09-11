@@ -106,7 +106,9 @@ namespace BlackWhiteLike.Controllers.Miracles
                     var villager = col.GetComponentInParent<VillagerController>();
                     if (villager == null) continue;
 
-                    _stateService.ReportStimulus(villager.VillagerId, VillagerStimulus.LightningStruck);
+                    // Шаг 10 (волна 2): позиция удара — мировая точка жителя, WorshipService якорит
+                    // к ней попап Fear (VillagerStruckByLightning).
+                    _stateService.ReportStimulus(villager.VillagerId, VillagerStimulus.LightningStruck, villager.transform.position);
                 }
             }
 
