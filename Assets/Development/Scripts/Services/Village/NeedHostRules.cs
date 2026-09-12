@@ -18,5 +18,18 @@ namespace BlackWhiteLike.Services.Village
         /// (<c>VillagerDiseaseService</c>). В срезе шага переноса болезни — только Disease.
         /// </summary>
         public static bool IsVillagerHosted(NeedType type) => type == NeedType.Disease;
+
+        /// <summary>
+        /// Базовый индекс диапазона "виртуальных" siteIndex villager-hosted нужд (Disease) —
+        /// у такой нужды нет NeedSite в сцене, поэтому вместо индекса записи LevelConfig.EventTimeline
+        /// (как у Fire/Hunger) используется свободный слот из этого диапазона, по одному на каждого
+        /// одновременно больного (<c>PeriodicNeedService.FindFreeVirtualSlot</c>). L01-таймлайн Disease
+        /// мигрирует с реального индекса 1 на виртуальный 1000 editor-агентом (шаг периодических нужд,
+        /// уровни 2–5) — сам рантайм этой миграции не касается, он лишь резервирует диапазон.
+        /// </summary>
+        public const int VirtualSiteIndexBase = 1000;
+
+        /// <summary>true — <paramref name="siteIndex"/> лежит в диапазоне виртуальных слотов (см. <see cref="VirtualSiteIndexBase"/>).</summary>
+        public static bool IsVirtualSiteIndex(int siteIndex) => siteIndex >= VirtualSiteIndexBase;
     }
 }

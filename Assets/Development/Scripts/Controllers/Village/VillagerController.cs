@@ -519,7 +519,7 @@ namespace BlackWhiteLike.Controllers.Village
 
             if (_isSick)
             {
-                _needSiteRegistry.Register(_sickSiteIndex, transform);
+                _needSiteRegistry.Register(_sickSiteIndex, evt.Type, transform);
             }
 
             ApplySickPoseVisual();

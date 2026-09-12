@@ -177,7 +177,7 @@ namespace BlackWhiteLike.Services.Village
 
             _siteToVillager.Remove(siteIndex);
             _villagerToSite.Remove(id);
-            _eventBus.Publish(new VillagerSicknessChangedEvent(id, siteIndex, false));
+            _eventBus.Publish(new VillagerSicknessChangedEvent(id, type, siteIndex, false));
         }
 
         /// <summary>
@@ -208,6 +208,25 @@ namespace BlackWhiteLike.Services.Village
         /// </summary>
         private bool TryAssignCandidate(NeedType type, int siteIndex)
         {
+            CollectEligible();
+
+            if (_eligibleBuffer.Count == 0) return false;
+
+            var chosen = _eligibleBuffer[_random.Next(_eligibleBuffer.Count)];
+
+            _siteToVillager[siteIndex] = chosen;
+            _villagerToSite[chosen] = new SickRecord(type, siteIndex);
+            _eventBus.Publish(new VillagerSicknessChangedEvent(chosen, type, siteIndex, true));
+            return true;
+        }
+
+        /// <summary>
+        /// Фильтр кандидатов для <see cref="TryAssignCandidate"/>: наполняет <see cref="_eligibleBuffer"/>
+        /// зарегистрированными жителями, исключая уже больных (любым сайтом) и Tossed. Тот же предикат
+        /// продублирован в <see cref="HasEligibleCandidate"/> без записи в буфер (см. комментарий там).
+        /// </summary>
+        private void CollectEligible()
+        {
             _stateService.CollectRegistered(_registeredBuffer);
 
             _eligibleBuffer.Clear();
@@ -217,15 +236,32 @@ namespace BlackWhiteLike.Services.Village
                 if (_stateService.GetState(id) == VillagerState.Tossed) continue;
                 _eligibleBuffer.Add(id);
             }
+        }
 
-            if (_eligibleBuffer.Count == 0) return false;
+        /// <summary>
+        /// Шаг периодических нужд (уровни 2–5): true — есть хотя бы один зарегистрированный житель,
+        /// пригодный для заражения (тот же фильтр, что <see cref="TryAssignCandidate"/>). Читается
+        /// <c>PeriodicNeedService</c> ДО выбора цели — Disease не имеет NeedSite в сцене
+        /// (<c>NeedHostRules.IsVillagerHosted</c>), поэтому "есть ли свободная цель" для него означает
+        /// "есть ли подходящий житель", а не запрос к <c>INeedSiteRegistry</c>.
+        /// </summary>
+        public bool HasEligibleCandidate
+        {
+            get
+            {
+                // Ревью: НЕ через CollectEligible — тот перезаписывает _eligibleBuffer, которым посреди
+                // операции пользуется TryAssignCandidate; геттер, читаемый любым подписчиком, не должен
+                // трогать общий буфер выбора. Выход на первом же кандидате.
+                _stateService.CollectRegistered(_registeredBuffer);
+                foreach (var id in _registeredBuffer)
+                {
+                    if (_villagerToSite.ContainsKey(id)) continue;
+                    if (_stateService.GetState(id) == VillagerState.Tossed) continue;
+                    return true;
+                }
 
-            var chosen = _eligibleBuffer[_random.Next(_eligibleBuffer.Count)];
-
-            _siteToVillager[siteIndex] = chosen;
-            _villagerToSite[chosen] = new SickRecord(type, siteIndex);
-            _eventBus.Publish(new VillagerSicknessChangedEvent(chosen, siteIndex, true));
-            return true;
+                return false;
+            }
         }
 
         public void Dispose()

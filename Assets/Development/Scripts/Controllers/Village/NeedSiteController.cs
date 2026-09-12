@@ -85,7 +85,7 @@ namespace BlackWhiteLike.Controllers.Village
             // первый Construct (до первого OnEnable — тот пропускает Register веткой
             // "!_initialized return"); повторные SetActive(false→true) регистрируют точку заново в
             // OnEnable (ВАЖНО 3, ревью шага 10, см. ниже).
-            _needSiteRegistry.Register(_siteIndex, transform);
+            _needSiteRegistry.Register(_siteIndex, _needType, transform);
 
             // Триггеры требуют Rigidbody (CLAUDE.md, "Известные нюансы Unity Physics") — без него
             // OnTriggerEnter молчит, если ни у одного участника нет Rigidbody. Kinematic + без
@@ -130,7 +130,7 @@ namespace BlackWhiteLike.Controllers.Village
             // SetActive(false→true) навсегда терял точку в реестре (Register был только в
             // Construct, который при простом toggle не вызывается повторно). Register
             // идемпотентен (перезаписывает ту же пару siteIndex/Transform).
-            _needSiteRegistry.Register(_siteIndex, transform);
+            _needSiteRegistry.Register(_siteIndex, _needType, transform);
         }
 
         private void OnDisable()

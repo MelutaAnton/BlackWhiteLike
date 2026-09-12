@@ -152,7 +152,9 @@ public sealed class LevelConfig : ScriptableObject {
     public int           worshipTarget;          // порог победы
     public int           villagerCount;
     public VillageLayoutConfig layout;           // дома/поля/spawn points (позиции)
-    public NeedEventEntry[] eventTimeline;       // скриптованные события
+    public NeedEventEntry[] eventTimeline;       // скриптованные события (L01 — туториальная цепочка)
+    public float         eventIntervalSeconds;   // периодический режим (L02–L05): каждые N с — случайная СВОБОДНАЯ нужда; 0 = выключен
+    public float         periodicNeedDuration;   // 0 = не истекает (задел под стейд «руины/смерть», см. §18.9)
     public float         optionalTimerSeconds;   // 0 = выключен (по умолчанию)
     public int           coinsReward;
     public Vector3       creatureSpawnPosition;  // ПРЕДОХРАНИТЕЛЬ §15, см. ниже про hasCreatureSpawn
@@ -160,7 +162,9 @@ public sealed class LevelConfig : ScriptableObject {
 ```
 **Каталог:** `LevelCatalogConfig` (SO) — массив `LevelConfig` + `Sprite preview` + unlock-порядок (линейный).
 
-Прогрессия сложности по уровням — чистые данные: больше `worshipTarget`, плотнее таймлайн, меньше жителей на старте (меньше Faith-регена).
+Прогрессия сложности по уровням — чистые данные: больше `worshipTarget`, короче `eventIntervalSeconds` (10 → 7 с), меньше жителей на старте (меньше Faith-регена).
+
+**Периодический режим (решение 2026-09-12, после шага 10):** на L02–L05 скриптованный таймлайн пуст, нужды спавнит `PeriodicNeedService` — каждые `eventIntervalSeconds` собирает все свободные цели (дома без пожара — все три дома Fire-сайты, поле без голода, здоровые не-`Tossed` жители для Disease) и триггерит одну случайную (`ByPlayer=false`, Fear не даёт). Свободных целей нет — тик молча пропускается, это штатно. Нужды не истекают: напряжение — от накопления проблем; уровень проходим чистым Awe. Disease-слоты — виртуальные `siteIndex ≥ NeedHostRules.VirtualSiteIndexBase` (1000), по одному на одновременно больного.
 
 ### Temple / Meta
 UI-сцена `Temple`. Экран между уровнями:
@@ -530,6 +534,7 @@ Cinemachine 3.1 (см. `CLAUDE.md` про API). **Config:** `IsometricCameraConf
 6. **Таймер уровня.** Поле `optionalTimerSeconds` есть, выключено. Включать ли на уровнях 4–5 для темпа? **Решено (шаг 10, 2026-09-11): не включаем.**
 7. **Звук и хаптика.** Формально вне acceptance criteria; подключать `IAudioService`-заглушку сразу или отложить? Хаптика на бросок/каст — сильно добавляет «сочности» на мобиле, стоит дёшево.
 8. **Арт-пайплайн.** Low-poly паки (деревня, жители, VFX) — подобрать конкретные к шагу 3; критерий: единый стиль + мобильный полигонаж; правило хранения — `Assets/ThirdParty/` (см. `CLAUDE.md`).
+9. **Истечение нужды → «руины» и проигрыш (принятое направление, 2026-09-12, не реализовано).** По истечению `periodicNeedDuration` цель переходит в необратимый стейт: житель умирает, дом прогорает, поле высыхает. Такой стейт не даёт Fear, а **снижает счёт уровня**: цель, например, 200, старт не с 0, а со 100 — игрок либо вовремя спасает (Awe), либо добивает (каст огня по дому/полю, бросок больного — Fear); бездействие уводит счёт вниз до проигрыша. Пока `periodicNeedDuration = 0` (нужды вечные); истечение в `LevelEventService` и поле в `LevelConfig` оставлены именно под это.
 
 ---
 

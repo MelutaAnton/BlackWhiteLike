@@ -42,6 +42,7 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsTrue(captured.HasValue);
             Assert.IsTrue(captured.Value.Id == idA || captured.Value.Id == idB);
+            Assert.AreEqual(NeedType.Disease, captured.Value.Type);
             Assert.AreEqual(0, captured.Value.SiteIndex);
             Assert.IsTrue(captured.Value.IsSick);
 
@@ -155,6 +156,7 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsTrue(captured.HasValue);
             Assert.AreEqual(id, captured.Value.Id);
+            Assert.AreEqual(NeedType.Disease, captured.Value.Type);
             Assert.AreEqual(0, captured.Value.SiteIndex);
             Assert.IsFalse(captured.Value.IsSick);
 
@@ -181,6 +183,7 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsTrue(captured.HasValue);
             Assert.AreEqual(id, captured.Value.Id);
+            Assert.AreEqual(NeedType.Disease, captured.Value.Type);
             Assert.IsFalse(captured.Value.IsSick);
             Assert.IsFalse(service.IsSick(id));
         }
@@ -279,6 +282,55 @@ namespace BlackWhiteLike.Tests
 
             Assert.IsFalse(service.IsSick(VillagerId.FromInstanceId(999)));
             Assert.IsFalse(service.TryGetActiveNeed(VillagerId.FromInstanceId(999), out _, out _));
+        }
+
+        // --- Шаг периодических нужд (уровни 2–5): HasEligibleCandidate ---
+
+        [Test]
+        public void HasEligibleCandidate_RegisteredHealthyVillager_True()
+        {
+            var eventBus = new EventBus();
+            var stateService = CreateStateService(eventBus);
+            stateService.Register(VillagerId.FromInstanceId(1));
+            var service = new VillagerDiseaseService(eventBus, stateService, new System.Random(1));
+
+            Assert.IsTrue(service.HasEligibleCandidate);
+        }
+
+        [Test]
+        public void HasEligibleCandidate_NoRegisteredVillagers_False()
+        {
+            var eventBus = new EventBus();
+            var stateService = CreateStateService(eventBus);
+            var service = new VillagerDiseaseService(eventBus, stateService, new System.Random(1));
+
+            Assert.IsFalse(service.HasEligibleCandidate);
+        }
+
+        [Test]
+        public void HasEligibleCandidate_OnlyTossedVillager_False()
+        {
+            var eventBus = new EventBus();
+            var stateService = CreateStateService(eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            stateService.Register(id);
+            stateService.ReportStimulus(id, VillagerStimulus.Grabbed); // -> Tossed
+            var service = new VillagerDiseaseService(eventBus, stateService, new System.Random(1));
+
+            Assert.IsFalse(service.HasEligibleCandidate);
+        }
+
+        [Test]
+        public void HasEligibleCandidate_OnlyAlreadySickVillager_False()
+        {
+            var eventBus = new EventBus();
+            var stateService = CreateStateService(eventBus);
+            var id = VillagerId.FromInstanceId(1);
+            stateService.Register(id);
+            var service = new VillagerDiseaseService(eventBus, stateService, new System.Random(1));
+            eventBus.Publish(new NeedTriggeredEvent(NeedType.Disease, 0, false, default)); // единственный житель заболевает
+
+            Assert.IsFalse(service.HasEligibleCandidate);
         }
 
         [Test]

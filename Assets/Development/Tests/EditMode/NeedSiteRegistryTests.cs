@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Village;
 
 namespace BlackWhiteLike.Tests
@@ -35,7 +36,7 @@ namespace BlackWhiteLike.Tests
             var registry = new NeedSiteRegistry();
             var site = CreateTransform("Site0", new Vector3(1f, 2f, 3f));
 
-            registry.Register(0, site);
+            registry.Register(0, NeedType.Fire, site);
 
             Assert.IsTrue(registry.TryGetSitePosition(0, out var position));
             Assert.AreEqual(new Vector3(1f, 2f, 3f), position);
@@ -54,7 +55,7 @@ namespace BlackWhiteLike.Tests
         {
             var registry = new NeedSiteRegistry();
             var site = CreateTransform("Site1", Vector3.zero);
-            registry.Register(1, site);
+            registry.Register(1, NeedType.Fire, site);
 
             registry.Unregister(1);
 
@@ -69,11 +70,64 @@ namespace BlackWhiteLike.Tests
             var registry = new NeedSiteRegistry();
             var go = new GameObject("Site2");
             var site = go.transform;
-            registry.Register(2, site);
+            registry.Register(2, NeedType.Fire, site);
 
             Object.DestroyImmediate(go);
 
             Assert.IsFalse(registry.TryGetSitePosition(2, out _));
+        }
+
+        [Test]
+        public void CollectSites_FiltersByType()
+        {
+            var registry = new NeedSiteRegistry();
+            registry.Register(0, NeedType.Fire, CreateTransform("Fire0", Vector3.zero));
+            registry.Register(1, NeedType.Hunger, CreateTransform("Hunger1", Vector3.zero));
+            registry.Register(2, NeedType.Fire, CreateTransform("Fire2", Vector3.zero));
+
+            var buffer = new List<int>();
+            registry.CollectSites(NeedType.Fire, buffer);
+
+            Assert.AreEqual(2, buffer.Count);
+            CollectionAssert.AreEquivalent(new[] { 0, 2 }, buffer);
+        }
+
+        [Test]
+        public void CollectSites_ClearsBufferBeforeFilling()
+        {
+            var registry = new NeedSiteRegistry();
+            registry.Register(0, NeedType.Fire, CreateTransform("Fire0", Vector3.zero));
+
+            var buffer = new List<int> { 999 };
+            registry.CollectSites(NeedType.Fire, buffer);
+
+            CollectionAssert.AreEqual(new[] { 0 }, buffer);
+        }
+
+        [Test]
+        public void CollectSites_SkipsDestroyedTransform()
+        {
+            var registry = new NeedSiteRegistry();
+            var go = new GameObject("Fire0");
+            registry.Register(0, NeedType.Fire, go.transform);
+            Object.DestroyImmediate(go);
+
+            var buffer = new List<int>();
+            registry.CollectSites(NeedType.Fire, buffer);
+
+            Assert.IsEmpty(buffer);
+        }
+
+        [Test]
+        public void CollectSites_NoMatchingType_ReturnsEmpty()
+        {
+            var registry = new NeedSiteRegistry();
+            registry.Register(0, NeedType.Fire, CreateTransform("Fire0", Vector3.zero));
+
+            var buffer = new List<int>();
+            registry.CollectSites(NeedType.Hunger, buffer);
+
+            Assert.IsEmpty(buffer);
         }
     }
 }

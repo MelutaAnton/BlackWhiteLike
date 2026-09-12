@@ -74,6 +74,17 @@ namespace BlackWhiteLike.Services.Village
             public bool ByPlayer;
 
             /// <summary>
+            /// Блокер ревью периодических нужд: «создана рантайм-триггером» и «создана игроком» —
+            /// разные вещи. <see cref="ByPlayer"/> отвечает только за Awe/Fear/Alignment, а признак
+            /// «запись временная, после терминального статуса её можно удалить» — этот флаг:
+            /// периодический спавнер зовёт <see cref="LevelEventService.TriggerNeed"/> с
+            /// <c>byPlayer=false</c> (Fear игроку не положен), и без отдельного флага его записи
+            /// оседали бы в <c>_entries</c> навсегда (L05: ~8 записей/мин на весь Tick/HasBlockingNeeds).
+            /// Таймлайновые записи — false: их финальный статус остаётся частью состояния уровня.
+            /// </summary>
+            public bool IsRuntime;
+
+            /// <summary>
             /// Шаг 10: прямая ссылка на объект-предыдущую запись (по порядку в исходном
             /// <c>LevelConfig.EventTimeline</c>) — null, если предыдущей нет (первая запись таймлайна).
             /// Значимо только для <see cref="NeedTriggerMode.AfterPreviousResolved"/> — вычисляется
@@ -214,13 +225,14 @@ namespace BlackWhiteLike.Services.Village
                 }
             }
 
-            // Незначительное (ревью шага 4): рост списка — рантайм-записи (ByPlayer, см. TriggerNeed)
-            // в терминальном статусе больше не нужны, их (type, siteIndex) снова станет доступен
-            // TriggerNeed'у при следующем срабатывании. Таймлайновые записи (ByPlayer=false) НЕ
-            // удаляются — их финальный статус (Resolved/Expired) остаётся частью состояния уровня
-            // как есть (game-design §6), сравнивать их количество с EventTimeline может понадобиться.
+            // Незначительное (ревью шага 4): рост списка — рантайм-записи (IsRuntime, см. TriggerNeed —
+            // и игрока, и периодического спавнера) в терминальном статусе больше не нужны, их
+            // (type, siteIndex) снова станет доступен TriggerNeed'у при следующем срабатывании.
+            // Таймлайновые записи (IsRuntime=false) НЕ удаляются — их финальный статус (Resolved/Expired)
+            // остаётся частью состояния уровня как есть (game-design §6), сравнивать их количество с
+            // EventTimeline может понадобиться.
             _entries.RemoveAll(state =>
-                state.ByPlayer && (state.Status == EntryStatus.Resolved || state.Status == EntryStatus.Expired));
+                state.IsRuntime && (state.Status == EntryStatus.Resolved || state.Status == EntryStatus.Expired));
         }
 
         /// <summary>
@@ -434,7 +446,8 @@ namespace BlackWhiteLike.Services.Village
                 },
                 Status = EntryStatus.Active,
                 TimeSinceTriggered = 0f,
-                ByPlayer = byPlayer
+                ByPlayer = byPlayer,
+                IsRuntime = true
             };
             _entries.Add(newState);
 
@@ -470,6 +483,19 @@ namespace BlackWhiteLike.Services.Village
 
                 return false;
             }
+        }
+
+        /// <summary>Шаг периодических нужд (уровни 2–5) — см. <see cref="ILevelEventService.IsNeedActive"/>.</summary>
+        public bool IsNeedActive(NeedType type, int siteIndex)
+        {
+            foreach (var state in _entries)
+            {
+                if (state.Status != EntryStatus.Active) continue;
+                if (state.Entry.type != type || state.Entry.targetSiteIndex != siteIndex) continue;
+                return true;
+            }
+
+            return false;
         }
 
         public void Dispose()

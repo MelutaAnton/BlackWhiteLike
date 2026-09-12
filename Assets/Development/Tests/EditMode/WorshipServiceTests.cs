@@ -446,7 +446,7 @@ namespace BlackWhiteLike.Tests
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) });
             var eventBus = new EventBus();
             var registry = new NeedSiteRegistry();
-            registry.Register(0, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
+            registry.Register(0, NeedType.Fire, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
             var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
 
             WorshipChangedEvent? captured = null;
@@ -484,7 +484,7 @@ namespace BlackWhiteLike.Tests
             var config = CreateConfig(fearEntries: new[] { (TerrorAct.FireballOnStructure, 25) });
             var eventBus = new EventBus();
             var registry = new NeedSiteRegistry();
-            registry.Register(3, CreateTransform("Site3", new Vector3(4f, 0f, 5f)));
+            registry.Register(3, NeedType.Fire, CreateTransform("Site3", new Vector3(4f, 0f, 5f)));
             var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
 
             WorshipChangedEvent? captured = null;
@@ -567,7 +567,7 @@ namespace BlackWhiteLike.Tests
             var config = CreateConfig(aweEntries: new[] { (NeedType.Fire, 20) }, decayPerSecond: 1f);
             var eventBus = new EventBus();
             var registry = new NeedSiteRegistry();
-            registry.Register(0, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
+            registry.Register(0, NeedType.Fire, CreateTransform("Site0", new Vector3(1f, 0f, 2f)));
             var service = CreateWorshipService(eventBus, config, CreateLevelConfig(100), registry);
             eventBus.Publish(new NeedResolvedEvent(NeedType.Fire, 0, byPlayer: true, MiracleType.Rain));
 

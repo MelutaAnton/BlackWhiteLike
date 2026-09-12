@@ -300,6 +300,27 @@ namespace BlackWhiteLike.Tests
         }
 
         [Test]
+        public void TriggerNeed_RuntimeEntryWithByPlayerFalse_IsRemovedAfterResolve_AndKeyIsReusable()
+        {
+            // Блокер ревью периодических нужд: чистка терминальных рантайм-записей раньше шла по ByPlayer —
+            // периодический спавнер зовёт TriggerNeed с byPlayer:false, и его записи оседали навсегда.
+            // Наблюдаемое поведение удаления: после Resolve + Tick тот же ключ снова триггерится,
+            // IsNeedActive между ними — false, повторных «дом уже горит» no-op'ов нет.
+            var service = CreateService(out var eventBus);
+            for (var i = 0; i < 3; i++)
+            {
+                service.TriggerNeed(NeedType.Fire, 0, duration: 0f, byPlayer: false, causeMiracle: default);
+                Assert.IsTrue(service.IsNeedActive(NeedType.Fire, 0));
+                service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
+                service.Tick(0.1f);
+                Assert.IsFalse(service.IsNeedActive(NeedType.Fire, 0));
+            }
+
+            Assert.AreEqual(3, eventBus.PublishedEvents.OfType<NeedTriggeredEvent>().Count());
+            Assert.AreEqual(3, eventBus.PublishedEvents.OfType<NeedResolvedEvent>().Count());
+        }
+
+        [Test]
         public void TriggerNeed_DifferentSiteIndex_TriggersIndependently()
         {
             var service = CreateService(out var eventBus);
@@ -936,6 +957,63 @@ namespace BlackWhiteLike.Tests
             }
 
             Assert.IsEmpty(triggered); // уровень завершён — Armed-запись НЕ активировалась, несмотря на освобождение ключа
+        }
+
+        // --- Шаг периодических нужд (уровни 2–5): IsNeedActive ---
+
+        [Test]
+        public void IsNeedActive_ActiveEntry_True()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 0f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out _, entry);
+            service.Tick(0f); // trigger -> Active
+
+            Assert.IsTrue(service.IsNeedActive(NeedType.Fire, 0));
+        }
+
+        [Test]
+        public void IsNeedActive_PendingEntry_False()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 100f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out _, entry);
+            // ещё не наступило — Pending.
+
+            Assert.IsFalse(service.IsNeedActive(NeedType.Fire, 0));
+        }
+
+        [Test]
+        public void IsNeedActive_ResolvedEntry_False()
+        {
+            var entry = new NeedEventEntry { type = NeedType.Fire, triggerTime = 0f, targetSiteIndex = 0, duration = 10f };
+            var service = CreateService(out _, entry);
+            service.Tick(0f);
+            service.ResolveNeed(NeedType.Fire, 0, byPlayer: true, causeMiracle: MiracleType.Rain);
+
+            Assert.IsFalse(service.IsNeedActive(NeedType.Fire, 0));
+        }
+
+        [Test]
+        public void IsNeedActive_UnknownKey_False()
+        {
+            var service = CreateService(out _); // пустой таймлайн
+
+            Assert.IsFalse(service.IsNeedActive(NeedType.Fire, 42));
+        }
+
+        [Test]
+        public void IsNeedActive_KeyHeldByRuntimeEntry_TrueDespiteScriptedEntryBeingArmed()
+        {
+            // Armed-запись сама по себе никогда не единственная на ключе (Armed возникает только
+            // когда ключ уже занят ДРУГОЙ Active-записью) — IsNeedActive видит именно эту, держащую
+            // ключ, запись, независимо от того, что скриптованная (Armed) тоже метит на тот же ключ.
+            var scripted = new NeedEventEntry
+                { type = NeedType.Fire, targetSiteIndex = 0, duration = 10f, TriggerMode = NeedTriggerMode.AfterVillagerTossed };
+            var service = CreateServiceWithRealBus(out var eventBus, scripted);
+            service.TriggerNeed(NeedType.Fire, 0, duration: 10f, byPlayer: true, causeMiracle: MiracleType.Fireball);
+
+            PublishVillagerThrow(eventBus); // scripted -> Armed (ключ занят рантайм-записью)
+
+            Assert.IsTrue(service.IsNeedActive(NeedType.Fire, 0)); // рантайм-запись держит ключ
         }
 
         [Test]

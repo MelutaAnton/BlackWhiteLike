@@ -438,8 +438,8 @@ namespace BlackWhiteLike.Tests
 
             var fireSite = CreateTransform("FireSite", new Vector3(1f, 0f, 0f));
             var diseaseSite = CreateTransform("DiseaseSite", new Vector3(9f, 0f, 0f));
-            registry.Register(0, fireSite);
-            registry.Register(1, diseaseSite);
+            registry.Register(0, NeedType.Fire, fireSite);
+            registry.Register(1, NeedType.Disease, diseaseSite);
 
             // Обе нужды активны одновременно — указатель обязан вести именно к Fire (нужда шага),
             // не к последней сработавшей нужде любого типа (Disease здесь сработала последней).

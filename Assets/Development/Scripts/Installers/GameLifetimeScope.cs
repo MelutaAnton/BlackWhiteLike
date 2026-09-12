@@ -399,6 +399,14 @@ namespace BlackWhiteLike.Installers
             // здесь же, а не под отдельным гейтом туториала (RegisterTutorial).
             builder.Register<NeedSiteRegistry>(Lifetime.Singleton).As<INeedSiteRegistry>();
 
+            // Шаг периодических нужд (уровни 2–5, решение владельца 2026-09-12): спавнер случайных
+            // свободных нужд по таймеру LevelConfig.EventIntervalSeconds (L01 остаётся на событийной
+            // цепочке LevelEventService — интервал 0, режим выключен). ITickable — регистрация ПОСЛЕ
+            // LevelEventService выше: планировщик в этом же кадре должен успеть проставить Expired и
+            // убрать терминальные рантайм-записи (RemoveAll) ДО того, как спавнер по IsNeedActive выберет
+            // цель. Fallback LevelConfig мета-сцен даёт интервал 0 — там сервис зарегистрирован, но молчит.
+            builder.Register<PeriodicNeedService>(Lifetime.Singleton).As<IPeriodicNeedService, ITickable, IDisposable>();
+
             builder.Register<VillagerFactory>(Lifetime.Singleton).As<IVillagerFactory>();
 
             // Б3 (ревью шага 3): без этого сервиса IVillagerFactory не имел ни одного вызывающего.

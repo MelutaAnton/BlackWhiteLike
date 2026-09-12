@@ -40,6 +40,8 @@ namespace BlackWhiteLike.Tests
             /// <summary>Единственное поле, которое реально читает LevelFlowService.Tick для stall.</summary>
             public bool HasBlockingNeeds { get; set; }
 
+            public bool IsNeedActive(NeedType type, int siteIndex) => false;
+
             public void ResolveNeed(NeedType type, int siteIndex, bool byPlayer, MiracleType causeMiracle)
             {
             }

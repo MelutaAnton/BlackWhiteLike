@@ -41,7 +41,8 @@ namespace BlackWhiteLike.Editor.Setup
     /// префабов структур деревни (Assets/Development/Prefabs/Village/, собираются
     /// <see cref="VillageStructurePrefabSetupEditor"/> из визуала POLYGON Fantasy Kingdom / Farm Pack;
     /// правка после playtest'а шага 4 — CLAUDE.md "Из ThirdParty ... только визуал, никогда —
-    /// префаб-инстанс", 3 из них с NeedSiteController — Fire/Disease/Hunger), рука +
+    /// префаб-инстанс", все четыре с NeedSiteController — три дома Fire, поле Hunger, периодический
+    /// режим уровней 2-5), рука +
     /// камера (переиспользуют код TestHandSceneSetupEditor), [Systems] с прошитыми
     /// _villagerConfig/_levelConfig/_throwableConfig, [Miracles] (прицеливание/удар/VFX чудес) и
     /// HUD (LevelHudCanvas.prefab + EventSystem).
@@ -92,10 +93,9 @@ namespace BlackWhiteLike.Editor.Setup
         /// (правка после playtest'а шага 4, CLAUDE.md "Из ThirdParty ... только визуал"): эта сцена
         /// больше не инстанцирует ThirdParty-префабы напрямую, только позиционирует НАШИ префабы
         /// структур (Assets/Development/Prefabs/Village/&lt;Name&gt;.prefab). siteIndex НЕ назначается
-        /// последовательным счётчиком (сломалось бы после переезда Disease с House_02 на жителя —
-        /// House_02 больше не хостит нужду, но индекс 1 обязан остаться зарезервированным за ней) —
-        /// явный индекс на структуру теперь в <see cref="StructureSiteIndices"/>. House_03/Temple —
-        /// без сайта (ревью шага 3, Б2).
+        /// последовательным счётчиком по этому массиву — явный индекс на структуру в
+        /// <see cref="StructureSiteIndices"/> (все четыре дома/поле теперь имеют сайт, периодический
+        /// режим уровней 2-5). Temple — без сайта (Alignment-визуал, не NeedSite).
         /// </summary>
         private static readonly (string Name, Vector3 Position)[] StructurePositions =
         {
@@ -108,20 +108,20 @@ namespace BlackWhiteLike.Editor.Setup
         };
 
         /// <summary>
-        /// Единственный источник явного siteIndex на структуру (Disease переехал с House_02 на
-        /// случайного жителя — NeedHostRules.IsVillagerHosted, game-design §5). Индекс 1 НАМЕРЕННО
-        /// отсутствует здесь — он зарезервирован за Disease-на-жителе (виртуальный сайт, не
-        /// сценовый NeedSiteController): DefaultEventTimeline и все LevelConfig-таймлайны
-        /// (ConfigAssetCreatorEditor) по-прежнему адресуют Disease через targetSiteIndex=1, но
-        /// событие обслуживает VillagerDiseaseService, а не NeedSiteController в сцене.
-        /// LevelConfigValidationEditor читает эту же таблицу — единственный источник для обоих
-        /// скриптов.
+        /// Единственный источник явного siteIndex на структуру. Disease переехал с NeedSite на
+        /// случайного жителя (NeedHostRules.IsVillagerHosted, game-design §5) — она больше не занимает
+        /// сценовый индекс, а адресуется виртуальным диапазоном от <see cref="NeedHostRules.VirtualSiteIndexBase"/>
+        /// (проверяется <see cref="NeedHostRules.IsVirtualSiteIndex"/>), который со сценовыми индексами
+        /// ниже никогда не пересекается. Периодический режим уровней 2-5 (ТЗ владельца) вернул House_02/
+        /// House_03 в состав Fire-целей — все четыре сценовых индекса теперь заняты реальными NeedSite.
+        /// LevelConfigValidationEditor читает эту же таблицу — единственный источник для обоих скриптов.
         /// </summary>
         public static readonly (string Name, int SiteIndex)[] StructureSiteIndices =
         {
             ("House_01", 0),
-            // 1 = Disease на жителе (виртуальный сайт) — намеренно пропущен.
+            ("House_02", 1),
             ("Field_Carrots", 2),
+            ("House_03", 3),
         };
 
         // Позиции спавна жителей (были статичной расстановкой до ревью шага 3) — теперь заполняют
@@ -133,11 +133,15 @@ namespace BlackWhiteLike.Editor.Setup
             new Vector3(-6f, 0f, 2f), new Vector3(-2f, 0f, 2f), new Vector3(2f, 0f, 2f), new Vector3(6f, 0f, 2f),
         };
 
-        /// <summary>Тестовый таймлайн (Б2-доп, ревью шага 3) — targetSiteIndex сверен с порядком в <see cref="StructurePositions"/>.</summary>
+        /// <summary>
+        /// Тестовый таймлайн L01 (Б2-доп, ревью шага 3) — targetSiteIndex сверен с
+        /// <see cref="StructureSiteIndices"/>. Disease адресуется виртуальным сайтом
+        /// (NeedHostRules.VirtualSiteIndexBase), а не индексом 1 (тот теперь занят House_02).
+        /// </summary>
         private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] DefaultEventTimeline =
         {
             (NeedType.Fire, 3f, 0, 15f),
-            (NeedType.Disease, 8f, 1, 15f),
+            (NeedType.Disease, 8f, NeedHostRules.VirtualSiteIndexBase, 15f),
             (NeedType.Hunger, 12f, 2, 15f),
         };
 
@@ -320,10 +324,10 @@ namespace BlackWhiteLike.Editor.Setup
             TestHandSceneSetupEditor.EnsureAutoInjectGameObjects(systemsScope, autoInjectObjects);
             RemoveFromAutoInject(systemsScope, miraclesGo);
 
-            // Миграция: House_02 раньше хостил Disease (NeedSiteController) и мог остаться в списке
-            // из старого прогона на немигрированной сцене — сам GameObject жив (не missing,
-            // RemoveMissingAutoInjectEntries его не тронет), но компонент с ним больше не создаётся
-            // (VillageStructurePrefabSetupEditor.Structures — NeedType=null). Снимаем явно.
+            // Страховка на будущее: структура, у которой NeedType в таблице стал null (сейчас — только
+            // Temple), могла остаться в autoInjectGameObjects из старого прогона — сам GameObject жив
+            // (не missing, RemoveMissingAutoInjectEntries его не тронет), но NeedSiteController на нём
+            // больше не создаётся. Снимаем явно.
             foreach (var definition in VillageStructurePrefabSetupEditor.Structures)
             {
                 if (definition.NeedType.HasValue) continue;
@@ -776,7 +780,7 @@ namespace BlackWhiteLike.Editor.Setup
 
             Debug.Log($"[Editor] Структуры деревни: {StructurePositions.Length} всего, NeedSiteController на " +
                       $"{needSiteObjects.Count} (siteIndex: {string.Join(", ", StructureSiteIndices.Select(s => s.SiteIndex))} — " +
-                      "1 зарезервирован за Disease на жителе).");
+                      $"Disease на жителе адресуется виртуальным диапазоном от {NeedHostRules.VirtualSiteIndexBase}).");
             return needSiteObjects;
         }
 
@@ -843,6 +847,7 @@ namespace BlackWhiteLike.Editor.Setup
             else
                 Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей — " +
                                 "проверьте имена SerializeField в NeedSiteController, иначе фича молча не работает в Play Mode.");
+
         }
 
         /// <summary>
@@ -941,10 +946,10 @@ namespace BlackWhiteLike.Editor.Setup
         /// Заполняет LevelConfig.EventTimeline тремя тестовыми записями (Б2-доп, ревью шага 3) —
         /// только если таймлайн ещё пустой (данные владельца — крутит их сам, повторный прогон не
         /// должен затирать). targetSiteIndex сверяется с фактическим набором индексов сценовых
-        /// NeedSite (<see cref="StructureSiteIndices"/>, не просто их количеством — индексы больше не
-        /// идут подряд с переездом Disease на жителя, индекс 1 намеренно пропущен). Для записей,
-        /// которые NeedHostRules.IsVillagerHosted считает "на жителе" (сейчас — Disease), диапазон
-        /// сценовых NeedSite не проверяется вовсе — это виртуальный сайт, обслуживает
+        /// NeedSite (<see cref="StructureSiteIndices"/>). Для записей, которые NeedHostRules.
+        /// IsVillagerHosted считает "на жителе" (сейчас — Disease), диапазон сценовых NeedSite не
+        /// проверяется вовсе — вместо этого проверяется, что targetSiteIndex лежит в виртуальном
+        /// диапазоне (NeedHostRules.IsVirtualSiteIndex) — это виртуальный сайт, обслуживает
         /// VillagerDiseaseService, а не NeedSiteController.
         /// </summary>
         private static void PopulateEventTimeline(LevelConfig levelConfig)
@@ -973,7 +978,15 @@ namespace BlackWhiteLike.Editor.Setup
             for (int i = 0; i < DefaultEventTimeline.Length; i++)
             {
                 var (type, triggerTime, siteIndex, duration) = DefaultEventTimeline[i];
-                if (!NeedHostRules.IsVillagerHosted(type) && !validSiteIndices.Contains(siteIndex))
+                if (NeedHostRules.IsVillagerHosted(type))
+                {
+                    if (!NeedHostRules.IsVirtualSiteIndex(siteIndex))
+                    {
+                        Debug.LogWarning($"[Editor] LevelConfig.EventTimeline[{i}]: {type} — villager-hosted нужда, но " +
+                                          $"targetSiteIndex={siteIndex} не лежит в виртуальном диапазоне (>= {NeedHostRules.VirtualSiteIndexBase}).");
+                    }
+                }
+                else if (!validSiteIndices.Contains(siteIndex))
                 {
                     Debug.LogWarning($"[Editor] LevelConfig.EventTimeline[{i}]: targetSiteIndex={siteIndex} не совпадает ни с " +
                                       "одним сценовым NeedSite (StructureSiteIndices) — запись записана, но сейчас событию некого обслуживать.");
@@ -988,18 +1001,22 @@ namespace BlackWhiteLike.Editor.Setup
 
             so.ApplyModifiedProperties();
             Debug.Log($"[Editor] LevelConfig.EventTimeline заполнен {DefaultEventTimeline.Length} тестовыми записями " +
-                      "(Fire@0 t=3 dur=15, Disease@1 t=8 dur=15, Hunger@2 t=12 dur=15).");
+                      $"(Fire@0 t=3 dur=15, Disease@{NeedHostRules.VirtualSiteIndexBase} t=8 dur=15, Hunger@2 t=12 dur=15).");
         }
 
         /// <summary>
         /// Правка таймлайна ТОЛЬКО LevelConfig_01 (новая семантика <c>NeedTriggerMode</c>, ТЗ владельца):
-        /// запись 0 (Fire, site 0) — AfterVillagerTossed, записи 1 (Disease, site 1) и 2 (Hunger, site 2) —
+        /// запись 0 (Fire, site 0) — AfterVillagerTossed, записи 1 (Disease, виртуальный site 1000) и 2 (Hunger, site 2) —
         /// AfterPreviousResolved, все три с duration=0 (нужда не истекает — <see cref="NeedEventEntry.duration"/>
         /// &lt;= 0 означает бесконечную нужду). Уровни 2-5 НЕ трогаем — у них <c>_triggerMode</c> остаётся
         /// AtTime по дефолту enum'а. Сопоставление записи — по индексу с проверкой ожидаемого NeedType
         /// (порядок задаёт <see cref="DefaultEventTimeline"/>/<see cref="PopulateEventTimeline"/> выше:
-        /// Fire@0, Disease@1, Hunger@2) — расхождение логируется и пропускается, а не пишется вслепую.
+        /// Fire@0, Disease@1000, Hunger@2) — расхождение логируется и пропускается, а не пишется вслепую.
         /// Идемпотентен: совпадающие значения не перезаписываются и не логируются, изменение — "старое -&gt; новое".
+        /// Отдельно (не gated триггер-модом — та проверка после первого прогона больше не заходит в
+        /// блок) мигрирует запись Disease: targetSiteIndex 1 -&gt; NeedHostRules.VirtualSiteIndexBase —
+        /// периодический режим уровней 2-5 вернул House_02 в состав Fire-целей, индекс 1 теперь занят
+        /// её реальным NeedSite, и Disease-на-жителе обязан адресоваться виртуальным диапазоном.
         /// </summary>
         private static readonly (int Index, NeedType ExpectedType, NeedTriggerMode Mode, float Duration)[] LevelConfig01TriggerModeOverrides =
         {
@@ -1036,6 +1053,26 @@ namespace BlackWhiteLike.Editor.Setup
                     Debug.LogWarning($"[Editor] LevelConfig_01.EventTimeline[{index}]: тип {(NeedType)typeProp.intValue} не совпадает " +
                                       $"с ожидаемым {expectedType} — триггер-мод не прошит (проверьте порядок записей таймлайна).");
                     continue;
+                }
+
+                // Миграция targetSiteIndex Disease-записи — независима от _triggerMode (в отличие от
+                // блока mode/duration ниже, эта проверка не может "залипнуть" после первого прогона:
+                // сравнение всегда идёт с фактическим значением, а не с состоянием другого поля).
+                if (expectedType == NeedType.Disease)
+                {
+                    var siteIndexProp = element.FindPropertyRelative("targetSiteIndex");
+                    if (siteIndexProp == null)
+                    {
+                        Debug.LogError("[Editor] Поле \"targetSiteIndex\" не найдено на NeedEventEntry — Disease-запись не мигрирована.");
+                    }
+                    else if (!NeedHostRules.IsVirtualSiteIndex(siteIndexProp.intValue))
+                    {
+                        int oldSiteIndex = siteIndexProp.intValue;
+                        Debug.Log($"[Editor] LevelConfig_01.EventTimeline[{index}].targetSiteIndex: {oldSiteIndex} -> " +
+                                  $"{NeedHostRules.VirtualSiteIndexBase} (House_02 снова реальный NeedSite на этом индексе).");
+                        siteIndexProp.intValue = NeedHostRules.VirtualSiteIndexBase;
+                        changed++;
+                    }
                 }
 
                 var modeProp = element.FindPropertyRelative("_triggerMode");

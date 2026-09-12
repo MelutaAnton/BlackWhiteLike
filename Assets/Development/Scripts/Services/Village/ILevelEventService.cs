@@ -60,5 +60,14 @@ namespace BlackWhiteLike.Services.Village
         /// для условия LevelStalled.
         /// </summary>
         bool HasBlockingNeeds { get; }
+
+        /// <summary>
+        /// Шаг периодических нужд (уровни 2–5): true — на ключе (<paramref name="type"/>,
+        /// <paramref name="siteIndex"/>) сейчас есть Active-запись (скриптованная или рантайм-триггер).
+        /// Armed/Pending — false: такой ключ формально свободен для нового рантайм-триггера
+        /// (см. двойную активацию ключа выше), но <c>PeriodicNeedService</c> это не обязано учитывать —
+        /// он просто пропускает занятые Active-цели при выборе случайной свободной.
+        /// </summary>
+        bool IsNeedActive(NeedType type, int siteIndex);
     }
 }

@@ -17,11 +17,15 @@ namespace BlackWhiteLike.Editor.Validation
     /// набора валидных сценовых индексов теперь <see cref="TestVillageSceneSetupEditor.StructureSiteIndices"/>
     /// (та же таблица, из которой строится Village_Base.unity — не нужно открывать сцену). Disease
     /// переехал с NeedSite на жителя (<see cref="NeedHostRules.IsVillagerHosted"/>) — для таких записей
-    /// диапазон сценовых NeedSite не проверяется вовсе (виртуальный сайт), достаточно targetSiteIndex
-    /// &gt;= 0 и что он НЕ совпадает с индексом настоящего сценового NeedSite (иначе NeedSiteController
-    /// получил бы чужое событие). Каталог — без null-записей и без дублей LevelId. Читает через
-    /// SerializedObject (не публичные свойства) — устойчиво к тому, что рантайм-класс может не
-    /// выставлять наружу все поля.
+    /// диапазон сценовых NeedSite не проверяется вовсе (виртуальный сайт), но targetSiteIndex ОБЯЗАН
+    /// лежать в виртуальном диапазоне (<see cref="NeedHostRules.IsVirtualSiteIndex"/>) и не совпадать
+    /// с индексом настоящего сценового NeedSite (иначе NeedSiteController получил бы чужое событие).
+    /// Каталог — без null-записей и без дублей LevelId. Читает через SerializedObject (не публичные
+    /// свойства) — устойчиво к тому, что рантайм-класс может не выставлять наружу все поля.
+    /// Периодический режим нужд (ТЗ владельца, L02..L05): <c>_eventIntervalSeconds</c>/
+    /// <c>_periodicNeedDuration</c> не бывают отрицательными (ошибка), непустой EventTimeline при
+    /// interval &gt; 0 — предупреждение "два источника событий". Итоговая строка лога перечисляет режим
+    /// каждого проверенного LevelConfig (timeline/periodic N с).
     /// <c>NeedTriggerMode</c> (добавлен параллельно этому скрипту, code-writer): <c>duration &lt;= 0</c>
     /// легален для событийных режимов (AfterVillagerTossed/AfterPreviousResolved — бесконечная нужда,
     /// истекает только по ручному разрешению игроком), но остаётся ошибкой для <c>AtTime</c> —
@@ -64,6 +68,7 @@ namespace BlackWhiteLike.Editor.Validation
             int levelsChecked = 0;
             var seenIds = new HashSet<LevelId>();
             var seenLevelConfigs = new HashSet<Object>();
+            var modeSummaries = new List<string>();
 
             for (int i = 0; i < entriesProp.arraySize; i++)
             {
@@ -84,7 +89,7 @@ namespace BlackWhiteLike.Editor.Validation
                     errorCount++;
                 }
 
-                errorCount += ValidateLevelConfig(level, validSiteIndices, seenIds);
+                errorCount += ValidateLevelConfig(level, validSiteIndices, seenIds, modeSummaries);
                 levelsChecked++;
             }
 
@@ -94,20 +99,23 @@ namespace BlackWhiteLike.Editor.Validation
                 errorCount++;
             }
 
+            // Итоговая строка — число проверенных конфигов, сценовых сайтов и режим КАЖДОГО
+            // (timeline/periodic N с) — логируется всегда, независимо от найденных нарушений.
+            string summary = $"{levelsChecked} LevelConfig проверено (сценовых NeedSite-индексов: " +
+                              $"{validSiteIndices.Count}). Режимы: {string.Join("; ", modeSummaries)}.";
+
             if (errorCount == 0)
-            {
-                Debug.Log($"[Editor] Validate Level Configs: нарушений нет — {levelsChecked} LevelConfig " +
-                          $"проверено (сценовых NeedSite-индексов: {validSiteIndices.Count}).");
-            }
+                Debug.Log($"[Editor] Validate Level Configs: нарушений нет — {summary}");
             else
-            {
-                Debug.LogError($"[Editor] Validate Level Configs: найдено {errorCount} нарушени(й) из {levelsChecked} " +
-                                $"проверенных LevelConfig (см. LogError выше).");
-            }
+                Debug.LogError($"[Editor] Validate Level Configs: найдено {errorCount} нарушени(й) — {summary}");
         }
 
-        /// <summary>Возвращает число найденных нарушений на одном LevelConfig (0 — конфиг валиден).</summary>
-        private static int ValidateLevelConfig(LevelConfig level, HashSet<int> validSiteIndices, HashSet<LevelId> seenIds)
+        /// <summary>
+        /// Возвращает число найденных нарушений на одном LevelConfig (0 — конфиг валиден). Дописывает в
+        /// <paramref name="modeSummaries"/> строку "&lt;label&gt;: timeline (N записей)" либо
+        /// "&lt;label&gt;: periodic N с" — источник итоговой строки лога <see cref="ValidateLevelConfigs"/>.
+        /// </summary>
+        private static int ValidateLevelConfig(LevelConfig level, HashSet<int> validSiteIndices, HashSet<LevelId> seenIds, List<string> modeSummaries)
         {
             int errors = 0;
             var so = new SerializedObject(level);
@@ -160,6 +168,45 @@ namespace BlackWhiteLike.Editor.Validation
                 errors++;
                 return errors;
             }
+
+            // Периодический режим нужд (ТЗ владельца, L02..L05): interval/duration отрицательными не
+            // бывают, а одновременно непустой EventTimeline + interval > 0 — два источника событий
+            // (предупреждение, не ошибка — оба технически могут сосуществовать в рантайме, но это
+            // почти наверняка забытая очистка таймлайна при переводе уровня на периодический режим).
+            float intervalSeconds = 0f;
+            var intervalProp = so.FindProperty("_eventIntervalSeconds");
+            var periodicDurationProp = so.FindProperty("_periodicNeedDuration");
+            if (intervalProp == null || periodicDurationProp == null)
+            {
+                Debug.LogError($"[Editor] {label}: поле \"_eventIntervalSeconds\"/\"_periodicNeedDuration\" не найдено на LevelConfig.");
+                errors++;
+            }
+            else
+            {
+                intervalSeconds = intervalProp.floatValue;
+                float periodicDuration = periodicDurationProp.floatValue;
+
+                if (intervalSeconds < 0f)
+                {
+                    Debug.LogError($"[Editor] {label}: _eventIntervalSeconds={intervalSeconds} < 0.");
+                    errors++;
+                }
+                if (periodicDuration < 0f)
+                {
+                    Debug.LogError($"[Editor] {label}: _periodicNeedDuration={periodicDuration} < 0.");
+                    errors++;
+                }
+                if (intervalSeconds > 0f && timelineProp.arraySize > 0)
+                {
+                    Debug.LogWarning($"[Editor] {label}: _eventIntervalSeconds={intervalSeconds} > 0 И EventTimeline " +
+                                      $"содержит {timelineProp.arraySize} запис(ей) — два источника событий одновременно " +
+                                      "(периодический режим и скриптованный таймлайн), вероятная незавершённая миграция уровня.");
+                }
+            }
+
+            modeSummaries.Add(intervalSeconds > 0f
+                ? $"{label}: periodic {intervalSeconds}с"
+                : $"{label}: timeline ({timelineProp.arraySize} записей)");
 
             float previousTime = float.NegativeInfinity;
             int afterVillagerTossedCount = 0;
@@ -218,18 +265,15 @@ namespace BlackWhiteLike.Editor.Validation
 
                 if (NeedHostRules.IsVillagerHosted(needType))
                 {
-                    // Виртуальный сайт (Disease на жителе) — не сверяется со сценовыми NeedSite,
-                    // но обязан быть неотрицательным и не совпадать с индексом настоящего сайта
-                    // (иначе NeedSiteController получит чужое событие в Play Mode).
-                    if (targetSiteIndex < 0)
+                    // Виртуальный сайт (Disease на жителе) — не сверяется со сценовыми NeedSite, но
+                    // ОБЯЗАН лежать в виртуальном диапазоне (NeedHostRules.VirtualSiteIndexBase),
+                    // иначе NeedSiteController получит чужое событие в Play Mode.
+                    // Коллизия со сценовым индексом отдельно не проверяется: сценовые индексы < 1000 по
+                    // построению (StructureSiteIndices), виртуальный диапазон с ними не пересекается.
+                    if (!NeedHostRules.IsVirtualSiteIndex(targetSiteIndex))
                     {
-                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] ({needType}, на жителе) targetSiteIndex={targetSiteIndex} < 0.");
-                        errors++;
-                    }
-                    else if (validSiteIndices.Contains(targetSiteIndex))
-                    {
-                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] ({needType}, на жителе) targetSiteIndex={targetSiteIndex} " +
-                                        "совпадает с индексом настоящего сценового NeedSite — NeedSiteController получит чужое событие.");
+                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] {needType} должен использовать виртуальный индекс " +
+                                        $">= {NeedHostRules.VirtualSiteIndexBase} (сейчас targetSiteIndex={targetSiteIndex}).");
                         errors++;
                     }
                 }

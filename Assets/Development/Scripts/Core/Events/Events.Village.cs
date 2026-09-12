@@ -114,21 +114,27 @@ namespace BlackWhiteLike.Core.Events
     /// Disease переезжает с NeedSite на случайного жителя, шаг переноса болезни). В отличие от
     /// остальных нужд (Fire/Hunger — точка в сцене, <c>NeedSiteController</c>), у Disease нет
     /// реального NeedSite в сцене (см. <c>Services.Village.NeedHostRules</c>) — <see cref="SiteIndex"/>
-    /// остаётся тем же индексом записи <c>LevelConfig.EventTimeline</c>, что и в
+    /// остаётся тем же индексом записи <c>LevelConfig.EventTimeline</c> (или виртуальным слотом
+    /// <c>NeedHostRules.VirtualSiteIndexBase</c> — шаг периодических нужд, уровни 2–5), что и в
     /// <c>NeedTriggeredEvent</c>/<c>NeedResolvedEvent</c>/<c>NeedExpiredEvent</c> для этой Disease,
-    /// просто виртуальный (без соответствующего <c>NeedSiteController</c> в сцене). Подписчики —
-    /// <c>VillagerController</c> (визуал/поза/регистрация мировой позиции больного в
-    /// <c>INeedSiteRegistry</c>), тесты.
+    /// просто виртуальный (без соответствующего <c>NeedSiteController</c> в сцене). <see cref="Type"/>
+    /// (шаг периодических нужд) — нужда, которой болен/выздоровел житель; в срезе всегда Disease
+    /// (<c>NeedHostRules.IsVillagerHosted</c>), но несётся явно, а не хардкодится подписчиком —
+    /// <c>VillagerController</c> передаёт его дальше в <c>INeedSiteRegistry.Register</c>, не выдумывая
+    /// тип точки самостоятельно. Подписчики — <c>VillagerController</c> (визуал/поза/регистрация
+    /// мировой позиции больного в <c>INeedSiteRegistry</c>), тесты.
     /// </summary>
     public readonly struct VillagerSicknessChangedEvent
     {
         public readonly VillagerId Id;
+        public readonly NeedType Type;
         public readonly int SiteIndex;
         public readonly bool IsSick;
 
-        public VillagerSicknessChangedEvent(VillagerId id, int siteIndex, bool isSick)
+        public VillagerSicknessChangedEvent(VillagerId id, NeedType type, int siteIndex, bool isSick)
         {
             Id = id;
+            Type = type;
             SiteIndex = siteIndex;
             IsSick = isSick;
         }

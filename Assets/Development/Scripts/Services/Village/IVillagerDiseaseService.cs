@@ -25,5 +25,13 @@ namespace BlackWhiteLike.Services.Village
 
         /// <summary>Больной жителем на записи <paramref name="siteIndex"/> — false, если сайт не заражён (Pending/отложен/разрешён).</summary>
         bool TryGetSickVillager(int siteIndex, out VillagerId id);
+
+        /// <summary>
+        /// Шаг периодических нужд (уровни 2–5): true — есть хотя бы один зарегистрированный житель,
+        /// не Tossed и не больной, пригодный для назначения новой Disease. Читается
+        /// <c>PeriodicNeedService</c> перед тем, как включать Disease в список свободных целей —
+        /// у неё нет NeedSite в сцене (<see cref="NeedHostRules.IsVillagerHosted"/>).
+        /// </summary>
+        bool HasEligibleCandidate { get; }
     }
 }

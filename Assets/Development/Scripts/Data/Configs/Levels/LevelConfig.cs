@@ -22,6 +22,12 @@ namespace BlackWhiteLike.Data.Configs.Levels
         [Tooltip("Скриптованный таймлайн событий-нужд (game-design §5) — единственный источник событий уровня, никакой генерации в рантайме (cli-workflow §Шаг 3).")]
         [SerializeField] private NeedEventEntry[] _eventTimeline = new NeedEventEntry[0];
 
+        [Tooltip("Периодический режим нужд (уровни 2–5): каждые N секунд срабатывает случайная свободная нужда. 0 — режим выключен, уровень живёт по EventTimeline (L01, туториал).")]
+        [SerializeField] private float _eventIntervalSeconds;
+
+        [Tooltip("Длительность периодической нужды до истечения. 0 — не истекает (сейчас; задел под будущий стейт «руины/смерть» по истечению).")]
+        [SerializeField] private float _periodicNeedDuration;
+
         [Tooltip("0 = опциональный таймер выключен (по умолчанию).")]
         [SerializeField] private float _optionalTimerSeconds;
 
@@ -38,6 +44,8 @@ namespace BlackWhiteLike.Data.Configs.Levels
         public int VillagerCount => _villagerCount;
         public VillageLayoutConfig Layout => _layout;
         public NeedEventEntry[] EventTimeline => _eventTimeline;
+        public float EventIntervalSeconds => _eventIntervalSeconds;
+        public float PeriodicNeedDuration => _periodicNeedDuration;
         public float OptionalTimerSeconds => _optionalTimerSeconds;
         public int CoinsReward => _coinsReward;
 

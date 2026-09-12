@@ -148,13 +148,13 @@ namespace BlackWhiteLike.Editor.Configs
             // прогрессией (target/villagerCount/coinsReward/таймлайн) и общей VillageLayout_01.
             // Порядок обязателен: VillageLayout_01 (Descriptors выше) → LevelConfig_02..05 → каталог.
             new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig02Path, so => InitLevelConfig(so,
-                LevelId.Level02, worshipTarget: 130, villagerCount: 5, coinsReward: 15, Level02Timeline)),
+                LevelId.Level02, worshipTarget: 130, villagerCount: 5, coinsReward: 15)),
             new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig03Path, so => InitLevelConfig(so,
-                LevelId.Level03, worshipTarget: 160, villagerCount: 4, coinsReward: 20, Level03Timeline)),
+                LevelId.Level03, worshipTarget: 160, villagerCount: 4, coinsReward: 20)),
             new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig04Path, so => InitLevelConfig(so,
-                LevelId.Level04, worshipTarget: 200, villagerCount: 4, coinsReward: 25, Level04Timeline)),
+                LevelId.Level04, worshipTarget: 200, villagerCount: 4, coinsReward: 25)),
             new ConfigAssetDescriptor(typeof(LevelConfig), LevelConfig05Path, so => InitLevelConfig(so,
-                LevelId.Level05, worshipTarget: 250, villagerCount: 3, coinsReward: 30, Level05Timeline)),
+                LevelId.Level05, worshipTarget: 250, villagerCount: 3, coinsReward: 30)),
             new ConfigAssetDescriptor(typeof(LevelCatalogConfig), LevelCatalogPath, InitLevelCatalog),
 
             // Шаг 8 — Meta + idle (game-design.md, шаг 8). Порядок между собой не важен — три
@@ -330,57 +330,15 @@ namespace BlackWhiteLike.Editor.Configs
             return 1;
         }
 
-        // Таймлайны прогрессии (game-design.md, шаг 7, ТЗ владельца): плотнее и с более короткими
-        // интервалами с ростом уровня (~25с → ~15с), duration=15с как у LevelConfig_01. targetSiteIndex
-        // — по единственному источнику TestVillageSceneSetupEditor.StructureSiteIndices: House_01=0/Fire,
-        // 1 = Disease на жителе (виртуальный сайт, House_02 нужду больше не хостит — NeedHostRules.
-        // IsVillagerHosted), Field_Carrots=2/Hunger (см. TestVillageSceneSetupEditor.DefaultEventTimeline).
-        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level02Timeline =
-        {
-            (NeedType.Fire, 5f, 0, 15f),
-            (NeedType.Disease, 30f, 1, 15f),
-            (NeedType.Hunger, 55f, 2, 15f),
-            (NeedType.Fire, 80f, 0, 15f),
-        };
-
-        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level03Timeline =
-        {
-            (NeedType.Fire, 5f, 0, 15f),
-            (NeedType.Disease, 26f, 1, 15f),
-            (NeedType.Hunger, 47f, 2, 15f),
-            (NeedType.Fire, 68f, 0, 15f),
-            (NeedType.Disease, 89f, 1, 15f),
-        };
-
-        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level04Timeline =
-        {
-            (NeedType.Fire, 5f, 0, 15f),
-            (NeedType.Disease, 23f, 1, 15f),
-            (NeedType.Hunger, 41f, 2, 15f),
-            (NeedType.Fire, 59f, 0, 15f),
-            (NeedType.Disease, 77f, 1, 15f),
-            (NeedType.Hunger, 95f, 2, 15f),
-        };
-
-        private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level05Timeline =
-        {
-            (NeedType.Fire, 5f, 0, 15f),
-            (NeedType.Disease, 20f, 1, 15f),
-            (NeedType.Hunger, 35f, 2, 15f),
-            (NeedType.Fire, 50f, 0, 15f),
-            (NeedType.Disease, 65f, 1, 15f),
-            (NeedType.Hunger, 80f, 2, 15f),
-            (NeedType.Fire, 95f, 0, 15f),
-        };
-
         /// <summary>
-        /// Общий инициализатор LevelConfig_02..05 (шаг 7): прогрессия данными, единая
-        /// VillageLayout_01.asset (решение владельца — одна запечённая деревня на всю кампанию) и
-        /// скриптованный таймлайн по образцу LevelConfig_01 (см. Level0XTimeline выше). Выполняется
-        /// ТОЛЬКО при создании ассета (см. class-doc) — существующий файл не трогаем.
+        /// Общий инициализатор LevelConfig_02..05 (шаг 7): прогрессия данными и единая
+        /// VillageLayout_01.asset (решение владельца — одна запечённая деревня на всю кампанию).
+        /// Скриптованный таймлайн (Level0XTimeline) удалён — уровни 2-5 перешли на периодический режим
+        /// нужд (ТЗ владельца: каждые N секунд случайная свободная нужда, см. <see cref="StampPeriodicNeedSettings"/>
+        /// и <see cref="ClearPeriodicLevelTimelines"/>), _eventTimeline у них остаётся пустым.
+        /// Выполняется ТОЛЬКО при создании ассета (см. class-doc) — существующий файл не трогаем.
         /// </summary>
-        private static void InitLevelConfig(SerializedObject so, LevelId id, int worshipTarget, int villagerCount,
-            int coinsReward, (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] timeline)
+        private static void InitLevelConfig(SerializedObject so, LevelId id, int worshipTarget, int villagerCount, int coinsReward)
         {
             so.FindProperty("_id").intValue = (int)id;
             so.FindProperty("_worshipTarget").intValue = worshipTarget;
@@ -392,15 +350,112 @@ namespace BlackWhiteLike.Editor.Configs
                 Debug.LogWarning($"[Editor] {id}: VillageLayout_01.asset не найден по пути {VillageLayout01Path} — _layout не прошит.");
             so.FindProperty("_layout").objectReferenceValue = layout;
 
-            var timelineProp = so.FindProperty("_eventTimeline");
-            timelineProp.arraySize = timeline.Length;
-            for (int i = 0; i < timeline.Length; i++)
+            // _eventTimeline намеренно не заполняется — периодический режим (StampPeriodicNeedSettings).
+        }
+
+        /// <summary>
+        /// Периодический режим нужд (ТЗ владельца): L01 остаётся туториальной скриптованной цепочкой
+        /// (EventTimeline, interval/duration = 0 — режим выключен), L02..L05 каждые N секунд взводят
+        /// случайную свободную нужду (PeriodicNeedService, рантайм) без истечения (duration = 0).
+        /// Единственный источник значений для этой таблицы И <see cref="ClearPeriodicLevelTimelines"/>.
+        /// </summary>
+        private static readonly (string Path, float IntervalSeconds, float Duration)[] PeriodicNeedSettings =
+        {
+            (LevelConfig01Path, 0f, 0f),
+            (LevelConfig02Path, 10f, 0f),
+            (LevelConfig03Path, 9f, 0f),
+            (LevelConfig04Path, 8f, 0f),
+            (LevelConfig05Path, 7f, 0f),
+        };
+
+        /// <summary>
+        /// Штампует LevelConfig._eventIntervalSeconds/_periodicNeedDuration по <see cref="PeriodicNeedSettings"/>.
+        /// Вызывается безусловно из CreateAll (не только при создании ассета) — тот же приём, что
+        /// StampLevelCatalogDisplayNames: владелец правит баланс через этот же пункт меню. Совпадающее
+        /// значение не трогается и не логируется, изменение — "старое -&gt; новое".
+        /// </summary>
+        private static void StampPeriodicNeedSettings()
+        {
+            int changed = 0;
+
+            foreach (var (path, intervalSeconds, duration) in PeriodicNeedSettings)
             {
-                var element = timelineProp.GetArrayElementAtIndex(i);
-                element.FindPropertyRelative("type").intValue = (int)timeline[i].Type;
-                element.FindPropertyRelative("triggerTime").floatValue = timeline[i].TriggerTime;
-                element.FindPropertyRelative("targetSiteIndex").intValue = timeline[i].SiteIndex;
-                element.FindPropertyRelative("duration").floatValue = timeline[i].Duration;
+                var level = AssetDatabase.LoadAssetAtPath<LevelConfig>(path);
+                if (level == null) continue; // ещё не создан — следующий прогон CreateAll застанет его уже готовым к штамповке.
+
+                var so = new SerializedObject(level);
+                var intervalProp = so.FindProperty("_eventIntervalSeconds");
+                var durationProp = so.FindProperty("_periodicNeedDuration");
+                if (intervalProp == null || durationProp == null)
+                {
+                    Debug.LogError($"[Editor] {path}: поле \"_eventIntervalSeconds\"/\"_periodicNeedDuration\" не найдено на " +
+                                    "LevelConfig — проверьте, что code-writer добавил оба поля.");
+                    continue;
+                }
+
+                bool levelChanged = false;
+                if (!Mathf.Approximately(intervalProp.floatValue, intervalSeconds))
+                {
+                    Debug.Log($"[Editor] {path}._eventIntervalSeconds: {intervalProp.floatValue} -> {intervalSeconds}.");
+                    intervalProp.floatValue = intervalSeconds;
+                    levelChanged = true;
+                }
+                if (!Mathf.Approximately(durationProp.floatValue, duration))
+                {
+                    Debug.Log($"[Editor] {path}._periodicNeedDuration: {durationProp.floatValue} -> {duration}.");
+                    durationProp.floatValue = duration;
+                    levelChanged = true;
+                }
+
+                if (!levelChanged) continue;
+
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(level);
+                changed++;
+            }
+
+            if (changed > 0)
+                Debug.Log($"[Editor] StampPeriodicNeedSettings: обновлено {changed} LevelConfig.");
+        }
+
+        /// <summary>Уровни, переведённые на периодический режим — их скриптованный EventTimeline очищается.</summary>
+        private static readonly string[] PeriodicLevelPaths = { LevelConfig02Path, LevelConfig03Path, LevelConfig04Path, LevelConfig05Path };
+
+        /// <summary>
+        /// Очищает _eventTimeline у L02..L05 (периодический режим не совместим со скриптованным
+        /// таймлайном — LevelConfigValidationEditor предупреждает о "двух источниках событий", если оба
+        /// заполнены одновременно). L01 не трогает — туториальная цепочка остаётся EventTimeline.
+        /// InitLevelConfig больше не заполняет таймлайн при создании (см. class-doc), поэтому очистка
+        /// нужна только для ассетов, созданных ДО этой правки. ОДНОРАЗОВАЯ миграция (ревью): чистит
+        /// только ассет, у которого периодический режим ещё не проштампован (<c>_eventIntervalSeconds == 0</c>),
+        /// поэтому вызывается ДО <see cref="StampPeriodicNeedSettings"/>. Уже мигрированный уровень —
+        /// данные владельца: если он руками добавит запись в таймлайн, повторный прогон её не сотрёт
+        /// (валидатор лишь предупредит о «двух источниках событий»). Пустой массив не логируется.
+        /// </summary>
+        private static void ClearPeriodicLevelTimelines()
+        {
+            foreach (var path in PeriodicLevelPaths)
+            {
+                var level = AssetDatabase.LoadAssetAtPath<LevelConfig>(path);
+                if (level == null) continue;
+
+                var so = new SerializedObject(level);
+                var timelineProp = so.FindProperty("_eventTimeline");
+                var intervalProp = so.FindProperty("_eventIntervalSeconds");
+                if (timelineProp == null || intervalProp == null)
+                {
+                    Debug.LogError($"[Editor] {path}: поле \"_eventTimeline\"/\"_eventIntervalSeconds\" не найдено — очистка таймлайна пропущена.");
+                    continue;
+                }
+
+                if (timelineProp.arraySize == 0) continue;
+                if (intervalProp.floatValue > 0f) continue; // уже мигрирован — таймлайн принадлежит владельцу
+
+                int oldSize = timelineProp.arraySize;
+                timelineProp.arraySize = 0;
+                so.ApplyModifiedProperties();
+                EditorUtility.SetDirty(level);
+                Debug.Log($"[Editor] {path}.EventTimeline: {oldSize} записей -> 0 (периодический режим).");
             }
         }
 
@@ -1024,6 +1079,12 @@ namespace BlackWhiteLike.Editor.Configs
             // комментарий на месте бывшего метода, недостижимая ветка "если 0".
             MigrateUpgradeCatalogEntries();
             MigrateIdleIncomeConfig();
+            // Периодические нужды (ТЗ владельца): L01 остаётся туториальной EventTimeline-цепочкой,
+            // L02..L05 — периодический режим. Штампуется безусловно (как StampLevelCatalogDisplayNames);
+            // очистка таймлайна — только для ассетов, у которых он ещё не пуст (созданных до правки).
+            // Порядок обязателен: очистка — одноразовая миграция по признаку «интервал ещё 0», штамп ниже его выставит.
+            ClearPeriodicLevelTimelines();
+            StampPeriodicNeedSettings();
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

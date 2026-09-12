@@ -24,7 +24,7 @@ MonoBehaviour:
     _triggerMode: 1
   - type: 1
     triggerTime: 8
-    targetSiteIndex: 1
+    targetSiteIndex: 1000
     duration: 0
     _triggerMode: 2
   - type: 2
@@ -32,6 +32,8 @@ MonoBehaviour:
     targetSiteIndex: 2
     duration: 0
     _triggerMode: 2
+  _eventIntervalSeconds: 0
+  _periodicNeedDuration: 0
   _optionalTimerSeconds: 0
   _coinsReward: 10
   _hasCreatureSpawn: 0

@@ -18,8 +18,8 @@ namespace BlackWhiteLike.Editor.Prefabs
     /// префаба (визуал приходит как значения компонентов, prefab-связь на пак сразу разрывается —
     /// см. .claude/rules/editor-files.md, "ThirdParty-префаб — только через unpack completely"),
     /// с прошитым на корень масштабом (см. <see cref="Structures"/> — фактические значения, вручную
-    /// подкрученные владельцем в старой сцене, а не дефолт) и, для трёх из четырёх, триггером
-    /// нужды: kinematic Rigidbody + BoxCollider(isTrigger) по bounds рендереров + NeedSiteController
+    /// подкрученные владельцем в старой сцене, а не дефолт) и, для структур с заданным NeedType,
+    /// триггером нужды: kinematic Rigidbody + BoxCollider(isTrigger) по bounds рендереров + NeedSiteController
     /// с прошитыми <c>_needType</c> и тремя визуальными маркерами. <c>_siteIndex</c> и
     /// <c>_villagerMask</c> — НЕ здесь: они завязаны на конкретный инстанс в конкретной сцене
     /// (порядковый номер точки события, маска слоя жителей) и прошиваются
@@ -67,11 +67,13 @@ namespace BlackWhiteLike.Editor.Prefabs
         public static readonly (string Name, string SourcePrefabPath, Vector3 Scale, NeedType? NeedType)[] Structures =
         {
             ("House_01", HouseFolder + "SM_Bld_Preset_House_01_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Fire),
-            // Disease переехал с House_02 на случайного жителя (NeedHostRules.IsVillagerHosted) —
-            // House_02 больше не хостит нужду, NeedType=null. Существующий House_02.prefab
-            // мигрируется в BuildStructurePrefab (снимается NeedSiteController и его маркеры/триггер).
-            ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), null),
-            ("House_03", HouseFolder + "SM_Bld_Preset_House_03_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), null),
+            // Периодические нужды уровней 2-5 (ТЗ владельца): все три дома — Fire-цели, случайная
+            // свободная нужда выбирает случайный свободный NeedSite среди них. House_02 ранее (шаг
+            // переноса Disease на жителя) был мигрирован в NeedType=null — теперь он снова хостит
+            // нужду, BuildStructurePrefab идемпотентно ДОСОБИРАЕТ NeedSite (BuildNeedSite), а не
+            // повторно снимает его (MigrateOffNeedSite вызывается только при NeedType == null).
+            ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Fire),
+            ("House_03", HouseFolder + "SM_Bld_Preset_House_03_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Fire),
             ("Field_Carrots", FarmPlantsFolder + "SM_Prop_Carrot_01_Group.prefab", Vector3.one, NeedType.Hunger),
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10): храм без NeedSiteController (нужды
             // ему не назначаются) — масштаб как у домов (владелец: "масштаб как у домов").
@@ -298,13 +300,14 @@ namespace BlackWhiteLike.Editor.Prefabs
         }
 
         /// <summary>
-        /// Миграция House_02 (Disease переехал на жителя, NeedHostRules.IsVillagerHosted) — снимает
-        /// то, что <see cref="BuildNeedSite"/> добавляет ТОЛЬКО ради триггера нужды: NeedSiteController,
-        /// маркеры Visual_Normal/Visual_Active/Visual_Expired и кинематический триггер-коллайдер +
-        /// Rigidbody (isKinematic=true, useGravity=false — сигнатура, по которой BuildNeedSite их
-        /// узнаёт как "свои", а не Rigidbody/Collider, добавленные для чего-то ещё). Меш/материалы не
-        /// трогает. Идемпотентна: если NeedSiteController уже отсутствует — no-op без логов (второй
-        /// прогон не шумит).
+        /// Снимает с структуры то, что <see cref="BuildNeedSite"/> добавляет ТОЛЬКО ради триггера
+        /// нужды: NeedSiteController, маркеры Visual_Normal/Visual_Active/Visual_Expired и
+        /// кинематический триггер-коллайдер + Rigidbody (isKinematic=true, useGravity=false —
+        /// сигнатура, по которой BuildNeedSite их узнаёт как "свои", а не Rigidbody/Collider,
+        /// добавленные для чего-то ещё). Вызывается только для структур с NeedType == null
+        /// (сейчас — Temple; после возврата House_02/House_03 к Fire в периодическом режиме уровней
+        /// 2-5 эта ветка их больше не касается). Меш/материалы не трогает. Идемпотентна: если
+        /// NeedSiteController уже отсутствует — no-op без логов (второй прогон не шумит).
         /// </summary>
         private static void MigrateOffNeedSite(GameObject go, string structureName)
         {
