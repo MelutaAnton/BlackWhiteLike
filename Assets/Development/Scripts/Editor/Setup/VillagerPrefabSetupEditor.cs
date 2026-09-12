@@ -65,11 +65,26 @@ namespace BlackWhiteLike.Editor.Setup
         // руке/полёте) — явное состояние StandUp нужно, чтобы возврат в Idle не был мгновенным.
         private const string MixamoStandUpClipPath = "Assets/Content/Animations/Stunned/Stand Up.fbx";
 
+        // Disease переезжает с NeedSite на жителя (см. NeedHostRules.IsVillagerHosted) — источник
+        // standalone-клипа "agony" (Content/, не редактируется — CLAUDE.md), длина 3.7 с. Исходник уже
+        // m_LoopTime=1 (зациклен по времени), но m_LoopBlend=0 (без бесшовного блендинга конца/начала
+        // позы) — EnsureAgonyClip ниже штампует именно loopBlend, а loopTime проверяет на случай, если
+        // источник когда-нибудь заменят на незацикленный.
+        private const string AgonySourceClipPath = "Assets/Content/Animations/Payne/agony.anim";
+
         // --- Наши целевые пути ---
         private const string AnimationsFolder = "Assets/Development/Art/Animations/Villager";
         private const string ControllerPath = AnimationsFolder + "/Villager.controller";
+        // Производный клип (Content/ не редактируется — CLAUDE.md, "Content/ vs Development/Art/"):
+        // копия agony.anim с прошитым зацикленным loopTime/loopBlend.
+        private const string AgonyClipPath = AnimationsFolder + "/Villager_Agony.anim";
         private const string PrefabsFolder = "Assets/Development/Prefabs/Village";
         private const string PrefabPath = PrefabsFolder + "/Villager.prefab";
+
+        // ThirdParty-визуал болезни — облако мух над головой (только чтение, CLAUDE.md "только визуал").
+        private const string FliesCloudSourcePath =
+            "Assets/ThirdParty/VFX/JMO Assets/Cartoon FX Remaster/CFXR Prefabs/Misc/CFXR4 Flies Cloud.prefab";
+        private static readonly Vector3 SickVisualLocalPosition = new Vector3(0f, 1.2f, 0f);
         private const string HandConfigPath = "Assets/Development/Data/Configs/Hand/HandConfig.asset";
         private const string VillagerConfigPath = "Assets/Development/Data/Configs/Villagers/VillagerConfig.asset";
 
@@ -161,6 +176,11 @@ namespace BlackWhiteLike.Editor.Setup
             controller.AddParameter(AnimatorHashes.IsLyingName, AnimatorControllerParameterType.Bool);
             controller.AddParameter(AnimatorHashes.ScaredName, AnimatorControllerParameterType.Trigger);
             controller.AddParameter(AnimatorHashes.StandUpName, AnimatorControllerParameterType.Trigger);
+            // Disease на жителе (NeedHostRules.IsVillagerHosted) — рантайм выставляет true ТОЛЬКО в
+            // Idle (VillagerPoseRules.ShowsSickPose), поэтому конфликтов приоритета с
+            // Worship/Stunned/StunnedLying на уровне контроллера нет: пока житель в одном из этих
+            // full-body состояний, предикат рантайма не подаёт IsSick.
+            controller.AddParameter(AnimatorHashes.IsSickName, AnimatorControllerParameterType.Bool);
 
             // Пересобираем BlendTree-сабассеты с нуля вместе со всем остальным — иначе повторный
             // запуск оставляет осиротевшие BlendTree-объекты внутри .controller (RemoveState не
@@ -189,6 +209,9 @@ namespace BlackWhiteLike.Editor.Setup
             LogClipLength("Stand Up", standUpClip);
             LogClipLength("Dizzy Idle", stunnedClipForLog);
 
+            var agonyClip = EnsureAgonyClip();
+            LogClipLength("Agony", agonyClip);
+
             // Скорость проигрывания StandUp — данные (VillagerConfig.StandUpPlaybackSpeed), не только
             // ручная правка Speed на состоянии: пересборка контроллера с нуля стёрла бы её, если бы
             // Speed не был восстановлен из того же источника при каждом прогоне (см. BuildMovementLayer).
@@ -201,7 +224,7 @@ namespace BlackWhiteLike.Editor.Setup
                 standUpPlaybackSpeed = 1f;
             }
 
-            BuildMovementLayer(controller, walkThreshold, runThreshold, standUpClip, standUpPlaybackSpeed);
+            BuildMovementLayer(controller, walkThreshold, runThreshold, standUpClip, standUpPlaybackSpeed, agonyClip);
             BuildUpperBodyLayer(controller);
 
             // StandUpDuration — derived-значение (четвёртый/пятый playtest шага 3), не дизайнерская
@@ -223,6 +246,71 @@ namespace BlackWhiteLike.Editor.Setup
                 Debug.Log($"[Editor] Клип \"{label}\": length={clip.length:0.###} с.");
             else
                 Debug.LogWarning($"[Editor] Клип \"{label}\" не найден — длина неизвестна.");
+        }
+
+        /// <summary>
+        /// Производный клип Villager_Agony.anim (Disease на жителе — NeedHostRules.IsVillagerHosted):
+        /// копия standalone-клипа Content/Animations/Payne/agony.anim (Content/ не редактируется —
+        /// CLAUDE.md) через <see cref="AssetDatabase.CopyAsset"/> (канонический путь копирования
+        /// ассета — переносит все настройки клипа, а не только Motion-данные, как было бы при
+        /// Object.Instantiate + CreateAsset) с прошитым <c>loopBlend=true</c> (исходник уже
+        /// m_LoopTime=1, но m_LoopBlend=0 — без него смена цикла agony видна швом). Идемпотентно:
+        /// копия не пересоздаётся, если уже существует; настройки цикла проверяются и мигрируются при
+        /// каждом прогоне (лог "старое → новое" по каждому полю отдельно, только при реальном
+        /// изменении).
+        /// </summary>
+        private static AnimationClip EnsureAgonyClip()
+        {
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(AgonyClipPath);
+            if (clip == null)
+            {
+                if (!AssetDatabase.LoadAssetAtPath<AnimationClip>(AgonySourceClipPath))
+                {
+                    Debug.LogWarning("[Editor] Источник клипа agony не найден: " + AgonySourceClipPath +
+                                      " — состояние \"Sick\" будет собрано без Motion.");
+                    return null;
+                }
+
+                if (!AssetDatabase.CopyAsset(AgonySourceClipPath, AgonyClipPath))
+                {
+                    Debug.LogError("[Editor] Не удалось скопировать " + AgonySourceClipPath + " → " + AgonyClipPath +
+                                    " (AssetDatabase.CopyAsset) — состояние \"Sick\" будет собрано без Motion.");
+                    return null;
+                }
+
+                AssetDatabase.ImportAsset(AgonyClipPath);
+                clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(AgonyClipPath);
+                if (clip != null && clip.name != "Villager_Agony")
+                {
+                    clip.name = "Villager_Agony";
+                    EditorUtility.SetDirty(clip);
+                }
+
+                Debug.Log("[Editor] Создан производный клип: " + AgonyClipPath + " (копия " + AgonySourceClipPath +
+                          " через AssetDatabase.CopyAsset).");
+            }
+
+            if (clip == null) return null;
+
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            bool loopTimeChanged = !settings.loopTime;
+            bool loopBlendChanged = !settings.loopBlend;
+            if (loopTimeChanged || loopBlendChanged)
+            {
+                bool oldLoopTime = settings.loopTime;
+                bool oldLoopBlend = settings.loopBlend;
+                settings.loopTime = true;
+                settings.loopBlend = true;
+                AnimationUtility.SetAnimationClipSettings(clip, settings);
+                EditorUtility.SetDirty(clip);
+
+                if (loopTimeChanged)
+                    Debug.Log($"[Editor] Villager_Agony.anim: loopTime {oldLoopTime} → true.");
+                if (loopBlendChanged)
+                    Debug.Log($"[Editor] Villager_Agony.anim: loopBlend {oldLoopBlend} → true.");
+            }
+
+            return clip;
         }
 
         /// <summary>
@@ -280,7 +368,7 @@ namespace BlackWhiteLike.Editor.Setup
         /// оверлей на слое 1 (UpperBody).
         /// </summary>
         private static void BuildMovementLayer(AnimatorController controller, float walkThreshold, float runThreshold,
-            AnimationClip standUpClip, float standUpPlaybackSpeed)
+            AnimationClip standUpClip, float standUpPlaybackSpeed, AnimationClip agonyClip)
         {
             // Слой 0 создаётся Unity под именем "Base Layer" и не переименовывается сам —
             // прошиваем имя/вес явно (третий playtest шага 3: спецификация требует "Movement", вес 1;
@@ -360,6 +448,19 @@ namespace BlackWhiteLike.Editor.Setup
             else Debug.LogWarning("[Editor] Клип для состояния \"StunnedLying\" не найден (тот же Stand Up, что и у StandUp).");
             stunnedLyingState.speed = 0f;
 
+            // Sick — Disease на жителе (NeedHostRules.IsVillagerHosted): full-body поза agony,
+            // зациклена (EnsureAgonyClip). Рантайм подаёт IsSick=true только в Idle
+            // (VillagerPoseRules.ShowsSickPose) — но "Idle" на уровне рантайма это тот же кадр, где
+            // могла завершиться Stunned/StunnedLying-реакция и уже взведён триггер StandUp (ревью
+            // шага 3, Д1): AnyState-вход в Sick побеждал по приоритету переход StunnedLying->StandUp,
+            // вставание не проигрывалось, а взведённый триггер StandUp оставался навсегда. Поэтому
+            // вход в Sick — НЕ AnyState, а только из явно легальных состояний (см. переходы ниже,
+            // после StandUp): предикат "триггер обязан стрелять на каждом пути выхода" (skill
+            // unity-animator) для StandUp был нарушен именно этим AnyState-конкурентом.
+            var sickState = rootStateMachine.AddState("Sick");
+            if (agonyClip != null) sickState.motion = agonyClip;
+            else Debug.LogWarning("[Editor] Клип для состояния \"Sick\" не найден по пути " + AgonyClipPath + ".");
+
             // Worship/Stunned/StunnedLying могут прервать BlendTree из любого состояния — AnyState.
             // AddAnyStateTransition уже ставит canTransitionToSelf=false для всех трёх (не пере-входит
             // в себя каждый кадр, что для StunnedLying дёргало бы позу).
@@ -379,6 +480,22 @@ namespace BlackWhiteLike.Editor.Setup
             AddAnyStateTransition(rootStateMachine, stunnedLyingState, AnimatorHashes.IsLyingName,
                 AnimatorConditionMode.If);
 
+            // Sick — вход НЕ через AnyState (см. class-doc состояния Sick выше): только из Locomotion
+            // (обычный путь — заболел стоя/на ходу) и из StandUp после доигрывания вставания (заболел
+            // прямо во время вставания с земли). Оба перехода без exitTime у Locomotion->Sick — сама
+            // локомоция не нецикличная реакция, прерывать её по условию безопасно.
+            AddTransition(locomotionState, sickState, AnimatorHashes.IsSickName, AnimatorConditionMode.If,
+                0f, hasExitTime: false);
+
+            var standUpToSick = standUpState.AddTransition(sickState);
+            standUpToSick.hasExitTime = true;
+            standUpToSick.exitTime = 0.9f;
+            standUpToSick.duration = 0.15f;
+            standUpToSick.AddCondition(AnimatorConditionMode.If, 0f, AnimatorHashes.IsSickName);
+
+            AddTransition(sickState, locomotionState, AnimatorHashes.IsSickName, AnimatorConditionMode.IfNot,
+                0f, hasExitTime: false);
+
             // Stunned(Dizzy)->Locomotion — мягкое приземление: рука отпустила (IsStunned=false) И это
             // не жёсткий удар (IsLying=false) — сразу на ноги и идти. Если жёсткий удар (IsLying=true),
             // сработает AnyState->StunnedLying выше, конфликт с этим переходом исключён вторым условием.
@@ -393,10 +510,14 @@ namespace BlackWhiteLike.Editor.Setup
                 AnimatorConditionMode.If, 0f, hasExitTime: false);
 
             // StandUp->Locomotion по exit time (клип не зациклен) — успевает доиграть перед возвратом.
+            // Условие IsSick==false (ревью, Д1) обязательно: без него на exitTime=0.9 при IsSick=true
+            // конкурируют два эквивалентных по условиям перехода (этот и StandUp->Sick выше) — какой
+            // из них выиграет, решает порядок в списке переходов Unity, а не наша логика.
             var standUpToLocomotion = standUpState.AddTransition(locomotionState);
             standUpToLocomotion.hasExitTime = true;
             standUpToLocomotion.exitTime = 0.9f;
             standUpToLocomotion.duration = 0.15f;
+            standUpToLocomotion.AddCondition(AnimatorConditionMode.IfNot, 0f, AnimatorHashes.IsSickName);
         }
 
         private static void AddBlendTreeChild(BlendTree blendTree, string clipPath, float threshold, string childLabel)
@@ -683,7 +804,9 @@ namespace BlackWhiteLike.Editor.Setup
             if (villagerController == null)
                 villagerController = root.AddComponent<VillagerController>();
 
-            WireVillagerController(villagerController, animator);
+            var sickVisual = EnsureSickVisual(root);
+
+            WireVillagerController(villagerController, animator, sickVisual);
 
             // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ДО SaveAsPrefabAsset,
             // пока root ещё живой GameObject (contents или tempInstance — работает одинаково).
@@ -706,26 +829,101 @@ namespace BlackWhiteLike.Editor.Setup
         }
 
         /// <summary>
-        /// Прошивает SerializeField-ссылку <c>_animator</c> на VillagerController (единственное поле
-        /// контроллера — Rigidbody/CapsuleCollider он берёт через GetComponent в Construct(), как
-        /// ThrowableObjectController). Имя поля сверено с фактическим классом (шаг 3). Н8 (ревью
-        /// шага 3): промах прошивки обязательной ссылки — LogError, а не LogWarning, иначе фича
-        /// (Animator у жителя) молча простаивает и обнаруживается только на плейтесте.
+        /// Дочерний объект <c>Visual_Sick</c> — VFX болезни (облако мух, Disease на жителе). ThirdParty-
+        /// визуал только через <see cref="EditorPrefabUtility.InstantiateUnpacked"/> (CLAUDE.md, "только
+        /// визуал"). Выключен по умолчанию — включает рантайм. Идемпотентно: существующий объект не
+        /// пересоздаётся, но мигрируется, если внезапно оказался живым ThirdParty prefab-инстансом
+        /// (унпак на месте, как и другие миграции в этом файле/VillageStructurePrefabSetupEditor).
         /// </summary>
-        private static void WireVillagerController(VillagerController controller, Animator animator)
+        private static GameObject EnsureSickVisual(GameObject root)
         {
-            var so = new SerializedObject(controller);
-            var prop = so.FindProperty("_animator");
-            if (prop == null)
+            var existingTransform = root.transform.Find("Visual_Sick");
+            GameObject visual = existingTransform != null ? existingTransform.gameObject : null;
+
+            if (visual == null)
             {
-                Debug.LogError("[Editor] Поле \"_animator\" не найдено на VillagerController — проверьте, что имя " +
-                                "SerializeField не изменилось в классе. Villager.prefab останется без Animator-ссылки.");
-                return;
+                var source = AssetDatabase.LoadAssetAtPath<GameObject>(FliesCloudSourcePath);
+                if (source == null)
+                {
+                    Debug.LogError("[Editor] ThirdParty-префаб не найден: " + FliesCloudSourcePath +
+                                    " — Visual_Sick не создан на Villager.prefab.");
+                    return null;
+                }
+
+                visual = EditorPrefabUtility.InstantiateUnpacked(source, root.transform);
+                visual.name = "Visual_Sick";
+                Debug.Log("[Editor] Villager.prefab: создан \"Visual_Sick\" из " + FliesCloudSourcePath + " (распакован).");
+            }
+            else if (PrefabUtility.IsAnyPrefabInstanceRoot(visual))
+            {
+                var visualSource = PrefabUtility.GetCorrespondingObjectFromSource(visual);
+                var visualSourcePath = visualSource != null ? AssetDatabase.GetAssetPath(visualSource) : null;
+                if (EditorPrefabUtility.IsThirdPartyPath(visualSourcePath))
+                {
+                    PrefabUtility.UnpackPrefabInstance(visual, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                    Debug.Log("[Editor] Villager.prefab: \"Visual_Sick\" был ThirdParty prefab-инстансом (" +
+                              visualSourcePath + ") — распакован (Unpack Completely).");
+                }
             }
 
-            prop.objectReferenceValue = animator;
+            visual.transform.localPosition = SickVisualLocalPosition;
+            visual.transform.localScale = Vector3.one;
+
+            // required: false — CFXR4 Flies Cloud несёт только ParticleSystem, компонента CFXR_Effect
+            // у него нет вообще (проверено на исходнике пака): отсутствие — штатно, не Warning на
+            // каждом прогоне (см. doc метода).
+            EditorThirdPartyComponentUtility.FixCfxrClearBehaviorToNone(visual, "Villager.prefab/Visual_Sick", required: false);
+
+            // playOnAwake оставлен как есть (true у исходника) — looping не трогаем: эффект зациклен
+            // по замыслу (см. ТЗ), включает/выключает объект целиком VillagerController.SetActive.
+            visual.SetActive(false);
+
+            return visual;
+        }
+
+        /// <summary>
+        /// Прошивает SerializeField-ссылки <c>_animator</c>/<c>_sickVisual</c> на VillagerController
+        /// (Rigidbody/CapsuleCollider он берёт через GetComponent в Construct(), как
+        /// ThrowableObjectController). Имена полей сверены с фактическим классом (шаг 3 / перенос
+        /// Disease на жителя). Н8 (ревью шага 3): промах прошивки обязательной ссылки — LogError, а
+        /// не LogWarning, иначе фича молча простаивает и обнаруживается только на плейтесте.
+        /// </summary>
+        private static void WireVillagerController(VillagerController controller, Animator animator, GameObject sickVisual)
+        {
+            const int expected = 2;
+            var so = new SerializedObject(controller);
+            var ownerLabel = "VillagerController";
+
+            int wired = 0;
+            wired += SetVillagerRef(so, "_animator", animator, ownerLabel) ? 1 : 0;
+            wired += SetVillagerRef(so, "_sickVisual", sickVisual, ownerLabel) ? 1 : 0;
             so.ApplyModifiedProperties();
-            Debug.Log("[Editor] VillagerController._animator прошито (1 из 1).");
+
+            if (wired == expected)
+                Debug.Log($"[Editor] {ownerLabel}: прошито {wired} из {expected} (_animator, _sickVisual).");
+            else
+                Debug.LogError($"[Editor] {ownerLabel}: прошито только {wired} из {expected} обязательных полей.");
+        }
+
+        /// <summary>Не присваивает null — оставляет как было (см. .claude/rules/editor-files.md).</summary>
+        private static bool SetVillagerRef(SerializedObject so, string propertyName, Object value, string ownerLabel)
+        {
+            var prop = so.FindProperty(propertyName);
+            if (prop == null)
+            {
+                Debug.LogError($"[Editor] Поле \"{propertyName}\" не найдено на {ownerLabel} — проверьте, что имя " +
+                                "SerializeField не изменилось в классе.");
+                return false;
+            }
+
+            if (value == null)
+            {
+                Debug.LogWarning($"[Editor] Значение для поля \"{propertyName}\" на {ownerLabel} не найдено — оставлено как было.");
+                return false;
+            }
+
+            prop.objectReferenceValue = value;
+            return true;
         }
 
         /// <summary>

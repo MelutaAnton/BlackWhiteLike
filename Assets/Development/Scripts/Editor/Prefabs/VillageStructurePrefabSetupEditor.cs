@@ -67,7 +67,10 @@ namespace BlackWhiteLike.Editor.Prefabs
         public static readonly (string Name, string SourcePrefabPath, Vector3 Scale, NeedType? NeedType)[] Structures =
         {
             ("House_01", HouseFolder + "SM_Bld_Preset_House_01_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Fire),
-            ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), NeedType.Disease),
+            // Disease переехал с House_02 на случайного жителя (NeedHostRules.IsVillagerHosted) —
+            // House_02 больше не хостит нужду, NeedType=null. Существующий House_02.prefab
+            // мигрируется в BuildStructurePrefab (снимается NeedSiteController и его маркеры/триггер).
+            ("House_02", HouseFolder + "SM_Bld_Preset_House_02_A_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), null),
             ("House_03", HouseFolder + "SM_Bld_Preset_House_03_Optimized.prefab", new Vector3(HouseScale, HouseScale, HouseScale), null),
             ("Field_Carrots", FarmPlantsFolder + "SM_Prop_Carrot_01_Group.prefab", Vector3.one, NeedType.Hunger),
             // Шаг 6 — Alignment-визуал (game-design.md §7, §10): храм без NeedSiteController (нужды
@@ -134,6 +137,8 @@ namespace BlackWhiteLike.Editor.Prefabs
 
             if (definition.NeedType.HasValue)
                 BuildNeedSite(root, definition.NeedType.Value);
+            else
+                MigrateOffNeedSite(root, definition.Name);
 
             // Правило "только визуал" проверяется ДО SaveAsPrefabAsset/Unload — root ещё живой
             // GameObject (либо контент, либо сценный tempInstance), проверка работает одинаково в обоих случаях.
@@ -292,6 +297,41 @@ namespace BlackWhiteLike.Editor.Prefabs
             return visual;
         }
 
+        /// <summary>
+        /// Миграция House_02 (Disease переехал на жителя, NeedHostRules.IsVillagerHosted) — снимает
+        /// то, что <see cref="BuildNeedSite"/> добавляет ТОЛЬКО ради триггера нужды: NeedSiteController,
+        /// маркеры Visual_Normal/Visual_Active/Visual_Expired и кинематический триггер-коллайдер +
+        /// Rigidbody (isKinematic=true, useGravity=false — сигнатура, по которой BuildNeedSite их
+        /// узнаёт как "свои", а не Rigidbody/Collider, добавленные для чего-то ещё). Меш/материалы не
+        /// трогает. Идемпотентна: если NeedSiteController уже отсутствует — no-op без логов (второй
+        /// прогон не шумит).
+        /// </summary>
+        private static void MigrateOffNeedSite(GameObject go, string structureName)
+        {
+            var controller = go.GetComponent<NeedSiteController>();
+            if (controller == null) return; // уже мигрирован (или никогда не был NeedSite) — no-op.
+
+            Object.DestroyImmediate(controller, true);
+
+            foreach (var markerName in new[] { "Visual_Normal", "Visual_Active", "Visual_Expired" })
+            {
+                var markerTransform = go.transform.Find(markerName);
+                if (markerTransform != null)
+                    Object.DestroyImmediate(markerTransform.gameObject, true);
+            }
+
+            var box = go.GetComponent<BoxCollider>();
+            if (box != null && box.isTrigger)
+                Object.DestroyImmediate(box, true);
+
+            var rigidbody = go.GetComponent<Rigidbody>();
+            if (rigidbody != null && rigidbody.isKinematic && !rigidbody.useGravity)
+                Object.DestroyImmediate(rigidbody, true);
+
+            Debug.Log("[Editor] " + structureName + ".prefab мигрирован: Disease переехал на жителя — " +
+                      "NeedSiteController, маркеры Visual_*, триггер-коллайдер и служебный Rigidbody сняты.");
+        }
+
         /// <summary>Легаси-маркер шага 3 — примитив-сфера без ParticleSystem в детях.</summary>
         private static bool IsLegacySphereActiveMarker(GameObject visual) =>
             visual.GetComponentInChildren<ParticleSystem>(true) == null;
@@ -299,40 +339,11 @@ namespace BlackWhiteLike.Editor.Prefabs
         /// <summary>
         /// ThirdParty CFXR_Effect.clearBehavior = 0 (None) — страховка для зацикленного огня нужды:
         /// он не должен сам себя выключать/уничтожать (объектом управляет только
-        /// NeedSiteController.SetVisualState через SetActive). Образец — MiracleVfxPrefabSetupEditor.
+        /// NeedSiteController.SetVisualState через SetActive). required: true — Visual_Active здесь
+        /// всегда настоящий CFXR-огонь (см. EnsureFireActiveVisual), компонент есть по построению.
         /// </summary>
-        private static void FixCfxrClearBehavior(GameObject visual)
-        {
-            var cfxrEffect = FindComponentByTypeName(visual, "CFXR_Effect");
-            if (cfxrEffect == null)
-            {
-                Debug.LogWarning("[Editor] \"" + visual.name + "\": компонент CFXR_Effect не найден — clearBehavior не проверен.");
-                return;
-            }
-
-            var so = new SerializedObject(cfxrEffect);
-            var clearProp = so.FindProperty("clearBehavior");
-            if (clearProp == null)
-            {
-                Debug.LogError("[Editor] \"" + visual.name + "\": поле \"clearBehavior\" не найдено на CFXR_Effect — версия ThirdParty-пака изменилась?");
-                return;
-            }
-
-            if (clearProp.enumValueIndex != 0)
-            {
-                int oldValue = clearProp.enumValueIndex;
-                clearProp.enumValueIndex = 0; // None
-                so.ApplyModifiedProperties();
-                Debug.Log($"[Editor] \"{visual.name}\": CFXR_Effect.clearBehavior {oldValue} → 0 (None).");
-            }
-
-            var verifySo = new SerializedObject(cfxrEffect);
-            int verified = verifySo.FindProperty("clearBehavior").enumValueIndex;
-            if (verified == 0)
-                Debug.Log("[Editor] Проверено: \"" + visual.name + "\" CFXR_Effect.clearBehavior == 0 (None).");
-            else
-                Debug.LogError("[Editor] \"" + visual.name + "\" CFXR_Effect.clearBehavior НЕ равен 0 после прошивки (" + verified + ").");
-        }
+        private static void FixCfxrClearBehavior(GameObject visual) =>
+            EditorThirdPartyComponentUtility.FixCfxrClearBehaviorToNone(visual, "\"" + visual.name + "\"");
 
         /// <summary>
         /// Все ParticleSystem под VFX-огнём обязаны быть loop=true, playOnAwake=true — объект
@@ -376,22 +387,6 @@ namespace BlackWhiteLike.Editor.Prefabs
                 Debug.Log($"[Editor] Проверено: все ParticleSystem под \"{visual.name}\" ({systems.Length} шт.) — loop=true, playOnAwake=true.");
             else
                 Debug.LogError($"[Editor] \"{visual.name}\": не все ParticleSystem получили loop/playOnAwake=true.");
-        }
-
-        /// <summary>
-        /// ThirdParty-компонент из asmdef без ссылки в нашей Editor-сборке — ищем по имени типа
-        /// среди всех Component (typeof() недоступен, см. MiracleVfxPrefabSetupEditor).
-        /// </summary>
-        private static Component FindComponentByTypeName(GameObject go, string typeName)
-        {
-            var all = go.GetComponentsInChildren<Component>(true);
-            foreach (var component in all)
-            {
-                if (component != null && component.GetType().Name == typeName)
-                    return component;
-            }
-
-            return null;
         }
 
         /// <summary>

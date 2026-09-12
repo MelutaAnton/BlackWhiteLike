@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using BlackWhiteLike.Controllers.Camera;
 using BlackWhiteLike.Controllers.Hand;
 using BlackWhiteLike.Controllers.Miracles;
@@ -22,6 +23,7 @@ using BlackWhiteLike.Editor.Prefabs;
 using BlackWhiteLike.Editor.UI;
 using BlackWhiteLike.Installers;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Village;
 using BlackWhiteLike.Views.UI.Common;
 using BlackWhiteLike.Views.UI.Hud;
 using BlackWhiteLike.Views.UI.Overlay;
@@ -89,10 +91,11 @@ namespace BlackWhiteLike.Editor.Setup
         /// единственный источник таблицы <see cref="VillageStructurePrefabSetupEditor.Structures"/>
         /// (правка после playtest'а шага 4, CLAUDE.md "Из ThirdParty ... только визуал"): эта сцена
         /// больше не инстанцирует ThirdParty-префабы напрямую, только позиционирует НАШИ префабы
-        /// структур (Assets/Development/Prefabs/Village/&lt;Name&gt;.prefab). siteIndex назначается
-        /// последовательно по порядку записей с ненулевым NeedType (см. EnsureStructures) —
-        /// House_01=0/Fire, House_02=1/Disease, Field_Carrots=2/Hunger, House_03 без сайта
-        /// (ревью шага 3, Б2).
+        /// структур (Assets/Development/Prefabs/Village/&lt;Name&gt;.prefab). siteIndex НЕ назначается
+        /// последовательным счётчиком (сломалось бы после переезда Disease с House_02 на жителя —
+        /// House_02 больше не хостит нужду, но индекс 1 обязан остаться зарезервированным за ней) —
+        /// явный индекс на структуру теперь в <see cref="StructureSiteIndices"/>. House_03/Temple —
+        /// без сайта (ревью шага 3, Б2).
         /// </summary>
         private static readonly (string Name, Vector3 Position)[] StructurePositions =
         {
@@ -102,6 +105,23 @@ namespace BlackWhiteLike.Editor.Setup
             ("Field_Carrots", new Vector3(0f, 0f, 6f)),
             // Шаг 6 — позиция свободна от домов/поля (владелец: (8, 0, 4)).
             ("Temple", new Vector3(8f, 0f, 4f)),
+        };
+
+        /// <summary>
+        /// Единственный источник явного siteIndex на структуру (Disease переехал с House_02 на
+        /// случайного жителя — NeedHostRules.IsVillagerHosted, game-design §5). Индекс 1 НАМЕРЕННО
+        /// отсутствует здесь — он зарезервирован за Disease-на-жителе (виртуальный сайт, не
+        /// сценовый NeedSiteController): DefaultEventTimeline и все LevelConfig-таймлайны
+        /// (ConfigAssetCreatorEditor) по-прежнему адресуют Disease через targetSiteIndex=1, но
+        /// событие обслуживает VillagerDiseaseService, а не NeedSiteController в сцене.
+        /// LevelConfigValidationEditor читает эту же таблицу — единственный источник для обоих
+        /// скриптов.
+        /// </summary>
+        public static readonly (string Name, int SiteIndex)[] StructureSiteIndices =
+        {
+            ("House_01", 0),
+            // 1 = Disease на жителе (виртуальный сайт) — намеренно пропущен.
+            ("Field_Carrots", 2),
         };
 
         // Позиции спавна жителей (были статичной расстановкой до ревью шага 3) — теперь заполняют
@@ -229,7 +249,7 @@ namespace BlackWhiteLike.Editor.Setup
             // Данные для VillagerSpawnService (рантайм) — не сценные объекты (ревью шага 3: жителей
             // эта сцена больше не расставляет статически).
             PopulateVillageLayout(levelConfig, villageLayoutConfig);
-            PopulateEventTimeline(levelConfig, needSiteObjects.Count);
+            PopulateEventTimeline(levelConfig);
             MigrateLevelConfig01TriggerModes(levelConfig);
 
             // Рука и камера — переиспользуем код TestHandSceneSetupEditor (не дублируем).
@@ -299,6 +319,19 @@ namespace BlackWhiteLike.Editor.Setup
             var autoInjectObjects = new List<GameObject>(needSiteObjects);
             TestHandSceneSetupEditor.EnsureAutoInjectGameObjects(systemsScope, autoInjectObjects);
             RemoveFromAutoInject(systemsScope, miraclesGo);
+
+            // Миграция: House_02 раньше хостил Disease (NeedSiteController) и мог остаться в списке
+            // из старого прогона на немигрированной сцене — сам GameObject жив (не missing,
+            // RemoveMissingAutoInjectEntries его не тронет), но компонент с ним больше не создаётся
+            // (VillageStructurePrefabSetupEditor.Structures — NeedType=null). Снимаем явно.
+            foreach (var definition in VillageStructurePrefabSetupEditor.Structures)
+            {
+                if (definition.NeedType.HasValue) continue;
+
+                var structureGo = TestHandSceneSetupEditor.FindInSceneIncludingInactive(definition.Name);
+                if (structureGo != null && structureGo.GetComponent<NeedSiteController>() == null)
+                    RemoveFromAutoInject(systemsScope, structureGo);
+            }
 
             // Правило CLAUDE.md "Из ThirdParty ... только визуал" — проверяем ВСЮ собранную сцену
             // перед сохранением (обходит корневые объекты активной сцены, включая только что
@@ -670,7 +703,6 @@ namespace BlackWhiteLike.Editor.Setup
             }
 
             var needSiteObjects = new List<GameObject>();
-            int nextSiteIndex = 0;
             int migratedCount = 0;
 
             foreach (var (name, position) in StructurePositions)
@@ -725,9 +757,17 @@ namespace BlackWhiteLike.Editor.Setup
 
                 if (definition.NeedType.HasValue)
                 {
-                    EnsureNeedSiteOnInstance(go, nextSiteIndex, definition.NeedType.Value, grabbableLayer);
-                    needSiteObjects.Add(go);
-                    nextSiteIndex++;
+                    int siteIndex = FindSiteIndex(name);
+                    if (siteIndex < 0)
+                    {
+                        Debug.LogError("[Editor] \"" + name + "\" не найден в StructureSiteIndices, хотя NeedType задан " +
+                                        "в Structures — таблицы рассинхронизированы, NeedSiteController не прошит siteIndex'ом.");
+                    }
+                    else
+                    {
+                        EnsureNeedSiteOnInstance(go, siteIndex, definition.NeedType.Value, grabbableLayer);
+                        needSiteObjects.Add(go);
+                    }
                 }
             }
 
@@ -735,7 +775,8 @@ namespace BlackWhiteLike.Editor.Setup
                 Debug.Log($"[Editor] Структуры деревни: мигрировано {migratedCount} объект(ов) с ThirdParty-инстансов на наши префабы.");
 
             Debug.Log($"[Editor] Структуры деревни: {StructurePositions.Length} всего, NeedSiteController на " +
-                      $"{needSiteObjects.Count} (индексы 0..{needSiteObjects.Count - 1}).");
+                      $"{needSiteObjects.Count} (siteIndex: {string.Join(", ", StructureSiteIndices.Select(s => s.SiteIndex))} — " +
+                      "1 зарезервирован за Disease на жителе).");
             return needSiteObjects;
         }
 
@@ -749,6 +790,17 @@ namespace BlackWhiteLike.Editor.Setup
             Debug.LogError("[Editor] \"" + name + "\" не найден в VillageStructurePrefabSetupEditor.Structures — " +
                             "таблицы позиций и структур рассинхронизированы.");
             return (name, null, Vector3.one, null);
+        }
+
+        /// <summary>Явный siteIndex структуры из <see cref="StructureSiteIndices"/>, -1 — если не найден.</summary>
+        private static int FindSiteIndex(string name)
+        {
+            foreach (var (structureName, siteIndex) in StructureSiteIndices)
+            {
+                if (structureName == name) return siteIndex;
+            }
+
+            return -1;
         }
 
         /// <summary>
@@ -888,13 +940,20 @@ namespace BlackWhiteLike.Editor.Setup
         /// <summary>
         /// Заполняет LevelConfig.EventTimeline тремя тестовыми записями (Б2-доп, ревью шага 3) —
         /// только если таймлайн ещё пустой (данные владельца — крутит их сам, повторный прогон не
-        /// должен затирать). targetSiteIndex сверяется с фактическим числом собранных NeedSite —
-        /// запись за пределами диапазона всё равно пишется (это тестовые данные черновой сцены), но
-        /// логируется предупреждением, чтобы расхождение было видно сразу, а не на плейтесте.
+        /// должен затирать). targetSiteIndex сверяется с фактическим набором индексов сценовых
+        /// NeedSite (<see cref="StructureSiteIndices"/>, не просто их количеством — индексы больше не
+        /// идут подряд с переездом Disease на жителя, индекс 1 намеренно пропущен). Для записей,
+        /// которые NeedHostRules.IsVillagerHosted считает "на жителе" (сейчас — Disease), диапазон
+        /// сценовых NeedSite не проверяется вовсе — это виртуальный сайт, обслуживает
+        /// VillagerDiseaseService, а не NeedSiteController.
         /// </summary>
-        private static void PopulateEventTimeline(LevelConfig levelConfig, int siteCount)
+        private static void PopulateEventTimeline(LevelConfig levelConfig)
         {
             if (levelConfig == null) return;
+
+            var validSiteIndices = new HashSet<int>();
+            foreach (var (_, siteIndex) in StructureSiteIndices)
+                validSiteIndices.Add(siteIndex);
 
             var so = new SerializedObject(levelConfig);
             var timelineProp = so.FindProperty("_eventTimeline");
@@ -914,10 +973,10 @@ namespace BlackWhiteLike.Editor.Setup
             for (int i = 0; i < DefaultEventTimeline.Length; i++)
             {
                 var (type, triggerTime, siteIndex, duration) = DefaultEventTimeline[i];
-                if (siteIndex >= siteCount)
+                if (!NeedHostRules.IsVillagerHosted(type) && !validSiteIndices.Contains(siteIndex))
                 {
-                    Debug.LogWarning($"[Editor] LevelConfig.EventTimeline[{i}]: targetSiteIndex={siteIndex} выходит за число " +
-                                      $"собранных NeedSite ({siteCount}) — запись записана, но сейчас событию некого обслуживать.");
+                    Debug.LogWarning($"[Editor] LevelConfig.EventTimeline[{i}]: targetSiteIndex={siteIndex} не совпадает ни с " +
+                                      "одним сценовым NeedSite (StructureSiteIndices) — запись записана, но сейчас событию некого обслуживать.");
                 }
 
                 var element = timelineProp.GetArrayElementAtIndex(i);

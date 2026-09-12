@@ -46,6 +46,8 @@ namespace BlackWhiteLike.Tests
             }
 
             public int CountInState(VillagerState state) => state == VillagerState.Worship ? WorshipCount : 0;
+
+            public void CollectRegistered(System.Collections.Generic.List<VillagerId> buffer) => buffer.Clear();
         }
 
         private static FaithConfig CreateConfig(

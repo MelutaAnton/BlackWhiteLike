@@ -46,5 +46,11 @@ namespace BlackWhiteLike.Models
         // отдельно от IsStunned (Dizzy стоя в руке/в полёте) - владелец развёл две склеенные позы.
         public const string IsLyingName = "IsLying";
         public static readonly int IsLying = UnityEngine.Animator.StringToHash(IsLyingName);
+
+        // IsSick (Disease переезжает с NeedSite на жителя) — bool "показывать позу agony".
+        // Выставляется VillagerController по предикату VillagerPoseRules.ShowsSickPose (true только
+        // для больного в Idle — Panic/Worship/Tossed/Stunned перекрывают позу болезни).
+        public const string IsSickName = "IsSick";
+        public static readonly int IsSick = UnityEngine.Animator.StringToHash(IsSickName);
     }
 }

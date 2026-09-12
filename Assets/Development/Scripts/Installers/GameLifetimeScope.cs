@@ -386,6 +386,14 @@ namespace BlackWhiteLike.Installers
             // scope (тот же механизм, что PoolManager/WorshipService выше).
             builder.Register<LevelEventService>(Lifetime.Singleton).As<ILevelEventService, ITickable, IDisposable>();
 
+            // Шаг переноса Disease: Disease больше не живёт на NeedSite (см. NeedHostRules) — сервис
+            // сам выбирает случайного больного среди зарегистрированных жителей и подписан на шину
+            // (Triggered/Resolved/Expired/VillagerStateChanged), IDisposable — тот же приём, что
+            // LevelEventService выше. System.Random через DI не резолвится — у сервиса [Inject]-конструктор
+            // без него (сам создаёт Random), seeded-перегрузка — только для тестов (блокер ревью: VContainer
+            // берёт самый длинный конструктор и C#-дефолты параметров не понимает).
+            builder.Register<VillagerDiseaseService>(Lifetime.Singleton).As<IVillagerDiseaseService, IDisposable>();
+
             // Шаг 10 (Polish): реестр мировых позиций NeedSite — нужен NeedSiteController
             // безусловно в этой сцене (сам Construct вызывает Register), поэтому регистрируется
             // здесь же, а не под отдельным гейтом туториала (RegisterTutorial).

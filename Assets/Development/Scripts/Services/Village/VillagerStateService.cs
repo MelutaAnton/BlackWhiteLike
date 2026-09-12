@@ -120,6 +120,15 @@ namespace BlackWhiteLike.Services.Village
             return count;
         }
 
+        public void CollectRegistered(List<VillagerId> buffer)
+        {
+            buffer.Clear();
+            foreach (var kvp in _records)
+            {
+                buffer.Add(kvp.Key);
+            }
+        }
+
         public bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus)
         {
             switch (type)

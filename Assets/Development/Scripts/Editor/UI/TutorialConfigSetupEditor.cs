@@ -72,14 +72,17 @@ namespace BlackWhiteLike.Editor.UI
                 TextEn = "Cast Rain over the burning house",
                 Pointer = TutorialPointerTarget.ActiveNeedSite,
             },
-            // 4. Дом заболел! Вылечи его чудом Исцеление.
+            // 4. Житель заболел! Вылечи его чудом Исцеление.
+            // Disease переехал с House_02 на случайного жителя (NeedHostRules.IsVillagerHosted) —
+            // Pointer=ActiveNeedSite по-прежнему работает: рантайм регистрирует transform больного
+            // в INeedSiteRegistry под siteIndex 1 (виртуальный сайт).
             new StepDef
             {
                 Activation = new TriggerDef { Type = TutorialTriggerType.NeedTriggered, NeedType = NeedType.Disease },
                 Completion = new TriggerDef { Type = TutorialTriggerType.NeedResolvedByPlayer, NeedType = NeedType.Disease },
                 TargetCount = 1,
-                TextRu = "Дом заболел! Вылечи его чудом Исцеление",
-                TextEn = "A house fell ill! Cure it with the Heal miracle",
+                TextRu = "Житель заболел! Вылечи его чудом Исцеление",
+                TextEn = "A villager fell ill! Cure them with the Heal miracle",
                 Pointer = TutorialPointerTarget.ActiveNeedSite,
                 HighlightMiracleButton = true,
                 HighlightedMiracle = MiracleType.Heal,

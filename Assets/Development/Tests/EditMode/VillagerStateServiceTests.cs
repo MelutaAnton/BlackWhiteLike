@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
@@ -549,6 +550,51 @@ namespace BlackWhiteLike.Tests
 
             service.Tick(0.6f); // перекрывает продлённый таймер
             Assert.AreEqual(VillagerState.Idle, service.GetState(id));
+        }
+
+        // --- Шаг переноса Disease: CollectRegistered (VillagerDiseaseService выбирает кандидата) ---
+
+        [Test]
+        public void CollectRegistered_ReturnsAllRegisteredIds()
+        {
+            var service = CreateService(out _);
+            var idA = VillagerId.FromInstanceId(1);
+            var idB = VillagerId.FromInstanceId(2);
+            service.Register(idA);
+            service.Register(idB);
+
+            var buffer = new List<VillagerId>();
+            service.CollectRegistered(buffer);
+
+            Assert.AreEqual(2, buffer.Count);
+            Assert.IsTrue(buffer.Contains(idA));
+            Assert.IsTrue(buffer.Contains(idB));
+        }
+
+        [Test]
+        public void CollectRegistered_ClearsBufferBeforeFilling()
+        {
+            var service = CreateService(out _);
+            var id = VillagerId.FromInstanceId(1);
+            service.Register(id);
+
+            var buffer = new List<VillagerId> { VillagerId.FromInstanceId(999) }; // мусор от предыдущего использования
+
+            service.CollectRegistered(buffer);
+
+            Assert.AreEqual(1, buffer.Count);
+            Assert.AreEqual(id, buffer[0]);
+        }
+
+        [Test]
+        public void CollectRegistered_NoRegisteredVillagers_ClearsBufferAndReturnsEmpty()
+        {
+            var service = CreateService(out _);
+            var buffer = new List<VillagerId> { VillagerId.FromInstanceId(1) };
+
+            service.CollectRegistered(buffer);
+
+            Assert.IsEmpty(buffer);
         }
     }
 }

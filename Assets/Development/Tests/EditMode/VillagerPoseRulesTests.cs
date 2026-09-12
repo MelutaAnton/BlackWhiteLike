@@ -55,5 +55,33 @@ namespace BlackWhiteLike.Tests
         {
             Assert.IsFalse(VillagerPoseRules.ForcesZeroMoveSpeed(state));
         }
+
+        // --- Шаг переноса Disease: ShowsSickPose — agony-поза только у больного в Idle ---
+
+        [Test]
+        public void ShowsSickPose_SickAndIdle_ReturnsTrue()
+        {
+            Assert.IsTrue(VillagerPoseRules.ShowsSickPose(true, VillagerState.Idle));
+        }
+
+        [TestCase(VillagerState.Panic)]
+        [TestCase(VillagerState.Worship)]
+        [TestCase(VillagerState.Tossed)]
+        [TestCase(VillagerState.Stunned)]
+        public void ShowsSickPose_SickButNotIdle_ReturnsFalse(VillagerState state)
+        {
+            // Panic/Worship/Tossed/Stunned перекрывают позу болезни (предикат над группами состояний).
+            Assert.IsFalse(VillagerPoseRules.ShowsSickPose(true, state));
+        }
+
+        [TestCase(VillagerState.Idle)]
+        [TestCase(VillagerState.Panic)]
+        [TestCase(VillagerState.Worship)]
+        [TestCase(VillagerState.Tossed)]
+        [TestCase(VillagerState.Stunned)]
+        public void ShowsSickPose_NotSick_AlwaysReturnsFalse(VillagerState state)
+        {
+            Assert.IsFalse(VillagerPoseRules.ShowsSickPose(false, state));
+        }
     }
 }

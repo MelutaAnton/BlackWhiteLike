@@ -2,7 +2,6 @@ using System;
 using BlackWhiteLike.Core.Events;
 using BlackWhiteLike.Data.Configs.Miracles;
 using BlackWhiteLike.Data.Configs.Villagers;
-using BlackWhiteLike.Factories.Village;
 using BlackWhiteLike.Models;
 using BlackWhiteLike.Services.Village;
 using UnityEngine;
@@ -11,16 +10,17 @@ using VContainer;
 namespace BlackWhiteLike.Controllers.Village
 {
     /// <summary>
-    /// Точка события-нужды деревни (game-design §5) — дом/поле/группа жителей. Unity API only:
-    /// переключает визуальные маркеры по своему <see cref="_siteIndex"/>/<see cref="_needType"/> и
-    /// репортит стимулы соседним жителям (Д3, ревью плейтеста шага 3 — недостающее звено §5:
-    /// "рядом пожар/взрыв → Panic; нужда разрешена рядом → Worship"), подписываясь на
+    /// Точка события-нужды деревни (game-design §5) — дом/поле. Unity API only: переключает
+    /// визуальные маркеры по своему <see cref="_siteIndex"/>/<see cref="_needType"/> и репортит
+    /// стимулы соседним жителям (Д3, ревью плейтеста шага 3 — недостающее звено §5: "рядом пожар/
+    /// взрыв → Panic; нужда разрешена рядом → Worship"), подписываясь на
     /// <c>NeedTriggeredEvent</c>/<c>NeedResolvedEvent</c>/<c>NeedExpiredEvent</c> от
     /// <c>LevelEventService</c>. Шаг 4: разрешение/создание нужды попаданием чуда — подписка на
     /// <c>MiracleCastEvent</c>, маппинг "чудо → нужда" читается из <c>MiracleConfig</c> (данные, не
-    /// код, game-design §14.2) — сама точка не хранит правило, только применяет его к себе. Шаг 6:
-    /// истечение Disease без разрешения выбивает жителей рядом до конца уровня (через
-    /// <see cref="IVillagerFactory.Despawn"/>) — решение владельца 2026-09-01.
+    /// код, game-design §14.2) — сама точка не хранит правило, только применяет его к себе.
+    /// Шаг переноса Disease: Disease больше не обслуживается этой точкой вовсе — она живёт на
+    /// случайном жителе (<c>VillagerDiseaseService</c>, <c>NeedHostRules.IsVillagerHosted</c>), эта
+    /// точка получает Triggered/Resolved/Expired только для Fire/Hunger (см. <c>_needType</c>).
     /// </summary>
     public sealed class NeedSiteController : MonoBehaviour
     {
@@ -34,7 +34,7 @@ namespace BlackWhiteLike.Controllers.Village
         [Tooltip("Индекс точки события — сопоставляется с NeedEventEntry.targetSiteIndex в LevelConfig.")]
         [SerializeField] private int _siteIndex;
 
-        [Tooltip("Тип нужды, обслуживаемый этой точкой (дом=Fire, поле=Hunger, группа жителей=Disease).")]
+        [Tooltip("Тип нужды, обслуживаемый этой точкой (дом=Fire, поле=Hunger; Disease живёт на жителе — см. VillagerDiseaseService/NeedHostRules).")]
         [SerializeField] private NeedType _needType;
 
         [Header("Визуал по стейту (маркеры-GameObject'ы, пустые ссылки игнорируются)")]
@@ -50,7 +50,6 @@ namespace BlackWhiteLike.Controllers.Village
         private VillagerConfig _villagerConfig;
         private ILevelEventService _levelEventService;
         private MiracleCatalogConfig _miracleCatalog;
-        private IVillagerFactory _villagerFactory;
         private INeedSiteRegistry _needSiteRegistry;
         private bool _initialized;
 
@@ -73,7 +72,6 @@ namespace BlackWhiteLike.Controllers.Village
             VillagerConfig villagerConfig,
             ILevelEventService levelEventService,
             MiracleCatalogConfig miracleCatalog,
-            IVillagerFactory villagerFactory,
             INeedSiteRegistry needSiteRegistry)
         {
             _eventBus = eventBus;
@@ -81,7 +79,6 @@ namespace BlackWhiteLike.Controllers.Village
             _villagerConfig = villagerConfig;
             _levelEventService = levelEventService;
             _miracleCatalog = miracleCatalog;
-            _villagerFactory = villagerFactory;
             _needSiteRegistry = needSiteRegistry;
 
             // Шаг 10 (Polish): реестр мировых позиций NeedSite. Регистрация здесь покрывает самый
@@ -209,33 +206,6 @@ namespace BlackWhiteLike.Controllers.Village
             if (!MatchesThisSite(evt.SiteIndex, evt.Type, nameof(NeedExpiredEvent))) return;
             _isNeedActive = false;
             SetVisualState(VisualState.Expired);
-
-            // Таблица §5 (решение владельца 2026-09-01, шаг 6): непогашенная Disease выбивает
-            // жителей рядом до конца уровня — ветка по NeedType, а не маппинг чуда (Heal лишь
-            // разрешает Disease через ResolvesNeeds, к этому правилу отношения не имеет).
-            if (_needType == NeedType.Disease)
-            {
-                DespawnVillagersNearby();
-            }
-        }
-
-        /// <summary>
-        /// Шаг 6: истекшая Disease — жители в PanicRadius выбывают до конца уровня (game-design §5,
-        /// решение владельца 2026-09-01). Летящих/схваченных (Tossed) не трогаем — тот же аргумент,
-        /// что LightningStruck из Tossed: житель уже занят физическим событием.
-        /// </summary>
-        private void DespawnVillagersNearby()
-        {
-            var colliders = Physics.OverlapSphere(transform.position, _villagerConfig.PanicRadius, _villagerMask);
-            foreach (var col in colliders)
-            {
-                var villager = col.GetComponentInParent<VillagerController>();
-                if (villager == null) continue;
-
-                if (_stateService.GetState(villager.VillagerId) == VillagerState.Tossed) continue;
-
-                _villagerFactory.Despawn(villager);
-            }
         }
 
         /// <summary>

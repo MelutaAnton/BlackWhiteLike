@@ -332,8 +332,9 @@ namespace BlackWhiteLike.Editor.Configs
 
         // Таймлайны прогрессии (game-design.md, шаг 7, ТЗ владельца): плотнее и с более короткими
         // интервалами с ростом уровня (~25с → ~15с), duration=15с как у LevelConfig_01. targetSiteIndex
-        // — по фактической раскладке сцены (VillageStructurePrefabSetupEditor.Structures): House_01=0/Fire,
-        // House_02=1/Disease, Field_Carrots=2/Hunger (см. TestVillageSceneSetupEditor.DefaultEventTimeline).
+        // — по единственному источнику TestVillageSceneSetupEditor.StructureSiteIndices: House_01=0/Fire,
+        // 1 = Disease на жителе (виртуальный сайт, House_02 нужду больше не хостит — NeedHostRules.
+        // IsVillagerHosted), Field_Carrots=2/Hunger (см. TestVillageSceneSetupEditor.DefaultEventTimeline).
         private static readonly (NeedType Type, float TriggerTime, int SiteIndex, float Duration)[] Level02Timeline =
         {
             (NeedType.Fire, 5f, 0, 15f),

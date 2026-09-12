@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using BlackWhiteLike.Models;
 using UnityEngine;
 
@@ -50,5 +51,13 @@ namespace BlackWhiteLike.Services.Village
         /// паники; Disease/Hunger по §5 источником паники не являются → false.
         /// </summary>
         bool TryGetPanicStimulus(NeedType type, out VillagerStimulus stimulus);
+
+        /// <summary>
+        /// Шаг переноса Disease на жителя: наполняет <paramref name="buffer"/> всеми зарегистрированными
+        /// id (сначала очищает его) — <c>VillagerDiseaseService</c> выбирает из них случайного
+        /// кандидата на заражение. Без аллокаций, кроме роста самого буфера (переиспользуется
+        /// вызывающим между вызовами).
+        /// </summary>
+        void CollectRegistered(List<VillagerId> buffer);
     }
 }

@@ -427,11 +427,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ca30f6f6e5cb13245ac69676be4441be, type: 3}
---- !u!1 &530327671 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 2879688593754028546, guid: ca30f6f6e5cb13245ac69676be4441be, type: 3}
-  m_PrefabInstance: {fileID: 530327670}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &655256733
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1107,7 +1102,7 @@ PrefabInstance:
       objectReference: {fileID: 1099187326}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: autoInjectGameObjects.Array.size
-      value: 3
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: _localizedTextRegistries.Array.size
@@ -1120,7 +1115,7 @@ PrefabInstance:
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: 'autoInjectGameObjects.Array.data[1]'
       value: 
-      objectReference: {fileID: 530327671}
+      objectReference: {fileID: 1747055393}
     - target: {fileID: 2659080329104224829, guid: 2401e8dc8e3e9a244b34a45af33afec4, type: 3}
       propertyPath: 'autoInjectGameObjects.Array.data[2]'
       value: 

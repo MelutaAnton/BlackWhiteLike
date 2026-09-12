@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using System.Linq;
 using BlackWhiteLike.Data.Configs.Levels;
-using BlackWhiteLike.Editor.Prefabs;
+using BlackWhiteLike.Editor.Setup;
 using BlackWhiteLike.Models;
+using BlackWhiteLike.Services.Village;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -13,11 +13,15 @@ namespace BlackWhiteLike.Editor.Validation
     /// Шаг 7 — Кампания из 5 уровней (game-design.md, шаг 7). Только чтение (никаких правок ассетов/
     /// сцены, без модальных диалогов — безопасно вызывать автоматизацией, тот же принцип, что
     /// <see cref="ThirdPartyPrefabInstanceValidator"/>): по каждому LevelConfig каталога проверяет
-    /// target/coinsReward &gt; 0, прошитость <c>_layout</c> и targetSiteIndex в пределах числа фактических
-    /// NeedSite-сайтов деревни (единственный источник — <see cref="VillageStructurePrefabSetupEditor.Structures"/>,
-    /// та же таблица, из которой строится Village_Base.unity — не нужно открывать сцену). Каталог —
-    /// без null-записей и без дублей LevelId. Читает через SerializedObject (не публичные свойства)
-    /// — устойчиво к тому, что рантайм-класс может не выставлять наружу все поля.
+    /// target/coinsReward &gt; 0, прошитость <c>_layout</c> и targetSiteIndex — единственный источник
+    /// набора валидных сценовых индексов теперь <see cref="TestVillageSceneSetupEditor.StructureSiteIndices"/>
+    /// (та же таблица, из которой строится Village_Base.unity — не нужно открывать сцену). Disease
+    /// переехал с NeedSite на жителя (<see cref="NeedHostRules.IsVillagerHosted"/>) — для таких записей
+    /// диапазон сценовых NeedSite не проверяется вовсе (виртуальный сайт), достаточно targetSiteIndex
+    /// &gt;= 0 и что он НЕ совпадает с индексом настоящего сценового NeedSite (иначе NeedSiteController
+    /// получил бы чужое событие). Каталог — без null-записей и без дублей LevelId. Читает через
+    /// SerializedObject (не публичные свойства) — устойчиво к тому, что рантайм-класс может не
+    /// выставлять наружу все поля.
     /// <c>NeedTriggerMode</c> (добавлен параллельно этому скрипту, code-writer): <c>duration &lt;= 0</c>
     /// легален для событийных режимов (AfterVillagerTossed/AfterPreviousResolved — бесконечная нужда,
     /// истекает только по ручному разрешению игроком), но остаётся ошибкой для <c>AtTime</c> —
@@ -44,7 +48,9 @@ namespace BlackWhiteLike.Editor.Validation
                 return;
             }
 
-            int siteCount = VillageStructurePrefabSetupEditor.Structures.Count(d => d.NeedType.HasValue);
+            var validSiteIndices = new HashSet<int>();
+            foreach (var (_, siteIndex) in TestVillageSceneSetupEditor.StructureSiteIndices)
+                validSiteIndices.Add(siteIndex);
 
             var catalogSo = new SerializedObject(catalog);
             var entriesProp = catalogSo.FindProperty("_entries");
@@ -78,7 +84,7 @@ namespace BlackWhiteLike.Editor.Validation
                     errorCount++;
                 }
 
-                errorCount += ValidateLevelConfig(level, siteCount, seenIds);
+                errorCount += ValidateLevelConfig(level, validSiteIndices, seenIds);
                 levelsChecked++;
             }
 
@@ -91,7 +97,7 @@ namespace BlackWhiteLike.Editor.Validation
             if (errorCount == 0)
             {
                 Debug.Log($"[Editor] Validate Level Configs: нарушений нет — {levelsChecked} LevelConfig " +
-                          $"проверено (siteCount={siteCount}).");
+                          $"проверено (сценовых NeedSite-индексов: {validSiteIndices.Count}).");
             }
             else
             {
@@ -101,7 +107,7 @@ namespace BlackWhiteLike.Editor.Validation
         }
 
         /// <summary>Возвращает число найденных нарушений на одном LevelConfig (0 — конфиг валиден).</summary>
-        private static int ValidateLevelConfig(LevelConfig level, int siteCount, HashSet<LevelId> seenIds)
+        private static int ValidateLevelConfig(LevelConfig level, HashSet<int> validSiteIndices, HashSet<LevelId> seenIds)
         {
             int errors = 0;
             var so = new SerializedObject(level);
@@ -162,6 +168,7 @@ namespace BlackWhiteLike.Editor.Validation
             {
                 var element = timelineProp.GetArrayElementAtIndex(i);
                 float triggerTime = element.FindPropertyRelative("triggerTime").floatValue;
+                var needType = (NeedType)element.FindPropertyRelative("type").intValue;
 
                 var triggerModeProp = element.FindPropertyRelative("_triggerMode");
                 if (triggerModeProp == null)
@@ -209,10 +216,27 @@ namespace BlackWhiteLike.Editor.Validation
                     if (afterVillagerTossedFirstIndex < 0) afterVillagerTossedFirstIndex = i;
                 }
 
-                if (targetSiteIndex < 0 || targetSiteIndex >= siteCount)
+                if (NeedHostRules.IsVillagerHosted(needType))
                 {
-                    Debug.LogError($"[Editor] {label}: EventTimeline[{i}] targetSiteIndex={targetSiteIndex} вне диапазона " +
-                                    $"[0..{siteCount - 1}] фактических NeedSite-сайтов деревни.");
+                    // Виртуальный сайт (Disease на жителе) — не сверяется со сценовыми NeedSite,
+                    // но обязан быть неотрицательным и не совпадать с индексом настоящего сайта
+                    // (иначе NeedSiteController получит чужое событие в Play Mode).
+                    if (targetSiteIndex < 0)
+                    {
+                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] ({needType}, на жителе) targetSiteIndex={targetSiteIndex} < 0.");
+                        errors++;
+                    }
+                    else if (validSiteIndices.Contains(targetSiteIndex))
+                    {
+                        Debug.LogError($"[Editor] {label}: EventTimeline[{i}] ({needType}, на жителе) targetSiteIndex={targetSiteIndex} " +
+                                        "совпадает с индексом настоящего сценового NeedSite — NeedSiteController получит чужое событие.");
+                        errors++;
+                    }
+                }
+                else if (targetSiteIndex < 0 || !validSiteIndices.Contains(targetSiteIndex))
+                {
+                    Debug.LogError($"[Editor] {label}: EventTimeline[{i}] targetSiteIndex={targetSiteIndex} не совпадает ни с " +
+                                    "одним фактическим NeedSite-сайтом деревни (StructureSiteIndices).");
                     errors++;
                 }
             }

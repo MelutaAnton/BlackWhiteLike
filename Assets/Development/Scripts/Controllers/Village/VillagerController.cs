@@ -39,13 +39,17 @@ namespace BlackWhiteLike.Controllers.Village
         private const float StuckSpeedThreshold = 0.1f;
         private const float StuckDetectionSeconds = 0.5f;
 
-        [Tooltip("Animator жителя — параметры см. AnimatorHashes (MoveSpeed/IsWorshipping/IsStunned/IsLying/Scared/StandUp).")]
+        [Tooltip("Animator жителя — параметры см. AnimatorHashes (MoveSpeed/IsWorshipping/IsStunned/IsLying/Scared/StandUp/IsSick).")]
         [SerializeField] private Animator _animator;
+
+        [Tooltip("Визуал болезни (Disease на жителе) — дочерний зацикленный VFX, включается/выключается по VillagerSicknessChangedEvent. Пустая ссылка игнорируется.")]
+        [SerializeField] private GameObject _sickVisual;
 
         private IVillagerStateService _stateService;
         private IEventBus _eventBus;
         private VillagerConfig _config;
         private VillageLayoutConfig _layout;
+        private INeedSiteRegistry _needSiteRegistry;
         private bool _initialized;
 
         private Rigidbody _body;
@@ -53,7 +57,14 @@ namespace BlackWhiteLike.Controllers.Village
         private GrabbableId _grabbableId;
 
         private IDisposable _stateSubscription;
+        private IDisposable _sicknessSubscription;
         private VillagerState _currentState = VillagerState.Idle;
+
+        // Шаг переноса Disease: этот житель болен (VillagerDiseaseService — единственный источник
+        // выбора). _sickSiteIndex — индекс записи LevelConfig.EventTimeline (виртуальный сайт, см.
+        // NeedHostRules), под которым позиция этого жителя зарегистрирована в INeedSiteRegistry.
+        private bool _isSick;
+        private int _sickSiteIndex;
 
         private Vector3 _wanderOrigin;
         private Vector3 _wanderTarget;
@@ -102,12 +113,13 @@ namespace BlackWhiteLike.Controllers.Village
         public bool CanBeGrabbed => _initialized && _currentState != VillagerState.Tossed;
 
         [Inject]
-        public void Construct(IVillagerStateService stateService, IEventBus eventBus, VillagerConfig config, VillageLayoutConfig layout)
+        public void Construct(IVillagerStateService stateService, IEventBus eventBus, VillagerConfig config, VillageLayoutConfig layout, INeedSiteRegistry needSiteRegistry)
         {
             _stateService = stateService;
             _eventBus = eventBus;
             _config = config;
             _layout = layout;
+            _needSiteRegistry = needSiteRegistry;
 
             _body = GetComponent<Rigidbody>();
             _body.mass = _config.Mass;
@@ -150,18 +162,32 @@ namespace BlackWhiteLike.Controllers.Village
                 _body.useGravity = _gravityBeforeGrab;
                 _isGrabbed = false;
             }
+
+            // Шаг переноса Disease: симметрично Register в OnVillagerSicknessChanged — выключенный
+            // мимо ResetForReuse больной житель (например, пул вернул объект прямо во время болезни)
+            // не должен остаться зарегистрированным под чужим сайтом навсегда. _needSiteRegistry может
+            // быть ещё null (OnEnable до Construct) — тот же приём, что Unregister в NeedSiteController.
+            if (_isSick && _needSiteRegistry != null)
+            {
+                _needSiteRegistry.Unregister(_sickSiteIndex);
+            }
+            _isSick = false;
+            if (_sickVisual != null) _sickVisual.SetActive(false);
         }
 
         private void Subscribe()
         {
             Unsubscribe(); // защита от дублирования, если Construct и OnEnable оба успели вызваться
             _stateSubscription = _eventBus.Subscribe<VillagerStateChangedEvent>(OnVillagerStateChanged);
+            _sicknessSubscription = _eventBus.Subscribe<VillagerSicknessChangedEvent>(OnVillagerSicknessChanged);
         }
 
         private void Unsubscribe()
         {
             _stateSubscription?.Dispose();
             _stateSubscription = null;
+            _sicknessSubscription?.Dispose();
+            _sicknessSubscription = null;
         }
 
         /// <summary>
@@ -190,6 +216,14 @@ namespace BlackWhiteLike.Controllers.Village
 
             _currentState = VillagerState.Idle;
             ApplyPhysicsForState(VillagerState.Idle);
+
+            // Шаг переноса Disease: пуловый сброс — предыдущая болезнь не должна пережить
+            // переиспользование объекта. Регистр снимается ДО ApplyStateVisuals ниже, чтобы
+            // ApplySickPoseVisual (вызывается изнутри) уже видел свежий _isSick = false.
+            if (_isSick) _needSiteRegistry.Unregister(_sickSiteIndex);
+            _isSick = false;
+            if (_sickVisual != null) _sickVisual.SetActive(false);
+
             // from=Idle (не Stunned) — это хард-сброс перед новой жизнью, а не настоящий переход
             // Stunned->Idle, StandUp здесь стрелять не должен.
             ApplyStateVisuals(VillagerState.Idle, VillagerState.Idle);
@@ -332,7 +366,16 @@ namespace BlackWhiteLike.Controllers.Village
                 switch (_currentState)
                 {
                     case VillagerState.Idle:
-                        UpdateWander(_config.WanderRadius, _wanderOrigin, _config.MoveSpeed, _config.WanderPauseMin, _config.WanderPauseMax);
+                        // Шаг переноса Disease: больной в Idle стоит на месте (agony-поза,
+                        // VillagerPoseRules.ShowsSickPose) — блуждание не запускаем вовсе.
+                        if (_isSick)
+                        {
+                            StopHorizontalMovement();
+                        }
+                        else
+                        {
+                            UpdateWander(_config.WanderRadius, _wanderOrigin, _config.MoveSpeed, _config.WanderPauseMin, _config.WanderPauseMax);
+                        }
                         break;
 
                     case VillagerState.Panic:
@@ -454,6 +497,51 @@ namespace BlackWhiteLike.Controllers.Village
             }
         }
 
+        /// <summary>
+        /// Шаг переноса Disease: этот житель стал больным/выздоровел — VillagerDiseaseService
+        /// единственный источник выбора, кто именно. Регистрация мировой позиции переиспользует
+        /// INeedSiteRegistry (тот же реестр, что NeedSiteController) — у Disease нет точки в сцене
+        /// (NeedHostRules.IsVillagerHosted), поэтому позицией "виртуального сайта" становится
+        /// Transform самого больного, пока он болен.
+        /// </summary>
+        private void OnVillagerSicknessChanged(VillagerSicknessChangedEvent evt)
+        {
+            if (evt.Id != _villagerId) return;
+
+            // Снимаем регистрацию по СТАРОМУ индексу до перезаписи (ревью): если бы событие
+            // выздоровления пришло с чужим siteIndex, из реестра ушла бы чужая запись, а своя утекла.
+            if (_isSick) _needSiteRegistry.Unregister(_sickSiteIndex);
+
+            _isSick = evt.IsSick;
+            _sickSiteIndex = evt.SiteIndex;
+
+            if (_sickVisual != null) _sickVisual.SetActive(_isSick);
+
+            if (_isSick)
+            {
+                _needSiteRegistry.Register(_sickSiteIndex, transform);
+            }
+
+            ApplySickPoseVisual();
+
+            // Смена _isSick — не переход FSM, но должна сбросить блуждание немедленно: заболевший
+            // встаёт на месте, не доходя до старой цели; выздоровевший начинает блуждание с чистого листа.
+            _hasWanderTarget = false;
+            _wanderTimer = 0f;
+        }
+
+        /// <summary>
+        /// Animator.IsSick — предикат VillagerPoseRules.ShowsSickPose над (_isSick, _currentState).
+        /// Вынесен из ApplyStateVisuals в отдельный метод (вызывается и оттуда, и напрямую из
+        /// OnVillagerSicknessChanged): полный ApplyStateVisuals(_currentState, _currentState) там был
+        /// бы неверен — self-loop from==to ложно повторно триггерил бы Scared/StandUp.
+        /// </summary>
+        private void ApplySickPoseVisual()
+        {
+            if (_animator == null) return;
+            _animator.SetBool(AnimatorHashes.IsSick, VillagerPoseRules.ShowsSickPose(_isSick, _currentState));
+        }
+
         /// <summary>Возвращает true, если сработал триггер StandUp (используется в OnVillagerStateChanged, чтобы завести лок на движение — П1).</summary>
         private bool ApplyStateVisuals(VillagerState from, VillagerState to)
         {
@@ -486,6 +574,11 @@ namespace BlackWhiteLike.Controllers.Village
             {
                 _animator.SetTrigger(AnimatorHashes.StandUp);
             }
+
+            // Шаг переноса Disease: _currentState уже обновлён вызывающим (OnVillagerStateChanged/
+            // ResetForReuse/RecoverFromFall) до этого вызова — предикат ShowsSickPose внутри читает
+            // актуальное значение.
+            ApplySickPoseVisual();
 
             return firesStandUp;
         }

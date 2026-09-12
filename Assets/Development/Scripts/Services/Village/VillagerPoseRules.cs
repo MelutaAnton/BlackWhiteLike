@@ -28,5 +28,15 @@ namespace BlackWhiteLike.Services.Village
         /// </summary>
         public static bool ForcesZeroMoveSpeed(VillagerState state) =>
             state == VillagerState.Tossed || state == VillagerState.Stunned;
+
+        /// <summary>
+        /// Шаг переноса Disease на жителя: поза agony (Animator.IsSick) показывается ТОЛЬКО больному
+        /// жителю в Idle — Panic/Worship/Tossed/Stunned перекрывают её (правило-предикат над группами
+        /// состояний, не перечисление переходов, тот же принцип, что ForcesZeroMoveSpeed). Больной,
+        /// схваченный рукой (Tossed) или испуганный (Panic), не должен визуально стоять в agony поверх
+        /// другой анимации.
+        /// </summary>
+        public static bool ShowsSickPose(bool isSick, VillagerState state) =>
+            isSick && state == VillagerState.Idle;
     }
 }

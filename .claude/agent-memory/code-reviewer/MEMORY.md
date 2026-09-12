@@ -14,3 +14,4 @@
 - [Step 10 wave 2 open questions](project_step10_wave2_open_questions.md) — runtime `FindObjectsByType` ждёт решения владельца; проверенные факты про Pop без Enter, timeScale-страховки, PopupRoot.
 - [Recurring defect classes](project_recurring_defects.md) — editor script vs runtime physics disagreement, and new `[SerializeField]` left unwired by the editor script that places the component.
 - [Static *Rules-классы — не нарушение DI](false-positive-static-rules-tables.md) — почему `VillagerMovementRules`/`VillagerPoseRules` без интерфейса это норма
+- [Disease-на-жителе: проверенные факты](project_disease_on_villager_facts.md) — VContainer игнорирует optional-параметры ctor; CFXR4 Flies Cloud без CFXR_Effect; agony.anim уже loop; AnyState > StandUp-триггер.

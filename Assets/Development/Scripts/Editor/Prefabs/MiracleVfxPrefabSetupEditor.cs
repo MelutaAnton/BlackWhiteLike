@@ -131,41 +131,9 @@ namespace BlackWhiteLike.Editor.Prefabs
 
             // ThirdParty CFXR_Effect (asmdef "CFXR Runtime", недоступен из BlackWhiteLike.Editor как
             // тип — ищем по имени класса, не по typeof) — clearBehavior по умолчанию Destroy уничтожил
-            // бы пуловый объект после первого же проигрывания.
-            var cfxrEffect = FindComponentByTypeName(explosionGo, "CFXR_Effect");
-            if (cfxrEffect != null)
-            {
-                var cfxrSo = new SerializedObject(cfxrEffect);
-                var clearProp = cfxrSo.FindProperty("clearBehavior");
-                if (clearProp != null)
-                {
-                    if (clearProp.enumValueIndex != 0)
-                    {
-                        int oldValue = clearProp.enumValueIndex;
-                        clearProp.enumValueIndex = 0; // None
-                        cfxrSo.ApplyModifiedProperties();
-                        Debug.Log($"[Editor] CFXR_Effect.clearBehavior: {oldValue} → 0 (None) — эффект больше не " +
-                                  "уничтожает/выключает себя сам, возврат в пул делает VfxInstanceController.");
-                    }
-
-                    // Численная проверка, а не «применилось без ошибок» (.claude/rules/editor-files.md).
-                    var verifySo = new SerializedObject(cfxrEffect);
-                    int verifiedValue = verifySo.FindProperty("clearBehavior").enumValueIndex;
-                    if (verifiedValue == 0)
-                        Debug.Log("[Editor] Проверено: CFXR_Effect.clearBehavior == 0 (None).");
-                    else
-                        Debug.LogError("[Editor] CFXR_Effect.clearBehavior НЕ равен 0 после прошивки (" + verifiedValue + ") — эффект будет самоуничтожаться.");
-                }
-                else
-                {
-                    Debug.LogError("[Editor] Поле \"clearBehavior\" не найдено на CFXR_Effect — версия ThirdParty-пака изменилась?");
-                }
-            }
-            else
-            {
-                Debug.LogWarning("[Editor] Компонент CFXR_Effect не найден на вложенном инстансе — clearBehavior не прошит " +
-                                  "(эффект может самоуничтожаться после первого проигрывания).");
-            }
+            // бы пуловый объект после первого же проигрывания. required: true — у CFXR-взрыва этот
+            // компонент есть всегда (в отличие от CFXR4 Flies Cloud на Villager.prefab).
+            EditorThirdPartyComponentUtility.FixCfxrClearBehaviorToNone(explosionGo, "Vfx_FireballExplosion.prefab");
 
             var particleSystem = explosionGo.GetComponentInChildren<ParticleSystem>(true);
             var controllerSo = new SerializedObject(controller);
@@ -446,7 +414,8 @@ namespace BlackWhiteLike.Editor.Prefabs
         /// столкновению частиц через собственный статический пул/GameObject.Find — избыточная логика для
         /// нашего сценария, где VfxInstanceController уже управляет жизненным циклом). Оба ищутся по имени
         /// типа (asmdef Hovl-скриптов не подключён к BlackWhiteLike.Editor — тот же приём, что
-        /// FindComponentByTypeName для CFXR_Effect) и отключаются (enabled=false), не удаляются —
+        /// EditorThirdPartyComponentUtility.FindComponentByTypeName для CFXR_Effect) и отключаются
+        /// (enabled=false), не удаляются —
         /// удаление ломало бы ссылки внутри самого ThirdParty-префаба (EffectsOnCollision и т.п.).
         /// </summary>
         private static void DisableKnownHovlBehaviours(GameObject go, string ownerLabel)
@@ -565,22 +534,6 @@ namespace BlackWhiteLike.Editor.Prefabs
 
         /// <summary>Запас страховки поверх фактической длительности эффекта (см. StampMaxLifetime).</summary>
         private const float MaxLifetimeSafetyMultiplier = 2f;
-
-        /// <summary>
-        /// ThirdParty-компонент из asmdef без ссылки в нашей Editor-сборке — ищем по имени типа среди
-        /// всех Component на инстансе (ссылку получить typeof() нельзя, см. class-doc).
-        /// </summary>
-        private static Component FindComponentByTypeName(GameObject go, string typeName)
-        {
-            var all = go.GetComponentsInChildren<Component>(true);
-            foreach (var component in all)
-            {
-                if (component != null && component.GetType().Name == typeName)
-                    return component;
-            }
-
-            return null;
-        }
 
         private static void FinishPrefabEdit(GameObject root, string path, bool existed)
         {

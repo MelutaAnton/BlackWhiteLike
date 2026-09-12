@@ -108,4 +108,29 @@ namespace BlackWhiteLike.Core.Events
             HasWorldPosition = hasWorldPosition;
         }
     }
+
+    /// <summary>
+    /// Публикуется <c>VillagerDiseaseService</c> при заражении/выздоровлении жителя (game-design §5 —
+    /// Disease переезжает с NeedSite на случайного жителя, шаг переноса болезни). В отличие от
+    /// остальных нужд (Fire/Hunger — точка в сцене, <c>NeedSiteController</c>), у Disease нет
+    /// реального NeedSite в сцене (см. <c>Services.Village.NeedHostRules</c>) — <see cref="SiteIndex"/>
+    /// остаётся тем же индексом записи <c>LevelConfig.EventTimeline</c>, что и в
+    /// <c>NeedTriggeredEvent</c>/<c>NeedResolvedEvent</c>/<c>NeedExpiredEvent</c> для этой Disease,
+    /// просто виртуальный (без соответствующего <c>NeedSiteController</c> в сцене). Подписчики —
+    /// <c>VillagerController</c> (визуал/поза/регистрация мировой позиции больного в
+    /// <c>INeedSiteRegistry</c>), тесты.
+    /// </summary>
+    public readonly struct VillagerSicknessChangedEvent
+    {
+        public readonly VillagerId Id;
+        public readonly int SiteIndex;
+        public readonly bool IsSick;
+
+        public VillagerSicknessChangedEvent(VillagerId id, int siteIndex, bool isSick)
+        {
+            Id = id;
+            SiteIndex = siteIndex;
+            IsSick = isSick;
+        }
+    }
 }
